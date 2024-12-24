@@ -1,31 +1,29 @@
-
-
-import http from 'k6/http';
-import { sleep, check } from 'k6';
+import http from "k6/http";
+import { sleep, check } from "k6";
 export const options = {
-	stages: [
-		{ duration: '1m', target: 200 }, // ramp up
-	
-	],
+  stages: [
+    { duration: "1m", target: 1000 }, // ramp up
+  ],
 };
 
-
-
 export default () => {
-    const reqBody = {
-    "src_lat": -7.550261232598317,
-    "src_lon":    110.78210790296636, 
-    "dst_lat": -7.581681866327657, 
-    "dst_lon": 110.82648949172574
+  const reqBody = {
+    src_lat: -7.550263588614922,
+    src_lon: 110.78206617571915,
+    dst_lat: -8.024167150460844,
+    dst_lon: 110.32986653162467,
+  };
+
+  const res = http.post(
+    "http://localhost:5000/api/navigations/shortest-path",
+    JSON.stringify(reqBody),
+    {
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
     }
-
-    const res = http.post("http://localhost:3000/api/navigations/shortestPath", JSON.stringify(reqBody), {
-         headers: {
-              'Content-Type': 'application/json',
-              'Accept': 'application/json',
-      }
-    });
-  check(res, { '200': (r) => r.status === 200 });
-    sleep(1);
-
-}
+  );
+  check(res, { 200: (r) => r.status === 200 });
+  sleep(1);
+};

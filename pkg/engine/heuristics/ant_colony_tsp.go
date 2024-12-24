@@ -88,17 +88,21 @@ func NewACO(distMatrix [][]float64, nAnts int, alpha, beta, evaporationRate, int
 
 /*
 	 GetNextNode mengembalikan node selanjutnya yang akan dikunjungi oleh ant.
-		generate bilangan random. jika lebih kecil dari exploitationRate, maka pilih node dengan nilai transitionProb terbesar.
-		otherwise, sample satu node dari nodesLeft dengan probability distribution transitionProb
+		generate bilangan random. jika lebih kecil dari exploitationRate, maka pilih node dengan nilai transitionProb[curr] terbesar.
+		otherwise, sample secara random satu node dari nodesLeft dengan probability transitionProb[curr]
 */
 func (aco *ACO) GetNextNode(curr int, nodesLeft []int) int {
-	num := make([]float64, len(nodesLeft))
+	num := make([]float64, len(nodesLeft)) // num[i] probability node i dipilih setelah kunjungi currNode, ( dibagi sum of val dari aco.transitionProbMatrix[curr])
 	sum := 0.0
 	for i, node := range nodesLeft {
 
-		trans_prob_val := aco.transitionProbMatrix[curr][node]
+		trans_prob_val := aco.transitionProbMatrix[curr][node] 
 		num[i] = trans_prob_val
 		sum += trans_prob_val
+	}
+
+	for i := 0; i < len(num); i++ {
+		num[i] /= sum
 	}
 
 	if rand.Float64() <= aco.exploitationRate {
@@ -112,9 +116,7 @@ func (aco *ACO) GetNextNode(curr int, nodesLeft []int) int {
 		}
 		return nodesLeft[maxIdx]
 	} else {
-		for i := 0; i < len(num); i++ {
-			num[i] /= sum
-		}
+
 		rngSource := rand.NewSource(uint64(time.Now().UnixNano()))
 		rng := rand.New(rngSource)
 		nextNode, _ := Choice(nodesLeft, 1, false, num, rng)
@@ -325,8 +327,6 @@ type ContractedGraph interface {
 	GetOutEdge(edgeIDx int32) datastructure.EdgeCH
 	GetInEdge(edgeIDx int32) datastructure.EdgeCH
 	GetNumNodes() int
-	GetAstarNode(nodeIDx int32) datastructure.CHNode
-	GetOutEdgesAstar(nodeIDx int32) []datastructure.EdgePair
 }
 
 type Heuristics struct {
@@ -341,7 +341,7 @@ func NewHeuristics(route RouteAlgorithm, ch ContractedGraph) *Heuristics {
 	}
 }
 
-func (aco *Heuristics) TravelingSalesmanProblemAntColonyOptimization(cities []int32) ([]datastructure.CHNode2, []datastructure.EdgeCH, float64, float64, [][]float64) {
+func (aco *Heuristics) TravelingSalesmanProblemAntColonyOptimization(cities []int32) ([]datastructure.Coordinate, []datastructure.EdgeCH, float64, float64, [][]float64) {
 
 	spPair := [][]int32{}
 	for i := 0; i < len(cities); i++ {
@@ -390,7 +390,7 @@ func (aco *Heuristics) TravelingSalesmanProblemAntColonyOptimization(cities []in
 
 	acoTSP := NewACO(distancesMat, 30, 1.0, 0.5, 0.1, 2.0, 0.0, 0.05, len(cities))
 	bestTour, bestETA := acoTSP.Solve(500, 150) // solve tsp pake ant colony optimization
-	tspTourNodes := []datastructure.CHNode2{}
+	tspTourNodes := []datastructure.Coordinate{}
 	tspTourEdgePath := []datastructure.EdgeCH{}
 	bestDistance := 0.0
 	for i := 0; i < len(bestTour); i++ {

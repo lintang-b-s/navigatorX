@@ -2,13 +2,11 @@ package osmparser
 
 import (
 	"context"
-	"encoding/csv"
 	"fmt"
 	"io"
 	"lintang/navigatorx/pkg/datastructure"
 	"log"
 	"os"
-	"runtime"
 	"strings"
 	"sync"
 
@@ -24,7 +22,7 @@ type nodeMapContainer struct {
 }
 
 type ContractedGraph interface {
-	InitCHGraph(nodes []datastructure.Node, edgeCount int, streetDirections map[string][2]bool, surakartaWays []datastructure.SurakartaWay,
+	InitCHGraph(nodes []datastructure.Node, edgeCount int, streetDirections map[string][2]bool, surakartaWays, hmmEdges []datastructure.SurakartaWay,
 		streetExtraInfo map[string]datastructure.StreetExtraInfo) map[int64]int32
 	SetNodeMapIdx(nodeMap map[int64]int32)
 	GetFirstOutEdge(nodeIDx int32) []int32
@@ -33,19 +31,15 @@ type ContractedGraph interface {
 	GetOutEdge(edgeIDx int32) datastructure.EdgeCH
 	GetInEdge(edgeIDx int32) datastructure.EdgeCH
 	GetNumNodes() int
-	GetAstarNode(nodeIDx int32) datastructure.CHNode
-	GetOutEdgesAstar(nodeIDx int32) []datastructure.EdgePair
 	IsChReady() bool
 	Contraction() (err error)
-	RemoveAstarGraph()
 	SetCHReady()
 	SnapLocationToRoadNetworkNodeH3(ways []datastructure.SmallWay, wantToSnap []float64) int32
 	SnapLocationToRoadNetworkNodeH3ForMapMatching(ways []datastructure.SmallWay, wantToSnap []float64) []datastructure.State
 	GetStreetDirection(streetName string) [2]bool
 	SaveToFile() error
-	LoadGraph() ([]datastructure.SurakartaWay, map[int64]int32, error)
-	DeleteUnecessaryFields()
-	GetStreetInfo(streetName string) datastructure.StreetExtraInfo 
+	LoadGraph() error
+	GetStreetInfo(streetName string) datastructure.StreetExtraInfo
 }
 
 type OSMParser struct {
@@ -57,7 +51,7 @@ func NewOSMParser(ch ContractedGraph) *OSMParser {
 		CH: ch,
 	}
 }
-func (op *OSMParser) LoadGraph() ([]datastructure.SurakartaWay, map[int64]int32, error) {
+func (op *OSMParser) LoadGraph() error {
 	return op.CH.LoadGraph()
 }
 func (op *OSMParser) BikinGraphFromOpenstreetmap(mapFile string) ([]datastructure.SurakartaWay, map[int64]int32, []datastructure.SurakartaWay) {
@@ -168,24 +162,15 @@ func (op *OSMParser) BikinGraphFromOpenstreetmap(mapFile string) ([]datastructur
 		}
 	}
 
-	ctr.nodeMap = nil
-	runtime.GC()
-	runtime.GC()
-	surakartaWays, surakartaNodes, graphEdges, streetDirections, streetExtraInfo := InitGraph(ways, trafficLightNodeIDMap)
+	hmmEdges, surakartaNodes, graphEdges, streetDirections, streetExtraInfo := InitGraph(ways, trafficLightNodeIDMap)
 
-	nodeIdxMap := op.CH.InitCHGraph(surakartaNodes, len(ways), streetDirections, surakartaWays, streetExtraInfo)
-	convertOSMNodeIDToGraphID(surakartaWays, nodeIdxMap)
-	surakartaNodes = nil
+	nodeIdxMap := op.CH.InitCHGraph(surakartaNodes, len(ways), streetDirections, graphEdges, hmmEdges, streetExtraInfo)
+	convertOSMNodeIDToGraphID(graphEdges, nodeIdxMap)
 
-	fmt.Println("")
-	NoteWayTypes(ways)
-
-	WriteWayTypeToCsv(trafficLightNodeMap, "traffic_light_node.csv")
 	op.CH.SetNodeMapIdx(nodeIdxMap)
 
-	return surakartaWays, nodeIdxMap, graphEdges
+	return hmmEdges, nodeIdxMap, graphEdges
 }
-
 func convertOSMNodeIDToGraphID(surakartaWays []datastructure.SurakartaWay, nodeIDxMap map[int64]int32) {
 	for i := range surakartaWays {
 		way := &surakartaWays[i]
@@ -195,7 +180,6 @@ func convertOSMNodeIDToGraphID(surakartaWays []datastructure.SurakartaWay, nodeI
 		}
 	}
 }
-
 func isOsmWayUsedByCars(tagMap map[string]string) bool {
 	_, ok := tagMap["junction"]
 	if ok {
@@ -289,52 +273,6 @@ func isOsmWayUsedByCars(tagMap map[string]string) bool {
 	}
 
 	return false
-}
-
-func NoteWayTypes(ways []*osm.Way) {
-
-	wayTypesMap := make(map[string]bool)
-
-	maspeeds := make(map[string]int)
-
-	for _, way := range ways {
-		for _, wayTag := range way.Tags {
-			if !wayTypesMap[wayTag.Key+"="+wayTag.Value] {
-				wayTypesMap[wayTag.Key+"="+wayTag.Value] = true
-				if strings.Contains(wayTag.Key, "maxspeed") {
-					maspeeds[wayTag.Value]++
-				}
-			}
-		}
-	}
-
-	wayTypesArr := make([][]string, len(wayTypesMap)+1+len(maspeeds))
-
-	idx := 0
-	for key, _ := range wayTypesMap {
-		tipe := strings.Split(key, "=")
-		wayTypesArr[idx] = []string{tipe[0], tipe[1]}
-		idx++
-	}
-	wayTypesArr[idx] = []string{"total", fmt.Sprint(len(ways))}
-	idx++
-	for key, val := range maspeeds {
-		wayTypesArr[idx] = []string{"maxspeed=" + key, fmt.Sprint(val)}
-		idx++
-	}
-
-	file, err := os.Create("wayTypes.csv")
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	defer file.Close()
-
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
-
-	writer.WriteAll(wayTypesArr)
-
 }
 
 func (op *OSMParser) SaveToFile() error {

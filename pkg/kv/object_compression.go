@@ -1,6 +1,6 @@
 package kv
 
-func CompressWay(sw []SmallWay) ([]byte, error) {
+func EncodeWay(sw []SmallWay) ([]byte, error) {
 	bb := Encode(sw)
 
 	bbCompressed := bb

@@ -46,8 +46,8 @@ func TestViterbiAlgo(t *testing.T) {
 			2: {1: -1.737, 2: -2.322, 3: -2.322, 4: -1.737},
 		}
 
-		viterbi := matching.NewViterbi(observations, states, transitionProb, emissionProb, startProb)
-		maxProb, path := viterbi.RunViterbi()
+		viterbi := matching.NewViterbi(observations, states, transitionProb, emissionProb, startProb, nil)
+		maxProb, path, _ := viterbi.RunViterbi()
 		assert.Equal(t, util.RoundFloat(maxProb, 2), -24.49)
 		assert.Equal(t, path, []matching.ViterbiNode{{1, -1, -1, -1}, {1, -1, -1, -1}, {1, -1, -1, -1},
 			{2, -1, -1, -1}, {2, -1, -1, -1}, {2, -1, -1, -1}, {2, -1, -1, -1},

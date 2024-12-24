@@ -1,8 +1,11 @@
 dari: https://www.youtube.com/watch?v=N3PWzBeLX2M
 
-vegeta attack -rate=1000 -duration=1000s  -targets vegeta_target.txt   | vegeta report
+k6 run --summary-trend-stats="avg,p(95),p(97),p(99.7),p(99.8),p(99.9)"   load_test.js
 
- go tool pprof --seconds 5 http://localhost:5000/debug/pprof/profile
+result: p95 1.54s , avg=369ms
+
+
+go tool pprof --seconds 5 http://localhost:5000/debug/pprof/profile
 
 ```
 top10
@@ -29,7 +32,5 @@ go tool pprof \
 
 open flame.svg
 
-TODO: ganti cara simpan openstreetmap ways. gob.decode 38% 
-- mungkin ganti pakai buffer []byte, terus serialize setiap field objects []SurakartaWay secara urut pakai binary.LittleEndian.PutUint64() & masukkin ke buffer?
-- deserialize tinggal urutannya dibalik?  mirip kaya serialize node b-tree di database.
-
+TODO: - pakai fibonacci heap buat priority queue? 
+- kyknya ada memory leak

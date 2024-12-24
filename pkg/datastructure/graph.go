@@ -2,7 +2,6 @@ package datastructure
 
 import (
 	"lintang/navigatorx/pkg/concurrent"
-	"lintang/navigatorx/pkg/geo"
 
 	"github.com/twpayne/go-polyline"
 )
@@ -29,6 +28,7 @@ type Edge struct {
 	RoadClass     string
 	RoadClassLink string
 	Lanes         int
+	NodesInBetween []Coordinate
 }
 
 type Node struct {
@@ -41,31 +41,31 @@ type Node struct {
 	UsedInRoad   int
 }
 
-type CHNode struct {
-	OutEdges     []EdgePair
-	InEdges      []EdgePair
-	Lat          float64
-	Lon          float64
-	orderPos     int64
-	IDx          int32
-	StreetName   string
-	TrafficLight bool
-}
 
 type CHNode2 struct {
 	Lat          float64
 	Lon          float64
 	OrderPos     int64
 	IDx          int32
-	StreetName   string
 	TrafficLight bool
+}
+
+func NewCHNode(lat, lon float64, orderPos int64, idx int32, trafficLight bool) CHNode2 {
+	return CHNode2{
+		Lat:          lat,
+		Lon:          lon,
+		OrderPos:     orderPos,
+		IDx:          idx,
+		TrafficLight: trafficLight,
+	}
 }
 
 type SurakartaWay struct {
 	ID                  int32
 	CenterLoc           []float64 // [lat, lon]
-	Nodes               []CHNode2 // yang bukan intersectionNodes
+	Nodes               []Coordinate // yang bukan intersectionNodes
 	IntersectionNodesID []int64
+	WayID		  int32
 }
 
 type Metadata struct {
@@ -92,6 +92,8 @@ type EdgeCH struct {
 	RoadClass      string
 	RoadClassLink  string
 	Lanes          int
+	NodesInBetween []Coordinate
+
 }
 
 type StreetExtraInfo struct {
@@ -138,7 +140,7 @@ func RoadTypeMaxSpeed(roadType string) float64 {
 type SPSingleResultResult struct {
 	Source    int32
 	Dest      int32
-	Paths     []CHNode2
+	Paths     []Coordinate
 	EdgePath []EdgeCH
 	Dist      float64
 	Eta       float64
@@ -156,43 +158,32 @@ type State struct {
 	Lon    float64
 	Dist   float64
 	EdgeID int32
+	NodesInBetween []Coordinate
 }
 type SmallWay struct {
 	CenterLoc           []float64 // [lat, lon]
 	IntersectionNodesID []int64
+	NodesInBetween []Coordinate
+	WayID int32
 }
 
 func (s *SmallWay) ToConcurrentWay() concurrent.SmallWay {
+	nodesInBetweenLat := []float64{}
+	nodesInBetweenLon := []float64{}
+	for _, n := range s.NodesInBetween {
+		nodesInBetweenLat = append(nodesInBetweenLat, n.Lat)
+		nodesInBetweenLon = append(nodesInBetweenLon, n.Lon)
+	}
 	return concurrent.SmallWay{
 		CenterLoc:           s.CenterLoc,
 		IntersectionNodesID: s.IntersectionNodesID,
+		NodesInBetween: concurrent.NewCoordinates(nodesInBetweenLat, nodesInBetweenLon),
+		WayID: s.WayID,
 	}
 }
-func (n *CHNode) PathEstimatedCostETA(to CHNode) float64 {
 
-	currLoc := geo.NewLocation(n.Lat, n.Lon)
-	toLoc := geo.NewLocation(to.Lat, to.Lon)
-	dist := geo.HaversineDistance(currLoc, toLoc) // km
 
-	time := to.OutEdges[0].Weight
-	distEdge := to.OutEdges[0].Dist
-	speed := (distEdge / time) * 60 / 1000 // km/h
-
-	r := dist / speed // dist = km, speed = km/h
-	return r
-}
-
-func RenderPath2(path []CHNode2) string {
-	s := ""
-	coords := make([][]float64, 0)
-	for _, p := range path {
-		pT := p
-		coords = append(coords, []float64{pT.Lat, pT.Lon})
-	}
-	s = string(polyline.EncodeCoords(coords))
-	return s
-}
-func RenderPath(path []CHNode) string {
+func RenderPath2(path []Coordinate) string {
 	s := ""
 	coords := make([][]float64, 0)
 	for _, p := range path {

@@ -15,6 +15,7 @@ import (
 	"lintang/navigatorx/pkg/server/rest/service"
 	"log"
 	"net/http"
+	"runtime"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -50,7 +51,7 @@ func main() {
 	flag.Parse()
 	ch := contractor.NewContractedGraph()
 	osmParser := osmparser.NewOSMParser(ch)
-	graphEdges, nodeIdxMap, err := osmParser.LoadGraph()
+	err := osmParser.LoadGraph()
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -62,13 +63,6 @@ func main() {
 
 	kvDB := kv.NewKVDB(db)
 	defer kvDB.Close()
-
-	go func() {
-		fmt.Printf("\n Inserting Osm Way to KV DB....")
-		kvDB.CreateStreetKV(graphEdges, nodeIdxMap, *listenAddr, false)
-		fmt.Printf("\n Contraction Hieararchies + Bidirectional Dijkstra Ready!!")
-		fmt.Printf("\nserver started at %s\n", *listenAddr)
-	}()
 
 	reg := prometheus.NewRegistry()
 	m := rest.NewMetrics(reg)
@@ -103,6 +97,11 @@ func main() {
 	navigatorSvc := service.NewNavigationService(osmParser.CH, kvDB, hungarian, routingAlgorithm, mapMatching, heuristic)
 	rest.NavigatorRouter(r, navigatorSvc, m)
 
+	runtime.GC()
+	runtime.GC() // run garbage collection now biar heap size nya ngurang
+
+	fmt.Printf("\n Contraction Hieararchies + Bidirectional Dijkstra Ready!!")
+	fmt.Printf("\nserver started at %s\n", *listenAddr)
 	log.Fatal(http.ListenAndServe(*listenAddr, r))
 }
 

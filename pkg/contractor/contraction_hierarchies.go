@@ -32,7 +32,6 @@ type Metadata struct {
 type ContractedGraph struct {
 	Metadata   Metadata
 	Ready      bool
-	AStarGraph []datastructure.CHNode
 
 	ContractedFirstOutEdge [][]int32
 	ContractedFirstInEdge  [][]int32
@@ -50,7 +49,6 @@ type ContractedGraph struct {
 	StreetDirection map[string][2]bool // 0 = forward, 1 = backward
 	StreetInfo      map[string]datastructure.StreetExtraInfo
 
-	SurakartaWays []datastructure.SurakartaWay
 }
 
 var maxPollFactorHeuristic = 5
@@ -58,7 +56,6 @@ var maxPollFactorContraction = 200
 
 func NewContractedGraph() *ContractedGraph {
 	return &ContractedGraph{
-		AStarGraph:         make([]datastructure.CHNode, 0),
 		ContractedOutEdges: make([]datastructure.EdgeCH, 0),
 		ContractedInEdges:  make([]datastructure.EdgeCH, 0),
 		ContractedNodes:    make([]datastructure.CHNode2, 0),
@@ -68,10 +65,10 @@ func NewContractedGraph() *ContractedGraph {
 	}
 }
 
-func (ch *ContractedGraph) InitCHGraph(nodes []datastructure.Node, edgeCount int, streetDirections map[string][2]bool, sWays []datastructure.SurakartaWay,
+func (ch *ContractedGraph) InitCHGraph(nodes []datastructure.Node, edgeCount int, streetDirections map[string][2]bool, sWays,hmmEdges []datastructure.SurakartaWay,
 	streetExtraInfo map[string]datastructure.StreetExtraInfo) map[int64]int32 {
 	gLen := len(nodes)
-	ch.SurakartaWays = sWays
+	
 	var nodeIdxMap = make(map[int64]int32)
 	for streetName, direction := range streetDirections {
 		ch.StreetDirection[streetName] = direction
@@ -96,20 +93,12 @@ func (ch *ContractedGraph) InitCHGraph(nodes []datastructure.Node, edgeCount int
 
 	for i, node := range nodes {
 
-		ch.AStarGraph = append(ch.AStarGraph, datastructure.CHNode{
-			OutEdges:     []datastructure.EdgePair{},
-			IDx:          int32(i),
-			Lat:          node.Lat,
-			Lon:          node.Lon,
-			StreetName:   node.StreetName,
-			TrafficLight: node.TrafficLight,
-		})
+	
 
 		ch.ContractedNodes = append(ch.ContractedNodes, datastructure.CHNode2{
 			IDx:          int32(i),
 			Lat:          node.Lat,
 			Lon:          node.Lon,
-			StreetName:   node.StreetName,
 			TrafficLight: node.TrafficLight,
 		})
 
@@ -136,11 +125,11 @@ func (ch *ContractedGraph) InitCHGraph(nodes []datastructure.Node, edgeCount int
 			cost := edge.Cost / maxSpeed
 			toIdx := nodeIdxMap[edge.To.ID]
 
-			ch.AStarGraph[idx].OutEdges = append(ch.AStarGraph[idx].OutEdges, datastructure.EdgePair{cost,
-				edge.Cost, toIdx, false, -1, edge.Roundabout, edge.RoadClass, edge.RoadClassLink, edge.Lanes})
-
+			
 			ch.ContractedFirstOutEdge[idx] = append(ch.ContractedFirstOutEdge[idx], int32(outEdgeIDx))
-			ch.ContractedOutEdges = append(ch.ContractedOutEdges, datastructure.EdgeCH{outEdgeIDx, cost, edge.Cost, toIdx, int32(idx), false, -1, -1, edge.StreetName, edge.Roundabout, edge.RoadClass, edge.RoadClassLink, edge.Lanes})
+			ch.ContractedOutEdges = append(ch.ContractedOutEdges, datastructure.EdgeCH{outEdgeIDx, cost, edge.Cost, toIdx,
+				 int32(idx), false, -1, -1, edge.StreetName, edge.Roundabout,
+				 edge.RoadClass, edge.RoadClassLink, edge.Lanes, edge.NodesInBetween})
 
 			// tambah degree nodenya
 			ch.Metadata.degrees[idx]++
@@ -161,9 +150,9 @@ func (ch *ContractedGraph) InitCHGraph(nodes []datastructure.Node, edgeCount int
 			weight := edge.Weight
 
 			ch.ContractedFirstInEdge[to] = append(ch.ContractedFirstInEdge[to], int32(inEdgeIDx))
-
 			ch.ContractedInEdges = append(ch.ContractedInEdges, datastructure.EdgeCH{inEdgeIDx, weight,
-				edge.Dist, int32(i), to, false, -1, -1, edge.StreetName, edge.Roundabout, edge.RoadClass, edge.RoadClassLink, edge.Lanes})
+				edge.Dist, int32(i), to, false, -1, -1, edge.StreetName, 
+				edge.Roundabout, edge.RoadClass, edge.RoadClassLink, edge.Lanes, edge.NodesInBetween})
 
 			// tambah degree nodenya
 			ch.Metadata.degrees[i]++
@@ -402,13 +391,11 @@ func (ch *ContractedGraph) addShortcut(fromNodeIDx, toNodeIDx int32, weight floa
 	dist := geo.HaversineDistance(fromLoc, toLoc)
 	// add shortcut outcoming edge
 	dup := false
-	// newETA := removedEdgeOne.ETA + removedEdgeTwo.ETA
 	for _, outIDx := range ch.ContractedFirstOutEdge[fromNodeIDx] {
 		edge := ch.ContractedOutEdges[outIDx]
 		if edge.ToNodeIDX == toNodeIDx && edge.Weight > weight {
 			edge.Weight = weight
 			edge.Dist = dist
-			// edge.ETA = newETA
 			edge.RemovedEdgeOne = removedEdgeOne.EdgeIDx
 			edge.RemovedEdgeTwo = removedEdgeTwo.EdgeIDx
 			dup = true
@@ -419,7 +406,7 @@ func (ch *ContractedGraph) addShortcut(fromNodeIDx, toNodeIDx int32, weight floa
 
 		currEdgeIDx := int32(len(ch.ContractedOutEdges))
 		ch.ContractedOutEdges = append(ch.ContractedOutEdges, datastructure.EdgeCH{currEdgeIDx, weight, dist, toNodeIDx, fromNodeIDx, true,
-			removedEdgeOne.EdgeIDx, removedEdgeTwo.EdgeIDx, "", false, "", "", 0})
+			removedEdgeOne.EdgeIDx, removedEdgeTwo.EdgeIDx, "", false, "", "", 0, []datastructure.Coordinate{}})
 		ch.ContractedFirstOutEdge[fromNodeIDx] = append(ch.ContractedFirstOutEdge[fromNodeIDx], currEdgeIDx)
 		ch.Metadata.degrees[fromNodeIDx]++
 	}
@@ -431,7 +418,6 @@ func (ch *ContractedGraph) addShortcut(fromNodeIDx, toNodeIDx int32, weight floa
 		if edge.ToNodeIDX == fromNodeIDx && edge.Weight > weight {
 			edge.Weight = weight
 			edge.Dist = dist
-			// edge.ETA = newETA
 			edge.RemovedEdgeOne = removedEdgeOne.EdgeIDx
 			edge.RemovedEdgeTwo = removedEdgeTwo.EdgeIDx
 			dup = true
@@ -443,7 +429,7 @@ func (ch *ContractedGraph) addShortcut(fromNodeIDx, toNodeIDx int32, weight floa
 
 		currEdgeIDx := int32(len(ch.ContractedInEdges))
 		ch.ContractedInEdges = append(ch.ContractedInEdges, datastructure.EdgeCH{currEdgeIDx, weight, dist, fromNodeIDx, toNodeIDx, true,
-			removedEdgeOne.EdgeIDx, removedEdgeTwo.EdgeIDx, "", false, "", "", 0})
+			removedEdgeOne.EdgeIDx, removedEdgeTwo.EdgeIDx, "", false, "", "", 0, []datastructure.Coordinate{}})
 		ch.ContractedFirstInEdge[toNodeIDx] = append(ch.ContractedFirstInEdge[toNodeIDx], currEdgeIDx)
 
 		ch.Metadata.degrees[toNodeIDx]++
@@ -484,7 +470,6 @@ func (ch *ContractedGraph) UpdatePrioritiesOfRemainingNodes(nq *MinHeap[int32]) 
 	for nodeIDx, _ := range ch.ContractedNodes {
 
 		priority := ch.calculatePriority(int32(nodeIDx), contracted)
-		// heap.Push(ch.PQNodeOrdering, &PriorityQueueNode[int32]{item: int32(nodeIDx), rank: priority})
 		nq.Insert(PriorityQueueNode[int32]{Item: int32(nodeIDx), Rank: priority})
 		bar.Add(1)
 	}
@@ -518,18 +503,6 @@ func (ch *ContractedGraph) GetNode(nodeIDx int32) datastructure.CHNode2 {
 func (ch *ContractedGraph) GetNumNodes() int {
 	return len(ch.ContractedNodes)
 }
-
-func (ch *ContractedGraph) GetAstarNode(nodeIDx int32) datastructure.CHNode {
-	return ch.AStarGraph[nodeIDx]
-}
-
-func (ch *ContractedGraph) GetOutEdgesAstar(nodeIDx int32) []datastructure.EdgePair {
-	return ch.AStarGraph[nodeIDx].OutEdges
-}
-
-func (ch *ContractedGraph) RemoveAstarGraph() {
-	ch.AStarGraph = nil
-}
 func (ch *ContractedGraph) SetCHReady() {
 	ch.Ready = true
 }
@@ -544,7 +517,6 @@ func (ch *ContractedGraph) GetStreetInfo(streetName string) datastructure.Street
 }
 
 func (ch *ContractedGraph) SaveToFile() error {
-	// _, err := binary.Marshal(ch) error
 	buf := new(bytes.Buffer)
 	enc := gob.NewEncoder(buf)
 	err := enc.Encode(ch)
@@ -563,17 +535,17 @@ func (ch *ContractedGraph) SaveToFile() error {
 	return err
 }
 
-func (ch *ContractedGraph) LoadGraph() ([]datastructure.SurakartaWay, map[int64]int32, error) {
+func (ch *ContractedGraph) LoadGraph() ( error) {
 	f, err := os.Open("./ch_graph.graph")
 	if err != nil {
-		return []datastructure.SurakartaWay{}, map[int64]int32{}, err
+		return  err
 	}
 	defer f.Close()
 
 	fileInfo, err := f.Stat()
 	if err != nil {
 		fmt.Println("Error getting file info:", err)
-		return []datastructure.SurakartaWay{}, map[int64]int32{}, err
+		return  err
 	}
 	fileSize := fileInfo.Size()
 
@@ -581,14 +553,10 @@ func (ch *ContractedGraph) LoadGraph() ([]datastructure.SurakartaWay, map[int64]
 	_, err = io.ReadFull(f, data)
 	if err != nil {
 		fmt.Println("Error reading file:", err)
-		return []datastructure.SurakartaWay{}, map[int64]int32{}, err
+		return  err
 	}
 	dec := gob.NewDecoder(bytes.NewReader(data))
 	err = dec.Decode(&ch)
-	return ch.SurakartaWays, ch.NodeMapIdx, err
+	return   err
 }
 
-func (ch *ContractedGraph) DeleteUnecessaryFields() {
-	ch.SurakartaWays = nil
-	ch.NodeMapIdx = nil
-}

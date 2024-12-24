@@ -51,7 +51,7 @@ func main() {
 	flag.Parse()
 	ch := contractor.NewContractedGraph()
 	osmParser := osmparser.NewOSMParser(ch)
-	_, nodeIdxMap, graphEdges := osmParser.BikinGraphFromOpenstreetmap(*mapFile)
+	hmmEdges, nodeIdxMap, graphEdges := osmParser.BikinGraphFromOpenstreetmap(*mapFile)
 
 	db, err := pebble.Open("navigatorxDB", &pebble.Options{})
 	if err != nil {
@@ -62,7 +62,7 @@ func main() {
 	defer kvDB.Close()
 
 	go func() {
-		kvDB.CreateStreetKV(graphEdges, nodeIdxMap, *listenAddr, false)
+		kvDB.CreateStreetKV(graphEdges, hmmEdges, nodeIdxMap, *listenAddr, false)
 	}()
 
 	reg := prometheus.NewRegistry()
@@ -101,18 +101,15 @@ func main() {
 
 	go func() {
 		osmParser.CH.Contraction()
-		osmParser.CH.RemoveAstarGraph()
 		osmParser.CH.SetCHReady()
 		runtime.GC()
-		runtime.GC() // run garbage collection biar heap size nya ngurang wkwkwk
+		runtime.GC() // run garbage collection biar heap size nya ngurang
 		fmt.Printf("\n Contraction Hieararchies + Bidirectional Dijkstra Ready!!")
 		fmt.Printf("\nserver started at %s\n", *listenAddr)
 	}()
 
 	log.Fatal(http.ListenAndServe(*listenAddr, r))
 }
-
-
 
 // use log middleware below if u want to use elk for logging
 // logFile, err := os.OpenFile("./logs/navigatorx.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0777)

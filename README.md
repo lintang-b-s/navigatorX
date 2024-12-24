@@ -1,6 +1,6 @@
 # navigatorx
 
-Simple Openstreetmap routing engine in go. This project uses Contraction Hierarchies to speed up shortest path queries by preprocessing the road network graph (adding many shortcut edges) and Bidirectional Dijsktra for shortest path queries. H3 is used as a nearest neighbor query. For route optimization, currently only TSP is supported, in the future VRP and its variants will be added. Currently it is still not possible to customize based on traffic data.
+Simple Openstreetmap routing engine in go. This project uses Contraction Hierarchies to speed up shortest path queries by preprocessing the road network graph (adding many shortcut edges) and Bidirectional Dijsktra for shortest path queries. H3 is used as a nearest neighbor query. For route optimization, currently only TSP is supported, in the future VRP and its variants will be added. Currently it is still not possible to customize graph based on traffic data,but customization features will be added in the future.
 
 ## Quick Start
 
@@ -20,9 +20,10 @@ Note: or you can also use another openstreetmap file with the osm.pbf format (ht
 3.  go mod tidy &&  mkdir bin
 4. CGO_ENABLED=1  go build -o ./bin/navigatorx ./cmd/auto
 5. ./bin/navigatorx
-(Minimum free RAM 1 GB for the above data)
+(Minimum free RAM 2 GB for the above data)
 note: or you can also do it with "make run"
 5.  wait for preprocessing contraction hierarchies to complete (about 3 minutes)
+Note: if error "resource temporary unavailable" -> just delete navigatorXDB directory and restart the steps above
 ```
 
 #### Only Preprocessing
@@ -33,10 +34,11 @@ Note: or you can also use another openstreetmap file with the osm.pbf format (ht
 2.  put the download results into the root directory of this project
 3.  go mod tidy &&  mkdir bin
 4. CGO_ENABLED=1  go build -o ./bin/navigatorx-preprocessing ./cmd/preprocessing
-Note: to replace the openstreetmap file, see the instructions below
 5. ./bin/navigatorx-preprocessing
-(Minimum free RAM 1 GB for the above data)
+Note: to replace the openstreetmap file, see the instructions below
+(Minimum free RAM 2 GB for the above data)
 5.  wait for preprocessing contraction hierarchies to complete (about 3 minutes)
+Note: if error "resource temporary unavailable" -> just delete navigatorXDB directory and restart the steps above
 ```
 
 ### Only Server
@@ -44,7 +46,6 @@ Note: to replace the openstreetmap file, see the instructions below
 Make sure you have done the preprocessing stage above!
 
 ```
-
 1. CGO_ENABLED=1  go build -o ./bin/navigatorx-engine ./cmd/engine
 2. ./bin/navigatorx-engine
 (Minimum free RAM 1 GB for the above data)
@@ -79,11 +80,8 @@ Note: Source & Destination Coordinates must be around Yogyakarta Province/Suraka
 5. Copy the polyline string path of the response endpoint result to https://valhalla.github.io/demos/polyline . Check Unsescape '\'. The shortest route will appear on the map. :)
 ```
 
-### Hidden Markov Map Matching
-
-snap driver trip GPS traces on map street data.
-based on https://www.microsoft.com/en-us/research/publication/hidden-markov-map-matching-noise-sparseness/
-
+### Map Matching Hidden Markov Model Decoding
+find  the  most  likely  road  route  represented  by  a  time-stamped  sequence  of  latitude/longitude  pairs (gps).   
 ```
 1. wait until there is a log "server started at :5000". If you want the query to be >10x faster, wait for the Contraction Hierarchies preprocessing to complete.
 2. request to the server with route list of gps coordinate data (or fake route coordinate data)
@@ -206,14 +204,14 @@ curl --location 'http://localhost:5000/api/navigations/matching' \
                 "lat": -7.770534977253453,
                 "lon":   110.38156022914536
             }
-        }, 
+        },
         {
         "username":  "rider3",
         "coord": {
                 "lat": -7.758553228167311,
                 "lon":  110.39946726179075
             }
-        }, 
+        },
         {
             "username": "rider4",
             "coord": {
@@ -238,7 +236,7 @@ curl --location 'http://localhost:5000/api/navigations/matching' \
        {
         "username": "ridersolo7",
        "coord": {
-            "lat": -7.561717618835495, 
+            "lat": -7.561717618835495,
             "lon": 110.80992968611694
         }
        },
@@ -252,9 +250,9 @@ curl --location 'http://localhost:5000/api/navigations/matching' \
          {
          "username":"rider9",
          "coord": {
-            "lat": -7.740690926169796, 
+            "lat": -7.740690926169796,
             "lon": 110.37411440130444
-         }   
+         }
         },
         {
             "username": "rider10",
@@ -273,14 +271,14 @@ curl --location 'http://localhost:5000/api/navigations/matching' \
         {
             "username": "riderSolo",
             "coord": {
-                "lat": -7.554605287475889, 
+                "lat": -7.554605287475889,
                 "lon": 110.82704286671313
             }
         },
         {
             "username": "riderSolo2",
             "coord": {
-                "lat": -7.572505106627924, 
+                "lat": -7.572505106627924,
                 "lon": 110.84027742738219
             }
         }
@@ -289,10 +287,10 @@ curl --location 'http://localhost:5000/api/navigations/matching' \
         {
             "username":    "driversolo3",
             "coord": {
-                "lat": -7.573553087300021, 
+                "lat": -7.573553087300021,
                 "lon": 110.82073100556183
             }
-        }, 
+        },
         {
             "username": "driver2",
             "coord": {
@@ -303,7 +301,7 @@ curl --location 'http://localhost:5000/api/navigations/matching' \
         {
             "username":"driver3",
             "coord":{
-                "lat": -7.782514997952533, 
+                "lat": -7.782514997952533,
                 "lon": 110.36659498380173
             }
         },
@@ -317,7 +315,7 @@ curl --location 'http://localhost:5000/api/navigations/matching' \
         {
             "username": "driver5",
             "coord": {
-                "lat": -7.772515329567074, 
+                "lat": -7.772515329567074,
                 "lon": 110.37239634189628
             }
         },
@@ -338,33 +336,33 @@ curl --location 'http://localhost:5000/api/navigations/matching' \
         {
             "username":  "driver8",
             "coord": {
-                "lat": -7.565565153230303, 
+                "lat": -7.565565153230303,
                 "lon": 110.8079927641968
             }
         },
         {
             "username":  "driver9",
             "coord": {
-            "lat": -7.751209845539939, 
+            "lat": -7.751209845539939,
              "lon": 110.41778895149984
             }
         },
         {
             "username": "driverSolo",
             "coord": {
-                "lat": -7.565093613983397, 
+                "lat": -7.565093613983397,
                 "lon": 110.81882158435778
             }
         },
         {
             "username": "driverSolo2",
             "coord": {
-                "lat": -7.572505106632021, 
+                "lat": -7.572505106632021,
                 "lon":110.83008101439083
             }
         }
 
-     
+
     ]
 }'
 

@@ -11,3 +11,11 @@ func NewCoordinate(lat, lon float64) Coordinate {
 		Lon: lon,
 	}
 }
+
+func NewCoordinates(lat, lon []float64) []Coordinate {
+	coords := make([]Coordinate, len(lat))
+	for i := range lat {
+		coords[i] = NewCoordinate(lat[i], lon[i])
+	}
+	return coords
+}

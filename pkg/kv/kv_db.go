@@ -21,9 +21,9 @@ func NewKVDB(db *pebble.DB) *KVDB {
 	return &KVDB{db}
 }
 
-func (k *KVDB) CreateStreetKV(way []datastructure.SurakartaWay, nodeIDxMap map[int64]int32, listenAddr string, isPreprocess bool) {
-	fmt.Println("wait until loading contracted graph complete...")
-	bar := progressbar.NewOptions(len(way),
+func (k *KVDB) CreateStreetKV(ways, hmmWays []datastructure.SurakartaWay, nodeIDxMap map[int64]int32, listenAddr string, isPreprocess bool) {
+	fmt.Println("\nwait until loading contracted graph complete...")
+	bar := progressbar.NewOptions(len(ways),
 		progressbar.OptionSetWriter(ansi.NewAnsiStdout()),
 		progressbar.OptionEnableColorCodes(true),
 		progressbar.OptionShowBytes(true),
@@ -37,8 +37,8 @@ func (k *KVDB) CreateStreetKV(way []datastructure.SurakartaWay, nodeIDxMap map[i
 			BarEnd:        "]",
 		}))
 	kv := make(map[string][]datastructure.SmallWay)
-	for i, w := range way {
-		street := way[i]
+	for i, w := range ways {
+		street := ways[i]
 		centerWayLat := w.CenterLoc[0]
 		centerWayLon := w.CenterLoc[1]
 		if len(street.IntersectionNodesID) == 0 {
@@ -71,7 +71,7 @@ func (k *KVDB) CreateStreetKV(way []datastructure.SurakartaWay, nodeIDxMap map[i
 			BarEnd:        "]",
 		}))
 
-	workers := concurrent.NewWorkerPool[concurrent.SaveWayJobItem, interface{}](4, len(kv))
+	workers := concurrent.NewWorkerPool[concurrent.SaveWayJobItem, interface{}](10, len(kv))
 
 	for keyStr, valArr := range kv {
 		conWay := make([]concurrent.SmallWay, len(valArr))
@@ -87,6 +87,58 @@ func (k *KVDB) CreateStreetKV(way []datastructure.SurakartaWay, nodeIDxMap map[i
 	workers.Start(k.SaveWay)
 	workers.Wait()
 
+	fmt.Println("")
+	k.SaveStreetHMMKV(hmmWays)
+}
+
+func (k *KVDB) SaveStreetHMMKV(hmmWays []datastructure.SurakartaWay) {
+	kvHMM := make(map[string][]datastructure.SmallWay)
+	for i, w := range hmmWays {
+		street := hmmWays[i]
+		centerWayLat := w.CenterLoc[0]
+		centerWayLon := w.CenterLoc[1]
+
+		h3LatLon := h3.NewLatLng(centerWayLat, centerWayLon)
+		cell := h3.LatLngToCell(h3LatLon, 9)
+		smallStreet := datastructure.SmallWay{
+			CenterLoc:      []float64{centerWayLat, centerWayLon},
+			NodesInBetween: street.Nodes,
+			WayID:          street.WayID,
+		}
+
+		kvHMM[cell.String()+"-HMM"] = append(kvHMM[cell.String()+"-HMM"], smallStreet)
+	}
+
+	barHMM := progressbar.NewOptions(len(kvHMM),
+		progressbar.OptionSetWriter(ansi.NewAnsiStdout()),
+		progressbar.OptionEnableColorCodes(true),
+		progressbar.OptionShowBytes(true),
+		progressbar.OptionSetWidth(15),
+		progressbar.OptionSetDescription("[cyan][5/7][reset] saving h3 indexed street for map matching to pebble db..."),
+		progressbar.OptionSetTheme(progressbar.Theme{
+			Saucer:        "[green]=[reset]",
+			SaucerHead:    "[green]>[reset]",
+			SaucerPadding: " ",
+			BarStart:      "[",
+			BarEnd:        "]",
+		}))
+
+	// save HMM ways
+	workersHmm := concurrent.NewWorkerPool[concurrent.SaveWayJobItem, interface{}](10, len(kvHMM))
+
+	for keyStr, valArr := range kvHMM {
+		conWay := make([]concurrent.SmallWay, len(valArr))
+		for j, val := range valArr {
+			conWay[j] = val.ToConcurrentWay()
+		}
+
+		workersHmm.AddJob(concurrent.SaveWayJobItem{keyStr, conWay})
+		barHMM.Add(1)
+	}
+	workersHmm.Close()
+	workersHmm.Start(k.SaveWay)
+	workersHmm.Wait()
+	fmt.Println("")
 }
 
 func (k *KVDB) SaveWay(wayItem concurrent.SaveWayJobItem) interface{} {
@@ -95,13 +147,21 @@ func (k *KVDB) SaveWay(wayItem concurrent.SaveWayJobItem) interface{} {
 	key := []byte(keyStr)
 	ways := make([]SmallWay, len(valArr))
 	for i, val := range valArr {
+		nodesInBetweenLats := []float64{}
+		nodesInBetweenLons := []float64{}
+		for _, node := range val.NodesInBetween {
+			nodesInBetweenLats = append(nodesInBetweenLats, node.Lat)
+			nodesInBetweenLons = append(nodesInBetweenLons, node.Lon)
+		}
 		ways[i] = SmallWay{
 			CenterLoc:           val.CenterLoc,
 			IntersectionNodesID: val.IntersectionNodesID,
+			NodesInBetween:      NewCoordinates(nodesInBetweenLats, nodesInBetweenLons),
+			WayID:               val.WayID,
 		}
 	}
 
-	val, err := CompressWay(ways)
+	val, err := EncodeWay(ways)
 
 	if err != nil {
 		log.Fatal(err)
@@ -113,12 +173,18 @@ func (k *KVDB) SaveWay(wayItem concurrent.SaveWayJobItem) interface{} {
 }
 
 // GetNearestStreetsFromPointCoord buat road snaping. Untuk menentukan jalan-jalan yang paling dekat dengan titik start/end rute yang di tunjuk sama pengguna
-func (k *KVDB) GetNearestStreetsFromPointCoord(lat, lon float64) ([]datastructure.SmallWay, error) {
+func (k *KVDB) GetNearestStreetsFromPointCoord(lat, lon float64, hmm bool) ([]datastructure.SmallWay, error) {
 	ways := []SmallWay{}
 
 	home := h3.NewLatLng(lat, lon)
 	cell := h3.LatLngToCell(home, 9)
-	val, closer, err := k.db.Get([]byte(cell.String()))
+	suffixHMM := ""
+	if hmm {
+		suffixHMM = "-HMM"
+	}
+
+	cellString := cell.String() + suffixHMM
+	val, closer, err := k.db.Get([]byte(cellString))
 	if err == nil {
 		defer closer.Close()
 	}
@@ -127,22 +193,26 @@ func (k *KVDB) GetNearestStreetsFromPointCoord(lat, lon float64) ([]datastructur
 
 	ways = append(ways, streets...)
 
-	cells := kRingIndexesArea(lat, lon, 0.7) // search cell neighbor dari homeCell yang radius nya 0.7 km
-	for _, currCell := range cells {
-		if currCell == cell {
-			continue
-		}
-		val, closer, err := k.db.Get([]byte(currCell.String()))
-		if closer == nil || err != nil {
-			continue
-		}
+	cells := kRingIndexesArea(lat, lon, 1) // search cell neighbor dari homeCell yang radius nya 1 km
+	if len(ways) == 0 {
+		for _, currCell := range cells {
+			if currCell == cell {
+				continue
+			}
+			currCellString := currCell.String() + suffixHMM
+			val, closer, err := k.db.Get([]byte(currCellString))
+			if closer == nil || err != nil {
+				continue
+			}
 
-		streets, err := LoadWay(val)
-		if err != nil {
-			return []datastructure.SmallWay{}, err
+			streets, err := LoadWay(val)
+			if err != nil {
+				closer.Close()
+				return []datastructure.SmallWay{}, err
+			}
+			ways = append(ways, streets...)
+			closer.Close()
 		}
-		ways = append(ways, streets...)
-		closer.Close()
 	}
 
 	// kalau dari radius 1 km dari titik start/end rute pengguna gak ada jalan (misal di bandara, hutan, dll). maka cari jalan dari neighbor h3 cell yang lebih jauh dari titik start/end rute
@@ -153,13 +223,15 @@ func (k *KVDB) GetNearestStreetsFromPointCoord(lat, lon float64) ([]datastructur
 				if currCell == cell {
 					continue
 				}
-				val, closer, err := k.db.Get([]byte(currCell.String()))
+				currCellString := currCell.String() + suffixHMM
+				val, closer, err := k.db.Get([]byte(currCellString))
 				if closer == nil || err != nil {
 					continue
 				}
 
 				streets, err := LoadWay(val)
 				if err != nil {
+					closer.Close()
 					return []datastructure.SmallWay{}, err
 				}
 				ways = append(ways, streets...)
@@ -176,9 +248,18 @@ func (k *KVDB) GetNearestStreetsFromPointCoord(lat, lon float64) ([]datastructur
 	}
 	waysData := make([]datastructure.SmallWay, len(ways))
 	for i, way := range ways {
+		nodeInBetweenLats := []float64{}
+		nodeInBetweenLons := []float64{}
+		for _, node := range way.NodesInBetween {
+			nodeInBetweenLats = append(nodeInBetweenLats, node.Lat)
+			nodeInBetweenLons = append(nodeInBetweenLons, node.Lon)
+		}
+		coords := datastructure.NewCoordinates(nodeInBetweenLats, nodeInBetweenLons)
 		waysData[i] = datastructure.SmallWay{
 			CenterLoc:           way.CenterLoc,
 			IntersectionNodesID: way.IntersectionNodesID,
+			NodesInBetween:      coords,
+			WayID:               way.WayID,
 		}
 	}
 

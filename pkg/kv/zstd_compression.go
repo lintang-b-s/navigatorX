@@ -1,7 +1,6 @@
 package kv
 
 import (
-	// jsoniter "github.com/json-iterator/go"
 	"lintang/navigatorx/pkg/concurrent"
 
 	"github.com/DataDog/zstd"
@@ -12,7 +11,29 @@ import (
 type SmallWay struct {
 	CenterLoc           []float64 // [lat, lon]
 	IntersectionNodesID []int64
+	NodesInBetween []Coordinate
+	WayID int32
 }
+type Coordinate struct {
+	Lat float64
+	Lon float64
+}
+
+func NewCoordinate(lat, lon float64) Coordinate {
+	return Coordinate{
+		Lat: lat,
+		Lon: lon,
+	}
+}
+
+func NewCoordinates(lat, lon []float64) []Coordinate {
+	coords := make([]Coordinate, len(lat))
+	for i := range lat {
+		coords[i] = NewCoordinate(lat[i], lon[i])
+	}
+	return coords
+}
+
 
 func (s *SmallWay) toConcurrentWay() concurrent.SmallWay {
 	return concurrent.SmallWay{

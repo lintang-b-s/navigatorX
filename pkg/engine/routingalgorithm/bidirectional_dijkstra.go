@@ -19,8 +19,6 @@ type ContractedGraph interface {
 	GetOutEdge(edgeIDx int32) datastructure.EdgeCH
 	GetInEdge(edgeIDx int32) datastructure.EdgeCH
 	GetNumNodes() int
-	GetAstarNode(nodeIDx int32) datastructure.CHNode
-	GetOutEdgesAstar(nodeIDx int32) []datastructure.EdgePair
 }
 
 type RouteAlgorithm struct {
@@ -31,10 +29,12 @@ func NewRouteAlgorithm(ch ContractedGraph) *RouteAlgorithm {
 	return &RouteAlgorithm{ch: ch}
 }
 
-func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32) ([]datastructure.CHNode2, []datastructure.EdgeCH, float64, float64) {
+func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32) ([]datastructure.Coordinate, []datastructure.EdgeCH, float64, float64) {
 
 	forwQ := contractor.NewMinHeap[int32]()
 	backQ := contractor.NewMinHeap[int32]()
+	forwVisited := make(map[int32]bool)
+	backVisited := make(map[int32]bool)
 
 	df := make(map[int32]float64)
 	db := make(map[int32]float64)
@@ -78,7 +78,7 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32) ([]datastructur
 
 		ff := *frontier
 		if ff.Size() == 0 {
-			return []datastructure.CHNode2{}, []datastructure.EdgeCH{}, -1, -1
+			return []datastructure.Coordinate{}, []datastructure.EdgeCH{}, -1, -1
 		}
 		smallestFront, _ := ff.GetMin()
 		if smallestFront.Rank >= estimate {
@@ -94,11 +94,15 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32) ([]datastructur
 				break
 			}
 			if turnF {
+				forwVisited[node.Item] = true
 
 				for _, arc := range rt.ch.GetFirstOutEdge(node.Item) {
 					edge := rt.ch.GetOutEdge(arc)
 					toNIDx := edge.ToNodeIDX
 					cost := edge.Weight
+					if forwVisited[toNIDx] {
+						continue
+					}
 					if rt.ch.GetNode(node.Item).OrderPos < rt.ch.GetNode(toNIDx).OrderPos {
 						// upward graph
 						newCost := cost + df[node.Item]
@@ -133,12 +137,15 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32) ([]datastructur
 				}
 
 			} else {
-
+				backVisited[node.Item] = true
 				for _, arc := range rt.ch.GetFirstInEdge(node.Item) {
 
 					edge := rt.ch.GetInEdge(arc)
 					toNIDx := edge.ToNodeIDX
 					cost := edge.Weight
+					if backVisited[toNIDx] {
+						continue
+					}
 					if rt.ch.GetNode(node.Item).OrderPos < rt.ch.GetNode(toNIDx).OrderPos {
 						// downward graph
 						newCost := cost + db[node.Item]
@@ -196,7 +203,7 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32) ([]datastructur
 	}
 
 	if estimate == math.MaxFloat64 {
-		return []datastructure.CHNode2{}, []datastructure.EdgeCH{}, -1, -1
+		return []datastructure.Coordinate{}, []datastructure.EdgeCH{}, -1, -1
 	}
 	// estimate dari bidirectional dijkstra pake shortcut edge jadi lebih cepet eta nya & gak akurat
 	path, edgePath, eta, dist := rt.createPath(bestCommonVertex, from, to, cameFromf, cameFromb)
@@ -204,9 +211,9 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32) ([]datastructur
 }
 
 func (rt *RouteAlgorithm) createPath(commonVertex int32, from, to int32,
-	cameFromf, cameFromb map[int32]cameFromPair) ([]datastructure.CHNode2, []datastructure.EdgeCH, float64, float64) {
+	cameFromf, cameFromb map[int32]cameFromPair) ([]datastructure.Coordinate, []datastructure.EdgeCH, float64, float64) {
 
-	fPath := []datastructure.CHNode2{}
+	fPath := []datastructure.Coordinate{}
 	fedgePath := []datastructure.EdgeCH{}
 	eta := 0.0
 	dist := 0.0
@@ -230,14 +237,21 @@ func (rt *RouteAlgorithm) createPath(commonVertex int32, from, to int32,
 			if cameFromb[v].Edge.Weight != 0 {
 				fedgePath = append(fedgePath, cameFromb[v].Edge)
 			}
-			fPath = append(fPath, rt.ch.GetNode(v))
+
+
+			nodesInBetween := cameFromf[v].Edge.NodesInBetween
+			util.ReverseG(nodesInBetween)
+			nodeV := rt.ch.GetNode(v)
+
+			fPath = append(fPath, datastructure.NewCoordinate(nodeV.Lat, nodeV.Lon))
+			fPath = append(fPath, nodesInBetween...)
 		}
 		_, ok = cameFromf[v]
 		v = cameFromf[v].NodeIDx
 
 	}
 
-	bPath := []datastructure.CHNode2{}
+	bPath := []datastructure.Coordinate{}
 	bEdgePath := []datastructure.EdgeCH{}
 	v = commonVertex
 	ok = true
@@ -257,7 +271,11 @@ func (rt *RouteAlgorithm) createPath(commonVertex int32, from, to int32,
 			if cameFromb[v].Edge.Weight != 0 {
 				bEdgePath = append(bEdgePath, cameFromb[v].Edge)
 			}
-			bPath = append(bPath, rt.ch.GetNode(v))
+
+			nodeV := rt.ch.GetNode(v)
+
+			bPath = append(bPath, datastructure.NewCoordinate(nodeV.Lat, nodeV.Lon))
+			bPath = append(bPath, cameFromb[v].Edge.NodesInBetween...)
 		}
 		_, ok = cameFromb[v]
 		v = cameFromb[v].NodeIDx
@@ -265,7 +283,7 @@ func (rt *RouteAlgorithm) createPath(commonVertex int32, from, to int32,
 
 	util.ReverseG(fPath)
 	fPath = fPath[:len(fPath)-1]
-	path := []datastructure.CHNode2{}
+	path := []datastructure.Coordinate{}
 	path = append(path, fPath...)
 	path = append(path, bPath...)
 
@@ -293,14 +311,21 @@ func (rt *RouteAlgorithm) createPath(commonVertex int32, from, to int32,
 
 // buat forward dijkstra
 // dari common vertex ke source vertex
-func (rt *RouteAlgorithm) unpackBackward(edge datastructure.EdgeCH, path *[]datastructure.CHNode2, ePath *[]datastructure.EdgeCH, eta *float64, dist *float64) {
+func (rt *RouteAlgorithm) unpackBackward(edge datastructure.EdgeCH, path *[]datastructure.Coordinate, ePath *[]datastructure.EdgeCH, eta *float64, dist *float64) {
 	if !edge.IsShortcut {
 		if rt.ch.GetNode(edge.ToNodeIDX).TrafficLight {
 			*eta += 3.0
 		}
 		*eta += edge.Weight
 		*dist += edge.Dist
-		*path = append(*path, rt.ch.GetNode(edge.ToNodeIDX))
+
+		nodesInBetween := edge.NodesInBetween
+		util.ReverseG(nodesInBetween)
+		toNode := rt.ch.GetNode(edge.ToNodeIDX)
+
+		*path = append(*path,datastructure.NewCoordinate(toNode.Lat, toNode.Lon) )
+		*path = append(*path, nodesInBetween...)
+
 		*ePath = append(*ePath, edge)
 	} else {
 		rt.unpackBackward(rt.ch.GetOutEdge(edge.RemovedEdgeTwo), path, ePath, eta, dist)
@@ -309,14 +334,20 @@ func (rt *RouteAlgorithm) unpackBackward(edge datastructure.EdgeCH, path *[]data
 }
 
 // dari common vertex ke target vertex
-func (rt *RouteAlgorithm) unpackForward(edge datastructure.EdgeCH, path *[]datastructure.CHNode2, ePath *[]datastructure.EdgeCH, eta *float64, dist *float64) {
+func (rt *RouteAlgorithm) unpackForward(edge datastructure.EdgeCH, path *[]datastructure.Coordinate, ePath *[]datastructure.EdgeCH, eta *float64, dist *float64) {
 	if !edge.IsShortcut {
 		if rt.ch.GetNode(edge.ToNodeIDX).TrafficLight {
 			*eta += 3.0
 		}
 		*eta += edge.Weight
 		*dist += edge.Dist
-		*path = append(*path, rt.ch.GetNode(edge.ToNodeIDX))
+
+		nodesInBetween := edge.NodesInBetween
+		toNode := rt.ch.GetNode(edge.ToNodeIDX)
+
+		*path = append(*path,datastructure.NewCoordinate(toNode.Lat, toNode.Lon) )
+		*path = append(*path, nodesInBetween...)
+
 		*ePath = append(*ePath, edge)
 	} else {
 		rt.unpackForward(rt.ch.GetInEdge(edge.RemovedEdgeOne), path, ePath, eta, dist)

@@ -70,7 +70,7 @@ func NewDrivingInstruction(ins Instruction, description string) DrivingInstructi
 func (ife *InstructionsFromEdges) GetDrivingInstructions(path []datastructure.EdgeCH) ([]DrivingInstruction, error) {
 	drivingInstructions := make([]DrivingInstruction, 0)
 	if len(path) == 0 {
-		
+
 		return drivingInstructions, errors.New("path is empty")
 	}
 
@@ -112,18 +112,12 @@ func (ife *InstructionsFromEdges) AddInstructionFromEdge(edge datastructure.Edge
 
 	name := edge.StreetName
 
-	streetInfo := ife.ContractedGraph.GetStreetInfo(name)
-
 	if ife.PrevInstruction == nil && !isRoundabout {
 		// start point dari shortetest path & bukan bundaran (roundabout)
 		sign := START
 		point := datastructure.NewCoordinate(baseNodeData.Lat, baseNodeData.Lon)
 		newIns := NewInstruction(sign, name, point, false)
 		ife.PrevInstruction = &newIns
-
-		ife.PrevInstruction.ExtraInfo["street_destination"] = streetInfo.Destination
-		ife.PrevInstruction.ExtraInfo["street_destination_ref"] = streetInfo.DestinationRef
-		ife.PrevInstruction.ExtraInfo["motorway_junction"] = streetInfo.MotorwayJunction
 
 		baseEdgeNode := ife.ContractedGraph.GetNode(baseNode)
 		startLat := baseEdgeNode.Lat
@@ -178,10 +172,6 @@ func (ife *InstructionsFromEdges) AddInstructionFromEdge(edge datastructure.Edge
 	} else if ife.PrevInRoundabout {
 
 		ife.PrevInstruction.Name = name
-		ife.PrevInstruction.ExtraInfo["street_destination"] = streetInfo.Destination
-		ife.PrevInstruction.ExtraInfo["street_destination_ref"] = streetInfo.DestinationRef
-		ife.PrevInstruction.ExtraInfo["motorway_junction"] = streetInfo.MotorwayJunction
-
 		roundaboutInstruction := ife.PrevInstruction
 		roundaboutInstruction.Roundabout.Exited = true
 
@@ -371,7 +361,7 @@ func (ife *InstructionsFromEdges) GetTurnSign(edge datastructure.EdgeCH, baseNod
 				baseNode
 						-----otherContinueEdge---
 			*/ // nolint: gofmt
-			if prevCurrEdgeOrientationDiff > prevOtherEdgeOrientation {
+			if  prevCurrEdgeOrientationDiff >  prevOtherEdgeOrientation {
 				return KEEP_RIGHT
 			} else {
 				return KEEP_LEFT

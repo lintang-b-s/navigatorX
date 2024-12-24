@@ -115,7 +115,11 @@ func (instr *Instruction) GetTurnDescription() string {
 		}
 	case START:
 		if heading, ok := instr.ExtraInfo["heading"]; ok {
-			compassDir := azimuthToCompass(heading.(float64))
+			headingAngle := heading.(float64)
+			if headingAngle < 0.0 {
+				headingAngle += 360
+			}
+			compassDir := bearingToCompass(headingAngle)
 			description = fmt.Sprintf("Head %s toward %s", compassDir, streetName)
 		} else {
 			description = fmt.Sprintf("Head toward %s", streetName)
@@ -157,22 +161,22 @@ func (instr *Instruction) GetTurnDescription() string {
 
 	return description
 }
-func azimuthToCompass(azimuth float64) string {
-	if azimuth < 22.5 {
+func bearingToCompass(bearing float64) string {
+	if bearing < 22.5 {
 		return "North"
-	} else if azimuth < 67.5 {
+	} else if bearing < 67.5 {
 		return "North East"
-	} else if azimuth < 112.5 {
+	} else if bearing < 112.5 {
 		return "East"
-	} else if azimuth < 157.5 {
+	} else if bearing < 157.5 {
 		return "South East"
-	} else if azimuth < 202.5 {
+	} else if bearing < 202.5 {
 		return "South"
-	} else if azimuth < 247.5 {
+	} else if bearing < 247.5 {
 		return "South West"
-	} else if azimuth < 292.5 {
+	} else if bearing < 292.5 {
 		return "West"
-	} else if azimuth < 337.5 {
+	} else if bearing < 337.5 {
 		return "North West"
 	} else {
 		return "North"
@@ -207,7 +211,7 @@ func getDirectionDescription(sign int, instruction Instruction) string {
 			return "Enter the roundabout"
 		}
 		roundaboutDir := "clockwise" // bundaran  di indo selalu clockwise
-		
+
 		if instruction.GetName() == "" {
 			return fmt.Sprintf("At Roundabout, take the exit point %d %s", instruction.Roundabout.ExitNumber, roundaboutDir)
 		}
@@ -220,9 +224,6 @@ func getDirectionDescription(sign int, instruction Instruction) string {
 func isEmpty(str string) bool {
 	return strings.TrimSpace(str) == ""
 }
-
-
-type ROUNDABOUT_DIR int
 
 type RoundaboutInstruction struct {
 	ExitNumber int
@@ -241,8 +242,6 @@ func NewRoundaboutInstruction(options ...Option) RoundaboutInstruction {
 	}
 	return roundabout
 }
-
-
 
 func Round(val float64, places int) float64 {
 	shift := math.Pow(10, float64(places))

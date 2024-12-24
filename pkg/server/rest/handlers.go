@@ -27,7 +27,7 @@ type NavigationService interface {
 		alternativeStreetLat float64, alternativeStreetLon float64,
 		dstLat float64, dstLon float64) (string, float64, []guidance.DrivingInstruction, bool, []datastructure.Coordinate, float64, bool, error)
 
-	HiddenMarkovModelMapMatching(ctx context.Context, gps []datastructure.Coordinate) (string, []datastructure.CHNode2, error)
+	HiddenMarkovModelDecodingMapMatching(ctx context.Context, gps []datastructure.Coordinate) (string, []datastructure.Coordinate, error)
 	ManyToManyQuery(ctx context.Context, sourcesLat, sourcesLon, destsLat, destsLon []float64) (map[datastructure.Coordinate][]service.TargetResult, error)
 
 	TravelingSalesmanProblemSimulatedAnneal(ctx context.Context, citiesLat []float64, citiesLon []float64) ([]datastructure.Coordinate, []guidance.DrivingInstruction, string, float64, float64, error)
@@ -48,7 +48,7 @@ func NavigatorRouter(r *chi.Mux, svc NavigationService, m *metrics) {
 			r.Post("/shortest-path", handler.shortestPathETA)
 			r.Post("/shortest-path-alternative-street", handler.shortestPathAlternativeStreetETA)
 			// r.Post("/shortest-path-ch", handler.shortestPathETACH)
-			r.Post("/map-matching", handler.HiddenMarkovModelMapMatching)
+			r.Post("/map-matching", handler.HiddenMarkovModelDecodingMapMatching)
 			r.Post("/many-to-many", handler.ManyToManyQuery)
 			r.Post("/tsp", handler.TravelingSalesmanProblemSimulatedAnnealing)
 			r.Post("/matching", handler.WeightedBipartiteMatching)
@@ -246,7 +246,7 @@ type MapMatchingResponse struct {
 	Coordinates []Coord `json:"coordinates"`
 }
 
-func RenderMapMatchingResponse(path string, coords []datastructure.CHNode2) *MapMatchingResponse {
+func RenderMapMatchingResponse(path string, coords []datastructure.Coordinate) *MapMatchingResponse {
 	coordsResp := []Coord{}
 	for _, c := range coords {
 		coordsResp = append(coordsResp, Coord{
@@ -261,7 +261,7 @@ func RenderMapMatchingResponse(path string, coords []datastructure.CHNode2) *Map
 	}
 }
 
-// HiddenMarkovModelMapMatching
+// HiddenMarkovModelDecodingMapMatching
 //
 //	@Summary		map matching pakai hidden markov model. Snapping noisy GPS coordinates ke road network lokasi asal gps seharusnya
 //	@Description	map matching pakai hidden markov model. Snapping noisy GPS coordinates ke road network lokasi asal gps seharusnya
@@ -273,7 +273,7 @@ func RenderMapMatchingResponse(path string, coords []datastructure.CHNode2) *Map
 //	@Success		200	{object}	MapMatchingResponse
 //	@Failure		400	{object}	ErrResponse
 //	@Failure		500	{object}	ErrResponse
-func (h *NavigationHandler) HiddenMarkovModelMapMatching(w http.ResponseWriter, r *http.Request) {
+func (h *NavigationHandler) HiddenMarkovModelDecodingMapMatching(w http.ResponseWriter, r *http.Request) {
 	data := &MapMatchingRequest{}
 	if err := render.Bind(r, data); err != nil {
 		render.Render(w, r, ErrInvalidRequest(err))
@@ -297,7 +297,7 @@ func (h *NavigationHandler) HiddenMarkovModelMapMatching(w http.ResponseWriter, 
 			Lon: c.Lon,
 		})
 	}
-	p, pNode, err := h.svc.HiddenMarkovModelMapMatching(r.Context(), coords)
+	p, pNode, err := h.svc.HiddenMarkovModelDecodingMapMatching(r.Context(), coords)
 	if err != nil {
 		render.Render(w, r, ErrInternalServerErrorRend(errors.New("internal server error")))
 

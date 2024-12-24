@@ -36,7 +36,7 @@ func main() {
 	flag.Parse()
 	ch := contractor.NewContractedGraph()
 	osmParser := osmparser.NewOSMParser(ch)
-	_, nodeIdxMap, graphEdges := osmParser.BikinGraphFromOpenstreetmap(*mapFile)
+	hmmEdges, nodeIdxMap, graphEdges := osmParser.BikinGraphFromOpenstreetmap(*mapFile)
 
 	db, err := pebble.Open("navigatorxDB", &pebble.Options{})
 	if err != nil {
@@ -47,11 +47,10 @@ func main() {
 	defer kvDB.Close()
 
 	go func() {
-		kvDB.CreateStreetKV(graphEdges, nodeIdxMap, *listenAddr, true)
+		kvDB.CreateStreetKV(graphEdges, hmmEdges, nodeIdxMap, *listenAddr, true)
 	}()
 
 	osmParser.CH.Contraction()
-	osmParser.CH.RemoveAstarGraph()
 	osmParser.CH.SetCHReady()
 	err = osmParser.SaveToFile()
 	if err != nil {

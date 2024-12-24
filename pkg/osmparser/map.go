@@ -1,10 +1,6 @@
 package osmparser
 
 import (
-	"encoding/csv"
-	"fmt"
-	"log"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -43,7 +39,6 @@ var ValidRoadType = map[string]bool{
 	"track":          true,
 }
 
-// gak ada 1 way dengan multiple road type
 func InitGraph(ways []*osm.Way, trafficLightNodeIdMap map[osm.NodeID]bool) ([]datastructure.SurakartaWay, []datastructure.Node,
 	[]datastructure.SurakartaWay, map[string][2]bool, map[string]datastructure.StreetExtraInfo) {
 	var SurakartaNodeMap = make(map[int64]*datastructure.Node)
@@ -89,7 +84,8 @@ func InitGraph(ways []*osm.Way, trafficLightNodeIdMap map[osm.NodeID]bool) ([]da
 		}
 
 		sWay := datastructure.SurakartaWay{
-			Nodes: make([]datastructure.CHNode2, 0),
+			Nodes: make([]datastructure.Coordinate, 0),
+			WayID: int32(wayIDx),
 		}
 
 		streetNodeLats := []float64{}
@@ -114,10 +110,9 @@ func InitGraph(ways []*osm.Way, trafficLightNodeIdMap map[osm.NodeID]bool) ([]da
 				node.UsedInRoad = 1
 				SurakartaNodeMap[node.ID] = node
 			}
-			
 
 			// add node ke surakartaway
-			sWay.Nodes = append(sWay.Nodes, datastructure.CHNode2{
+			sWay.Nodes = append(sWay.Nodes, datastructure.Coordinate{
 				Lat: node.Lat,
 				Lon: node.Lon,
 			})
@@ -138,13 +133,9 @@ func InitGraph(ways []*osm.Way, trafficLightNodeIdMap map[osm.NodeID]bool) ([]da
 		bar.Add(1)
 	}
 
-	WriteWayTypeToCsv(oneWayTypesMap, "onewayTypes.csv")
-	WriteWayTypeToCsv(twoWayTypesMap, "twoWayTypes.csv")
+	surakartaNodes, hmmEdges, graphEdges, streetDirections, streetExtraInfo := processOnlyIntersectionRoadNodes(SurakartaNodeMap, ways, surakartaWays)
 
-	surakartaNodes, surakartaWays, graphEdges, streetDirections, streetExtraInfo := processOnlyIntersectionRoadNodes(SurakartaNodeMap, ways, surakartaWays)
-
-	fmt.Println("")
-	return surakartaWays, surakartaNodes, graphEdges, streetDirections, streetExtraInfo
+	return hmmEdges, surakartaNodes, graphEdges, streetDirections, streetExtraInfo
 }
 
 func processOnlyIntersectionRoadNodes(nodeMap map[int64]*datastructure.Node, ways []*osm.Way, surakartaWays []datastructure.SurakartaWay) ([]datastructure.Node,
@@ -153,6 +144,7 @@ func processOnlyIntersectionRoadNodes(nodeMap map[int64]*datastructure.Node, way
 	alreadyAdded := make(map[int64]struct{})
 	intersectionNodes := []int64{}
 	streetDirection := make(map[string][2]bool)
+	hmmEdges := []datastructure.SurakartaWay{}
 
 	streetExtraInfo := make(map[string]datastructure.StreetExtraInfo)
 	for wayIDx, way := range ways {
@@ -180,7 +172,7 @@ func processOnlyIntersectionRoadNodes(nodeMap map[int64]*datastructure.Node, way
 				break
 			}
 		}
-		
+
 		if from == nil {
 			continue
 		}
@@ -189,84 +181,149 @@ func processOnlyIntersectionRoadNodes(nodeMap map[int64]*datastructure.Node, way
 			intersectionNodes = append(intersectionNodes, from.ID)
 			alreadyAdded[from.ID] = struct{}{}
 		}
+
+		prevIdx := startIdx + 1
 		for i := startIdx + 1; i < len(way.Nodes); i++ {
 			currNode := way.Nodes[i]
 			// idnya masih pake id osm
 			to := nodeMap[int64(currNode.ID)]
 
 			if to.UsedInRoad >= 2 {
-
 				// nodenya ada di intersection of 2  or more roads
-
 				// add edge antara dua node intersection
 				fromLoc := geo.NewLocation(from.Lat, from.Lon)
 				toLoc := geo.NewLocation(to.Lat, to.Lon)
 				fromToDistance := geo.HaversineDistance(fromLoc, toLoc) * 1000 // meter
+				centerLat, centerLon := guidance.MidPoint(from.Lat, from.Lon, to.Lat, to.Lon)
+
+				nodesInBetween := []datastructure.Coordinate{}
 				if isOneWay && !reversedOneWay {
+					for nodeIt := prevIdx + 1; nodeIt < i; nodeIt++ {
+						nodesInBetween = append(nodesInBetween, datastructure.NewCoordinate(way.Nodes[nodeIt].Lat, way.Nodes[nodeIt].Lon))
+					}
 					edge := datastructure.Edge{
-						From:          from,
-						To:            to,
-						Cost:          fromToDistance,
-						MaxSpeed:      maxSpeed,
-						StreetName:    namaJalan,
-						RoadClass:     roadType,
-						RoadClassLink: roadclassLink,
-						Lanes:         jumlahLanes,
-						Roundabout:    roundabout,
+						From:           from,
+						To:             to,
+						Cost:           fromToDistance,
+						MaxSpeed:       maxSpeed,
+						StreetName:     namaJalan,
+						RoadClass:      roadType,
+						RoadClassLink:  roadclassLink,
+						Lanes:          jumlahLanes,
+						Roundabout:     roundabout,
+						NodesInBetween: nodesInBetween,
 					}
 					from.Out_to = append(from.Out_to, edge)
 					currSurakartaWay.IntersectionNodesID = append(currSurakartaWay.IntersectionNodesID, from.ID)
 					streetDirection[namaJalan] = [2]bool{true, false}
+
+					hmmEdgeNodes := []datastructure.Coordinate{datastructure.NewCoordinate(from.Lat, from.Lon)}
+					hmmEdgeNodes = append(hmmEdgeNodes, nodesInBetween...)
+					hmmEdgeNodes = append(hmmEdgeNodes, datastructure.NewCoordinate(to.Lat, to.Lon))
+
+					hmmEdges = append(hmmEdges, datastructure.SurakartaWay{
+						ID:        int32(len(hmmEdges)),
+						Nodes:     hmmEdgeNodes,
+						WayID:     int32(wayIDx),
+						CenterLoc: []float64{centerLat, centerLon},
+					})
 				} else if isOneWay && reversedOneWay {
+					for nodeIt := i - 1; nodeIt > prevIdx; nodeIt-- {
+						nodesInBetween = append(nodesInBetween, datastructure.NewCoordinate(way.Nodes[nodeIt].Lat, way.Nodes[nodeIt].Lon))
+					}
 					reverseEdge := datastructure.Edge{
-						From:          to,
-						To:            from,
-						Cost:          fromToDistance,
-						MaxSpeed:      maxSpeed,
-						StreetName:    namaJalan,
-						RoadClass:     roadType,
-						RoadClassLink: roadclassLink,
-						Lanes:         jumlahLanes,
-						Roundabout:    roundabout,
+						From:           to,
+						To:             from,
+						Cost:           fromToDistance,
+						MaxSpeed:       maxSpeed,
+						StreetName:     namaJalan,
+						RoadClass:      roadType,
+						RoadClassLink:  roadclassLink,
+						Lanes:          jumlahLanes,
+						Roundabout:     roundabout,
+						NodesInBetween: nodesInBetween,
 					}
 					to.Out_to = append(to.Out_to, reverseEdge)
 					currSurakartaWay.IntersectionNodesID = append(currSurakartaWay.IntersectionNodesID, to.ID)
 					streetDirection[namaJalan] = [2]bool{false, true}
+
+
+					hmmEdgeNodes := []datastructure.Coordinate{datastructure.NewCoordinate(to.Lat, to.Lon)}
+					hmmEdgeNodes = append(hmmEdgeNodes, nodesInBetween...)
+					hmmEdgeNodes = append(hmmEdgeNodes, datastructure.NewCoordinate(from.Lat, from.Lon))
+					hmmEdges = append(hmmEdges, datastructure.SurakartaWay{
+						ID:        int32(len(hmmEdges)),
+						Nodes:     hmmEdgeNodes,
+						WayID:     int32(wayIDx),
+						CenterLoc: []float64{centerLat, centerLon},
+					})
+
 				} else {
+					for nodeIt := prevIdx + 1; nodeIt < i; nodeIt++ {
+						nodesInBetween = append(nodesInBetween, datastructure.NewCoordinate(way.Nodes[nodeIt].Lat, way.Nodes[nodeIt].Lon))
+					}
 					edge := datastructure.Edge{
-						From:          from,
-						To:            to,
-						Cost:          fromToDistance,
-						MaxSpeed:      maxSpeed,
-						StreetName:    namaJalan,
-						RoadClass:     roadType,
-						RoadClassLink: roadclassLink,
-						Lanes:         jumlahLanes,
-						Roundabout:    roundabout,
+						From:           from,
+						To:             to,
+						Cost:           fromToDistance,
+						MaxSpeed:       maxSpeed,
+						StreetName:     namaJalan,
+						RoadClass:      roadType,
+						RoadClassLink:  roadclassLink,
+						Lanes:          jumlahLanes,
+						Roundabout:     roundabout,
+						NodesInBetween: nodesInBetween,
 					}
 					from.Out_to = append(from.Out_to, edge)
+					hmmEdgeNodes := []datastructure.Coordinate{datastructure.NewCoordinate(from.Lat, from.Lon)}
+					hmmEdgeNodes = append(hmmEdgeNodes, nodesInBetween...)
+					hmmEdgeNodes = append(hmmEdgeNodes, datastructure.NewCoordinate(to.Lat, to.Lon))
 
+					hmmEdges = append(hmmEdges, datastructure.SurakartaWay{
+						ID:        int32(len(hmmEdges)),
+						Nodes:     hmmEdgeNodes,
+						WayID:     int32(wayIDx),
+						CenterLoc: []float64{centerLat, centerLon},
+					})
+
+					nodesInBetween = []datastructure.Coordinate{}
+					for nodeIt := i - 1; nodeIt > prevIdx; nodeIt-- {
+						nodesInBetween = append(nodesInBetween, datastructure.NewCoordinate(way.Nodes[nodeIt].Lat, way.Nodes[nodeIt].Lon))
+					}
 					reverseEdge := datastructure.Edge{
-						From:          to,
-						To:            from,
-						Cost:          fromToDistance,
-						MaxSpeed:      maxSpeed,
-						StreetName:    roadType,
-						RoadClass:     roadType,
-						RoadClassLink: roadclassLink,
-						Lanes:         jumlahLanes,
-						Roundabout:    roundabout,
+						From:           to,
+						To:             from,
+						Cost:           fromToDistance,
+						MaxSpeed:       maxSpeed,
+						StreetName:     roadType,
+						RoadClass:      roadType,
+						RoadClassLink:  roadclassLink,
+						Lanes:          jumlahLanes,
+						Roundabout:     roundabout,
+						NodesInBetween: nodesInBetween,
 					}
 					to.Out_to = append(to.Out_to, reverseEdge)
 					currSurakartaWay.IntersectionNodesID = append(currSurakartaWay.IntersectionNodesID, from.ID)
 					currSurakartaWay.IntersectionNodesID = append(currSurakartaWay.IntersectionNodesID, to.ID)
 					streetDirection[namaJalan] = [2]bool{true, true}
+
+					hmmEdgeNodes = []datastructure.Coordinate{datastructure.NewCoordinate(to.Lat, to.Lon)}
+					hmmEdgeNodes = append(hmmEdgeNodes, nodesInBetween...)
+					hmmEdgeNodes = append(hmmEdgeNodes, datastructure.NewCoordinate(from.Lat, from.Lon))
+
+					hmmEdges = append(hmmEdges, datastructure.SurakartaWay{
+						ID:        int32(len(hmmEdges)),
+						Nodes:     hmmEdgeNodes,
+						WayID:     int32(wayIDx),
+						CenterLoc: []float64{centerLat, centerLon},
+					})
 				}
 				if _, ok := alreadyAdded[to.ID]; !ok {
 					intersectionNodes = append(intersectionNodes, to.ID)
 					alreadyAdded[to.ID] = struct{}{}
 				}
 				from = to
+				prevIdx = i
 			}
 
 		}
@@ -285,7 +342,7 @@ func processOnlyIntersectionRoadNodes(nodeMap map[int64]*datastructure.Node, way
 		}
 	}
 
-	return surakartaNodes, surakartaWays, graphEdges, streetDirection, streetExtraInfo
+	return surakartaNodes, hmmEdges, graphEdges, streetDirection, streetExtraInfo
 }
 
 func getMaxspeedOneWayRoadType(way osm.Way) (float64, bool, bool, string, string, int, string, bool, datastructure.StreetExtraInfo) {
@@ -356,30 +413,4 @@ func getMaxspeedOneWayRoadType(way osm.Way) (float64, bool, bool, string, string
 		maxSpeed = datastructure.RoadTypeMaxSpeed(roadType)
 	}
 	return maxSpeed, isOneWay, reversedOneWay, roadType, namaJalan, jumlahLanes, roadClassLink, roundAbout, streetInfo
-}
-
-func WriteWayTypeToCsv(wayTypesMap map[string]int64, filename string) {
-	wayTypesArr := make([][]string, len(wayTypesMap)+1)
-
-	count := 0
-	idx := 0
-	for key, val := range wayTypesMap {
-		tipe := strings.Split(key, "=")
-		wayTypesArr[idx] = []string{tipe[0], tipe[1], strconv.FormatInt(val, 10)}
-		idx++
-		count += int(val)
-	}
-	wayTypesArr[idx] = []string{"total", fmt.Sprint(count)}
-
-	file, err := os.Create(filename)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	defer file.Close()
-
-	writer := csv.NewWriter(file)
-	defer writer.Flush()
-
-	writer.WriteAll(wayTypesArr)
 }
