@@ -17,7 +17,7 @@ require (
 	github.com/kelindar/binary v1.0.19
 	github.com/paulmach/osm v0.8.0
 	github.com/schollz/progressbar/v3 v3.14.6
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.10.0
 	github.com/swaggo/swag v1.16.3
 	github.com/twpayne/go-polyline v1.1.1
 	github.com/uber/h3-go/v4 v4.1.0

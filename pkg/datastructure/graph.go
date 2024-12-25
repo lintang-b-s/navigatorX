@@ -31,6 +31,23 @@ type Edge struct {
 	NodesInBetween []Coordinate
 }
 
+func NewEdge(from, to *Node, cost float64, streetName string,
+	maxSpeed float64, roundabout bool, roadClass,
+	roadClassLink string, lanes int, nodesInBetween []Coordinate) *Edge {
+	return &Edge{
+		From:           from,
+		To:             to,
+		Cost:           cost,
+		StreetName:     streetName,
+		MaxSpeed:       maxSpeed,
+		Roundabout:     roundabout,
+		RoadClass:      roadClass,
+		RoadClassLink:  roadClassLink,
+		Lanes:          lanes,
+		NodesInBetween: nodesInBetween,
+	}
+}
+
 type Node struct {
 	Tags         []string
 	Out_to       []Edge
@@ -39,6 +56,21 @@ type Node struct {
 	StreetName   string
 	TrafficLight bool
 	UsedInRoad   int
+}
+
+func NewNode(lat, lon float64, id int64, streetName string, trafficLight bool, usedInRoad int) *Node {
+	return &Node{
+		Lat:          lat,
+		Lon:          lon,
+		ID:           id,
+		StreetName:   streetName,
+		TrafficLight: trafficLight,
+		UsedInRoad:   usedInRoad,
+	}
+}
+
+func (n *Node) AddEdge(e *Edge) {
+	n.Out_to = append(n.Out_to, *e)
 }
 
 type CHNode2 struct {
@@ -93,6 +125,28 @@ type EdgeCH struct {
 	Lanes          int
 	NodesInBetween []Coordinate
 }
+
+func NewEdgeCH(edgeIDx int32, weight, dist float64, toNodeIDX, baseNodeIDX int32,
+	isShortcut bool, removedEdgeOne, removedEdgeTwo int32, streetName int, roundabout bool,
+	roadClass, roadClassLink int, lanes int, nodesInBetween []Coordinate) EdgeCH {
+	return EdgeCH{
+		EdgeIDx:        edgeIDx,
+		Weight:         weight,
+		Dist:           dist,
+		ToNodeIDX:      toNodeIDX,
+		BaseNodeIDx:    baseNodeIDX,
+		IsShortcut:     isShortcut,
+		RemovedEdgeOne: removedEdgeOne,
+		RemovedEdgeTwo: removedEdgeTwo,
+		StreetName:     streetName,
+		Roundabout:     roundabout,
+		RoadClass:      roadClass,
+		RoadClassLink:  roadClassLink,
+		Lanes:          lanes,
+		NodesInBetween: nodesInBetween,
+	}
+}
+
 
 type StreetExtraInfo struct {
 	Destination      string

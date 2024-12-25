@@ -234,8 +234,8 @@ func (rt *RouteAlgorithm) createPath(commonVertex int32, from, to int32,
 			}
 			eta += cameFromf[v].Edge.Weight
 			dist += cameFromf[v].Edge.Dist
-			if cameFromb[v].Edge.Weight != 0 {
-				fedgePath = append(fedgePath, cameFromb[v].Edge)
+			if cameFromf[v].Edge.Weight != 0 {
+				fedgePath = append(fedgePath, cameFromf[v].Edge)
 			}
 
 			nodesInBetween := make([]datastructure.Coordinate, len(cameFromf[v].Edge.NodesInBetween))
@@ -300,12 +300,9 @@ func (rt *RouteAlgorithm) createPath(commonVertex int32, from, to int32,
 		bEdgePath[i].BaseNodeIDx = baseNodeIDx
 		bEdgePath[i].ToNodeIDX = toNodeIDx
 	}
-	if len(fedgePath) > 0 {
-		edgePath = append(edgePath, fedgePath[1:]...)
-	}
-	if len(bEdgePath) > 0 {
-		edgePath = append(edgePath, bEdgePath[:len(bEdgePath)-1]...)
-	}
+	edgePath = append(edgePath, fedgePath...)
+
+	edgePath = append(edgePath, bEdgePath...)
 
 	return path, edgePath, eta, dist / 1000
 }

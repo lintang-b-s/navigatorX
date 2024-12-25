@@ -22,9 +22,8 @@ type nodeMapContainer struct {
 }
 
 type ContractedGraph interface {
-	InitCHGraph(nodes []datastructure.Node, edgeCount int, streetDirections map[string][2]bool, surakartaWays, hmmEdges []datastructure.SurakartaWay,
+	InitCHGraph(nodes []datastructure.Node, edgeCount int, streetDirections map[string][2]bool,
 		streetExtraInfo map[string]datastructure.StreetExtraInfo) map[int64]int32
-	SetNodeMapIdx(nodeMap map[int64]int32)
 	GetFirstOutEdge(nodeIDx int32) []int32
 	GetFirstInEdge(nodeIDx int32) []int32
 	GetNode(nodeIDx int32) datastructure.CHNode2
@@ -79,7 +78,7 @@ func (op *OSMParser) BikinGraphFromOpenstreetmap(mapFile string) ([]datastructur
 	ways := []*osm.Way{}
 
 	bar := progressbar.NewOptions(450000,
-		progressbar.OptionSetWriter(ansi.NewAnsiStdout()), //you should install "github.com/k0kubun/go-ansi"
+		progressbar.OptionSetWriter(ansi.NewAnsiStdout()),
 		progressbar.OptionEnableColorCodes(true),
 		progressbar.OptionShowBytes(true),
 		progressbar.OptionSetWidth(15),
@@ -167,10 +166,8 @@ func (op *OSMParser) BikinGraphFromOpenstreetmap(mapFile string) ([]datastructur
 
 	hmmEdges, surakartaNodes, graphEdges, streetDirections, streetExtraInfo := InitGraph(ways, trafficLightNodeIDMap)
 
-	nodeIdxMap := op.CH.InitCHGraph(surakartaNodes, len(ways), streetDirections, graphEdges, hmmEdges, streetExtraInfo)
+	nodeIdxMap := op.CH.InitCHGraph(surakartaNodes, len(ways), streetDirections, streetExtraInfo)
 	convertOSMNodeIDToGraphID(graphEdges, nodeIdxMap)
-
-	op.CH.SetNodeMapIdx(nodeIdxMap)
 
 	return hmmEdges, nodeIdxMap, graphEdges
 }

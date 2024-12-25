@@ -301,8 +301,11 @@ func (ife *InstructionsFromEdges) GetTurnSign(edge datastructure.EdgeCH, baseNod
 
 	alternativeTurnsCount, alternativeTurns := ife.GetAlternativeTurns(baseNode, adjNode, prevNode)
 
+	isStreetSplit := ife.isStreetSplit(edge, ife.PrevEdge)
+	isStreetMerged := ife.isStreetMerged(edge, ife.PrevEdge)
+
 	if alternativeTurnsCount == 1 {
-		if math.Abs(float64(sign)) > 1 && !(ife.isStreetMerged(edge, ife.PrevEdge) || ife.isStreetSplit(edge, ife.PrevEdge)) {
+		if math.Abs(float64(sign)) > 1 && !(isStreetMerged || isStreetSplit) {
 
 			return sign
 		}
@@ -311,7 +314,7 @@ func (ife *InstructionsFromEdges) GetTurnSign(edge datastructure.EdgeCH, baseNod
 	prevEdgeStreetName := ife.ContractedGraph.GetStreetNameFromID(ife.PrevEdge.StreetName)
 	if math.Abs(float64(sign)) > 1 {
 		if (isSameName(name, prevEdgeStreetName)) ||
-			ife.isStreetMerged(edge, ife.PrevEdge) || ife.isStreetSplit(edge, ife.PrevEdge) {
+			isStreetMerged || isStreetSplit {
 			return IGNORE
 		}
 		return sign
@@ -374,7 +377,7 @@ func (ife *InstructionsFromEdges) GetTurnSign(edge datastructure.EdgeCH, baseNod
 		}
 	}
 
-	if !(ife.isStreetMerged(edge, ife.PrevEdge) || ife.isStreetSplit(edge, ife.PrevEdge)) &&
+	if !(isStreetMerged || isStreetSplit) &&
 		(math.Abs(prevCurrEdgeOrientationDiff)*(180/math.Pi) > 34 || ife.isLeavingCurrentStreet(prevEdgeStreetName, name, ife.PrevEdge, edge, alternativeTurns)) {
 		return sign
 	}

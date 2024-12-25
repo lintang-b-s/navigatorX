@@ -47,7 +47,7 @@ func InitGraph(ways []*osm.Way, trafficLightNodeIdMap map[osm.NodeID]bool) ([]da
 	twoWayTypesMap := make(map[string]int64)
 
 	bar := progressbar.NewOptions(len(ways),
-		progressbar.OptionSetWriter(ansi.NewAnsiStdout()), //you should install "github.com/k0kubun/go-ansi"
+		progressbar.OptionSetWriter(ansi.NewAnsiStdout()),
 		progressbar.OptionEnableColorCodes(true),
 		progressbar.OptionShowBytes(true),
 		progressbar.OptionSetWidth(15),
@@ -246,7 +246,6 @@ func processOnlyIntersectionRoadNodes(nodeMap map[int64]*datastructure.Node, way
 					to.Out_to = append(to.Out_to, reverseEdge)
 					currSurakartaWay.IntersectionNodesID = append(currSurakartaWay.IntersectionNodesID, to.ID)
 					streetDirection[namaJalan] = [2]bool{false, true}
-
 
 					hmmEdgeNodes := []datastructure.Coordinate{datastructure.NewCoordinate(to.Lat, to.Lon)}
 					hmmEdgeNodes = append(hmmEdgeNodes, nodesInBetween...)

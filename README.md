@@ -20,7 +20,7 @@ Note: or you can also use another openstreetmap file with the osm.pbf format (ht
 3.  go mod tidy &&  mkdir bin
 4. CGO_ENABLED=1  go build -o ./bin/navigatorx ./cmd/auto
 5. ./bin/navigatorx
-(Minimum free RAM 2 GB for the above data)
+(Minimum RAM 2.0 GB for the above openstreetmap data)
 note: or you can also do it with "make run"
 5.  wait for preprocessing contraction hierarchies to complete (about 3 minutes)
 Note: if error "resource temporary unavailable" -> just delete navigatorXDB directory and restart the steps above
@@ -36,7 +36,7 @@ Note: or you can also use another openstreetmap file with the osm.pbf format (ht
 4. CGO_ENABLED=1  go build -o ./bin/navigatorx-preprocessing ./cmd/preprocessing
 5. ./bin/navigatorx-preprocessing
 Note: to replace the openstreetmap file, see the instructions below
-(Minimum free RAM 2 GB for the above data)
+(Minimum RAM 2.0 GB for the above openstreetmap data)
 5.  wait for preprocessing contraction hierarchies to complete (about 3 minutes)
 Note: if error "resource temporary unavailable" -> just delete navigatorXDB directory and restart the steps above
 ```

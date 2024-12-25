@@ -31,25 +31,17 @@ type Metadata struct {
 }
 
 type ContractedGraph struct {
-	Metadata Metadata
-	Ready    bool
-
+	Metadata               Metadata
+	Ready                  bool
 	ContractedFirstOutEdge [][]int32
 	ContractedFirstInEdge  [][]int32
 	ContractedOutEdges     []datastructure.EdgeCH
 	ContractedInEdges      []datastructure.EdgeCH
 	ContractedNodes        []datastructure.CHNode2
 
-	NodeMapIdx map[int64]int32
-
-	CompressedCHGraph    []byte
-	CompressedAstarGraph []byte
-	IsLoaded             bool
-	IsAStarLoaded        bool
-
-	StreetDirection map[int][2]bool // 0 = forward, 1 = backward
-	StreetInfo      map[int]datastructure.StreetExtraInfo
-
+	IsLoaded           bool
+	StreetDirection    map[int][2]bool // 0 = forward, 1 = backward
+	StreetInfo         map[int]datastructure.StreetExtraInfo
 	StreetNameIDMap    util.IDMap
 	RoadClassIDMap     util.IDMap
 	RoadClassLinkIDMap util.IDMap
@@ -72,7 +64,7 @@ func NewContractedGraph() *ContractedGraph {
 	}
 }
 
-func (ch *ContractedGraph) InitCHGraph(nodes []datastructure.Node, edgeCount int, streetDirections map[string][2]bool, sWays, hmmEdges []datastructure.SurakartaWay,
+func (ch *ContractedGraph) InitCHGraph(nodes []datastructure.Node, edgeCount int, streetDirections map[string][2]bool,
 	streetExtraInfo map[string]datastructure.StreetExtraInfo) map[int64]int32 {
 	gLen := len(nodes)
 
@@ -85,7 +77,7 @@ func (ch *ContractedGraph) InitCHGraph(nodes []datastructure.Node, edgeCount int
 	}
 
 	bar := progressbar.NewOptions(3,
-		progressbar.OptionSetWriter(ansi.NewAnsiStdout()), //you should install "github.com/k0kubun/go-ansi"
+		progressbar.OptionSetWriter(ansi.NewAnsiStdout()),
 		progressbar.OptionEnableColorCodes(true),
 		progressbar.OptionShowBytes(true),
 		progressbar.OptionSetWidth(15),
@@ -180,10 +172,6 @@ func (ch *ContractedGraph) InitCHGraph(nodes []datastructure.Node, edgeCount int
 	return nodeIdxMap
 }
 
-func (ch *ContractedGraph) SetNodeMapIdx(nodeMap map[int64]int32) {
-	ch.NodeMapIdx = nodeMap
-}
-
 func (ch *ContractedGraph) Contraction() (err error) {
 	st := time.Now()
 	nq := NewMinHeap[int32]()
@@ -195,7 +183,7 @@ func (ch *ContractedGraph) Contraction() (err error) {
 	orderNum := int64(0)
 
 	bar := progressbar.NewOptions(nq.Size(),
-		progressbar.OptionSetWriter(ansi.NewAnsiStdout()), //you should install "github.com/k0kubun/go-ansi"
+		progressbar.OptionSetWriter(ansi.NewAnsiStdout()),
 		progressbar.OptionEnableColorCodes(true),
 		progressbar.OptionShowBytes(true),
 		progressbar.OptionSetWidth(15),
@@ -209,7 +197,12 @@ func (ch *ContractedGraph) Contraction() (err error) {
 		}))
 	var polledItem, smallestItem PriorityQueueNode[int32]
 	for nq.Size() != 0 {
-
+		smallestItem, err = nq.GetMin()
+		if err != nil {
+			err = server.WrapErrorf(err, server.ErrInternalServerError, "internal server error")
+			return
+		}
+		
 		polledItem, err = nq.ExtractMin()
 		if err != nil {
 			err = server.WrapErrorf(err, server.ErrInternalServerError, "internal server error")
@@ -218,11 +211,7 @@ func (ch *ContractedGraph) Contraction() (err error) {
 
 		// lazy update
 		priority := ch.calculatePriority(polledItem.Item, contracted)
-		smallestItem, err = nq.GetMin()
-		if err != nil {
-			err = server.WrapErrorf(err, server.ErrInternalServerError, "internal server error")
-			return
-		}
+
 		if nq.Size() > 0 && priority > smallestItem.Rank {
 			// current node importantnya lebih tinggi dari next pq item
 			nq.Insert(PriorityQueueNode[int32]{Item: polledItem.Item, Rank: priority})
@@ -231,7 +220,7 @@ func (ch *ContractedGraph) Contraction() (err error) {
 
 		ch.ContractedNodes[polledItem.Item].OrderPos = orderNum
 
-		ch.contractNode(polledItem.Item, level, contracted[polledItem.Item], contracted)
+		ch.contractNode(polledItem.Item, contracted[polledItem.Item], contracted)
 		contracted[polledItem.Item] = true
 		level++
 		orderNum++
@@ -247,7 +236,7 @@ func (ch *ContractedGraph) Contraction() (err error) {
 	return
 }
 
-func (ch *ContractedGraph) contractNode(nodeIDx int32, level int, isContracted bool, contracted []bool) {
+func (ch *ContractedGraph) contractNode(nodeIDx int32, isContracted bool, contracted []bool) {
 
 	if isContracted {
 		return
@@ -413,7 +402,7 @@ func (ch *ContractedGraph) addShortcut(fromNodeIDx, toNodeIDx int32, weight floa
 
 		currEdgeIDx := int32(len(ch.ContractedOutEdges))
 		ch.ContractedOutEdges = append(ch.ContractedOutEdges, datastructure.EdgeCH{currEdgeIDx, weight, dist, toNodeIDx, fromNodeIDx, true,
-			removedEdgeOne.EdgeIDx, removedEdgeTwo.EdgeIDx, 0, false, 0, 0, 0, []datastructure.Coordinate{}})
+			removedEdgeOne.EdgeIDx, removedEdgeTwo.EdgeIDx, 0, false, 0, 0, 0, nil})
 		ch.ContractedFirstOutEdge[fromNodeIDx] = append(ch.ContractedFirstOutEdge[fromNodeIDx], currEdgeIDx)
 		ch.Metadata.degrees[fromNodeIDx]++
 	}
@@ -436,7 +425,7 @@ func (ch *ContractedGraph) addShortcut(fromNodeIDx, toNodeIDx int32, weight floa
 
 		currEdgeIDx := int32(len(ch.ContractedInEdges))
 		ch.ContractedInEdges = append(ch.ContractedInEdges, datastructure.EdgeCH{currEdgeIDx, weight, dist, fromNodeIDx, toNodeIDx, true,
-			removedEdgeOne.EdgeIDx, removedEdgeTwo.EdgeIDx, 0, false, 0, 0, 0, []datastructure.Coordinate{}})
+			removedEdgeOne.EdgeIDx, removedEdgeTwo.EdgeIDx, 0, false, 0, 0, 0, nil})
 		ch.ContractedFirstInEdge[toNodeIDx] = append(ch.ContractedFirstInEdge[toNodeIDx], currEdgeIDx)
 
 		ch.Metadata.degrees[toNodeIDx]++
@@ -459,7 +448,7 @@ func (ch *ContractedGraph) calculatePriority(nodeIDx int32, contracted []bool) f
 func (ch *ContractedGraph) UpdatePrioritiesOfRemainingNodes(nq *MinHeap[int32]) {
 
 	bar := progressbar.NewOptions(len(ch.ContractedNodes),
-		progressbar.OptionSetWriter(ansi.NewAnsiStdout()), //you should install "github.com/k0kubun/go-ansi"
+		progressbar.OptionSetWriter(ansi.NewAnsiStdout()),
 		progressbar.OptionEnableColorCodes(true),
 		progressbar.OptionShowBytes(true),
 		progressbar.OptionSetWidth(15),
@@ -501,6 +490,14 @@ func (ch *ContractedGraph) GetOutEdge(edgeIDx int32) datastructure.EdgeCH {
 
 func (ch *ContractedGraph) GetInEdge(edgeIDx int32) datastructure.EdgeCH {
 	return ch.ContractedInEdges[edgeIDx]
+}
+
+func (ch *ContractedGraph) GetOutEdges() []datastructure.EdgeCH {
+	return ch.ContractedOutEdges
+}
+
+func (ch *ContractedGraph) GetInEdges() []datastructure.EdgeCH {
+	return ch.ContractedInEdges
 }
 
 func (ch *ContractedGraph) GetNode(nodeIDx int32) datastructure.CHNode2 {

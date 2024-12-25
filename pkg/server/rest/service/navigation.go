@@ -15,9 +15,8 @@ type ContractedGraph interface {
 	SnapLocationToRoadNetworkNodeH3ForMapMatching(ways []datastructure.SmallWay, wantToSnap []float64) []datastructure.State
 
 	IsChReady() bool
-	InitCHGraph(nodes []datastructure.Node, edgeCount int, streetDirections map[string][2]bool, sWays, hmmEdges []datastructure.SurakartaWay,
+	InitCHGraph(nodes []datastructure.Node, edgeCount int, streetDirections map[string][2]bool,
 		streetExtraInfo map[string]datastructure.StreetExtraInfo) map[int64]int32
-	SetNodeMapIdx(nodeMap map[int64]int32)
 	GetFirstOutEdge(nodeIDx int32) []int32
 	GetFirstInEdge(nodeIDx int32) []int32
 	GetNode(nodeIDx int32) datastructure.CHNode2
@@ -33,7 +32,6 @@ type ContractedGraph interface {
 	GetStreetNameFromID(streetName int) string
 	GetRoadClassFromID(roadClass int) string
 	GetRoadClassLinkFromID(roadClassLink int) string
-	
 }
 
 type RoutingAlgorithm interface {

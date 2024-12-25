@@ -2,7 +2,7 @@ dari: https://www.youtube.com/watch?v=N3PWzBeLX2M
 
 k6 run --summary-trend-stats="avg,p(95),p(97),p(99.7),p(99.8),p(99.9)"   load_test.js
 
-result: p95 1.54s , avg=369ms
+result: p95 319.35ms, p99.8 1.39s , avg=95ms
 
 
 go tool pprof --seconds 5 http://localhost:5000/debug/pprof/profile
@@ -32,5 +32,23 @@ go tool pprof \
 
 open flame.svg
 
-TODO: - pakai fibonacci heap buat priority queue? 
-- kyknya ada memory leak
+
+
+
+==== cek memory leak/isi heap =====
+go tool pprof http://localhost:5000/debug/pprof/heap
+top
+web
+
+list addShortcut
+
+
+shortcut dari ch yang isi heap 500 mb
+
+
+TODO: - pakai node ordering yang lebih bagus seperti yang dijelaskan di paper ch (size of voronoi region setiap node?) biar shortcut lebih dikit.
+- ganti representasi graph yang lebih ringan biar size edges graph ch nya lebih kecil.
+
+
+
+

@@ -129,7 +129,7 @@ func (instr *Instruction) GetTurnDescription() string {
 	default:
 		dir := getDirectionDescription(sign, *instr)
 		if dir == "" {
-			description = fmt.Sprintf("unknown  %s", sign)
+			description = fmt.Sprintf("unknown  %d", sign)
 		} else {
 			if isEmpty(streetName) {
 				description = dir
