@@ -84,7 +84,7 @@ examplenya di jalan solo-semarang, A.Yani : -7.5533505900708455, 110.82338424980
 */ // nolint: gofmt
 func (ife *InstructionsFromEdges) isStreetMerged(currentEdge, prevEdge datastructure.EdgeCH) bool {
 	baseNode := currentEdge.BaseNodeIDx
-	name := currentEdge.StreetName
+	name := ife.ContractedGraph.GetStreetNameFromID(currentEdge.StreetName)
 	roadClass := currentEdge.RoadClass
 	if roadClass != prevEdge.RoadClass {
 		return false
@@ -98,7 +98,7 @@ func (ife *InstructionsFromEdges) isStreetMerged(currentEdge, prevEdge datastruc
 		if edge.EdgeIDx != currentEdge.EdgeIDx && edge.EdgeIDx != prevEdge.EdgeIDx &&
 			edge.ToNodeIDX != currentEdge.ToNodeIDX && edge.ToNodeIDX != prevEdge.BaseNodeIDx &&
 			roadClass == edge.RoadClass &&
-			isSameName(name, edge.RoadClass) {
+			isSameName(name, ife.ContractedGraph.GetStreetNameFromID(edge.StreetName)) {
 			if otherEdge != nil {
 				return false
 			}
@@ -139,9 +139,9 @@ func (ife *InstructionsFromEdges) isStreetMerged(currentEdge, prevEdge datastruc
 */ // nolint: gofmt
 func (ife *InstructionsFromEdges) isStreetSplit(currentEdge, prevEdge datastructure.EdgeCH) bool {
 	baseNode := currentEdge.BaseNodeIDx
-	name := currentEdge.StreetName
+	name := ife.ContractedGraph.GetStreetNameFromID(currentEdge.StreetName)
 	roadClass := currentEdge.RoadClass
-	if !isSameName(name, prevEdge.StreetName) || roadClass != prevEdge.RoadClass {
+	if !isSameName(name, ife.ContractedGraph.GetStreetNameFromID(prevEdge.StreetName)) || roadClass != prevEdge.RoadClass {
 		return false
 	}
 
@@ -153,7 +153,7 @@ func (ife *InstructionsFromEdges) isStreetSplit(currentEdge, prevEdge datastruct
 		if edge.EdgeIDx != currentEdge.EdgeIDx && edge.EdgeIDx != prevEdge.EdgeIDx &&
 			edge.ToNodeIDX != currentEdge.ToNodeIDX && edge.ToNodeIDX != prevEdge.BaseNodeIDx &&
 			roadClass == edge.RoadClass &&
-			isSameName(name, edge.RoadClass) {
+			isSameName(name, ife.ContractedGraph.GetStreetNameFromID(edge.StreetName)) {
 			if otherEdge != nil {
 				return false
 			}
@@ -220,7 +220,6 @@ func isSameName(name1, name2 string) bool {
 	}
 	return name1 == name2
 }
-
 
 func calcOrientation(lat1, lon1, lat2, lon2 float64) float64 {
 	prevBearing := BearingTo(lat1, lon1, lat2, lon2)

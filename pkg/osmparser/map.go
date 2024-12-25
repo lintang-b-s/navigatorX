@@ -152,7 +152,7 @@ func processOnlyIntersectionRoadNodes(nodeMap map[int64]*datastructure.Node, way
 		if !isOsmWayUsedByCars(way.TagMap()) {
 			continue
 		}
-
+		maxSpeed *= 0.8
 		streetExtraInfo[namaJalan] = datastructure.StreetExtraInfo{
 			Destination:      streetInfo.Destination,
 			DestinationRef:   streetInfo.Destination,
@@ -348,7 +348,7 @@ func processOnlyIntersectionRoadNodes(nodeMap map[int64]*datastructure.Node, way
 func getMaxspeedOneWayRoadType(way osm.Way) (float64, bool, bool, string, string, int, string, bool, datastructure.StreetExtraInfo) {
 	jumlahLanes := 0
 
-	maxSpeed := 50.0
+	maxSpeed := 40.0
 
 	isOneWay := false // 0, 1
 	reversedOneWay := false
@@ -409,7 +409,7 @@ func getMaxspeedOneWayRoadType(way osm.Way) (float64, bool, bool, string, string
 		}
 
 	}
-	if maxSpeed == 50.0 || maxSpeed == 0 {
+	if maxSpeed == 40.0 || maxSpeed == 0 {
 		maxSpeed = datastructure.RoadTypeMaxSpeed(roadType)
 	}
 	return maxSpeed, isOneWay, reversedOneWay, roadType, namaJalan, jumlahLanes, roadClassLink, roundAbout, streetInfo

@@ -19,15 +19,15 @@ type EdgePair struct {
 }
 
 type Edge struct {
-	From          *Node
-	To            *Node
-	Cost          float64
-	StreetName    string
-	MaxSpeed      float64
-	Roundabout    bool
-	RoadClass     string
-	RoadClassLink string
-	Lanes         int
+	From           *Node
+	To             *Node
+	Cost           float64
+	StreetName     string
+	MaxSpeed       float64
+	Roundabout     bool
+	RoadClass      string
+	RoadClassLink  string
+	Lanes          int
 	NodesInBetween []Coordinate
 }
 
@@ -40,7 +40,6 @@ type Node struct {
 	TrafficLight bool
 	UsedInRoad   int
 }
-
 
 type CHNode2 struct {
 	Lat          float64
@@ -62,10 +61,10 @@ func NewCHNode(lat, lon float64, orderPos int64, idx int32, trafficLight bool) C
 
 type SurakartaWay struct {
 	ID                  int32
-	CenterLoc           []float64 // [lat, lon]
+	CenterLoc           []float64    // [lat, lon]
 	Nodes               []Coordinate // yang bukan intersectionNodes
 	IntersectionNodesID []int64
-	WayID		  int32
+	WayID               int32
 }
 
 type Metadata struct {
@@ -87,13 +86,12 @@ type EdgeCH struct {
 	IsShortcut     bool
 	RemovedEdgeOne int32
 	RemovedEdgeTwo int32
-	StreetName     string
+	StreetName     int // simpan sebagai int & bukan string biar memory usage lebih kecil
 	Roundabout     bool
-	RoadClass      string
-	RoadClassLink  string
+	RoadClass      int
+	RoadClassLink  int
 	Lanes          int
 	NodesInBetween []Coordinate
-
 }
 
 type StreetExtraInfo struct {
@@ -138,12 +136,12 @@ func RoadTypeMaxSpeed(roadType string) float64 {
 }
 
 type SPSingleResultResult struct {
-	Source    int32
-	Dest      int32
-	Paths     []Coordinate
+	Source   int32
+	Dest     int32
+	Paths    []Coordinate
 	EdgePath []EdgeCH
-	Dist      float64
-	Eta       float64
+	Dist     float64
+	Eta      float64
 }
 
 type StateObservationPair struct {
@@ -152,19 +150,19 @@ type StateObservationPair struct {
 }
 
 type State struct {
-	ID     int
-	NodeID int32
-	Lat    float64
-	Lon    float64
-	Dist   float64
-	EdgeID int32
+	ID             int
+	NodeID         int32
+	Lat            float64
+	Lon            float64
+	Dist           float64
+	EdgeID         int32
 	NodesInBetween []Coordinate
 }
 type SmallWay struct {
 	CenterLoc           []float64 // [lat, lon]
 	IntersectionNodesID []int64
-	NodesInBetween []Coordinate
-	WayID int32
+	NodesInBetween      []Coordinate
+	WayID               int32
 }
 
 func (s *SmallWay) ToConcurrentWay() concurrent.SmallWay {
@@ -177,11 +175,10 @@ func (s *SmallWay) ToConcurrentWay() concurrent.SmallWay {
 	return concurrent.SmallWay{
 		CenterLoc:           s.CenterLoc,
 		IntersectionNodesID: s.IntersectionNodesID,
-		NodesInBetween: concurrent.NewCoordinates(nodesInBetweenLat, nodesInBetweenLon),
-		WayID: s.WayID,
+		NodesInBetween:      concurrent.NewCoordinates(nodesInBetweenLat, nodesInBetweenLon),
+		WayID:               s.WayID,
 	}
 }
-
 
 func RenderPath2(path []Coordinate) string {
 	s := ""

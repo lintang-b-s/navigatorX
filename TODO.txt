@@ -4,6 +4,6 @@
 - add customizable route planning, biar edge graphnya bisa menyesuaikan data traffic : https://link.springer.com/chapter/10.1007/978-3-642-20662-7_32
 - push docker image preprocessing & server ke dockerhub.
 - node ordering CH pakai size of voronoi region?
-- reduce memory usage (heap) [sebelum code refactor memory usage cuma 300 an mb...  ]
+- reduce memory usage (heap) [sebelum code refactor memory usage cuma 300 an mb...  ] udah ngurang jadi 600mb
 - performance optimization
--
+- benerin ETA per instruction & polyline yang kebalik (DONE)

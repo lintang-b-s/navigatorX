@@ -238,9 +238,10 @@ func (rt *RouteAlgorithm) createPath(commonVertex int32, from, to int32,
 				fedgePath = append(fedgePath, cameFromb[v].Edge)
 			}
 
-
-			nodesInBetween := cameFromf[v].Edge.NodesInBetween
+			nodesInBetween := make([]datastructure.Coordinate, len(cameFromf[v].Edge.NodesInBetween))
+			copy(nodesInBetween, cameFromf[v].Edge.NodesInBetween)
 			util.ReverseG(nodesInBetween)
+
 			nodeV := rt.ch.GetNode(v)
 
 			fPath = append(fPath, datastructure.NewCoordinate(nodeV.Lat, nodeV.Lon))
@@ -311,7 +312,8 @@ func (rt *RouteAlgorithm) createPath(commonVertex int32, from, to int32,
 
 // buat forward dijkstra
 // dari common vertex ke source vertex
-func (rt *RouteAlgorithm) unpackBackward(edge datastructure.EdgeCH, path *[]datastructure.Coordinate, ePath *[]datastructure.EdgeCH, eta *float64, dist *float64) {
+func (rt *RouteAlgorithm) unpackBackward(edge datastructure.EdgeCH, path *[]datastructure.Coordinate, ePath *[]datastructure.EdgeCH,
+	eta, dist *float64) {
 	if !edge.IsShortcut {
 		if rt.ch.GetNode(edge.ToNodeIDX).TrafficLight {
 			*eta += 3.0
@@ -319,11 +321,13 @@ func (rt *RouteAlgorithm) unpackBackward(edge datastructure.EdgeCH, path *[]data
 		*eta += edge.Weight
 		*dist += edge.Dist
 
-		nodesInBetween := edge.NodesInBetween
+		nodesInBetween := make([]datastructure.Coordinate, len(edge.NodesInBetween))
+		copy(nodesInBetween, edge.NodesInBetween)
 		util.ReverseG(nodesInBetween)
+
 		toNode := rt.ch.GetNode(edge.ToNodeIDX)
 
-		*path = append(*path,datastructure.NewCoordinate(toNode.Lat, toNode.Lon) )
+		*path = append(*path, datastructure.NewCoordinate(toNode.Lat, toNode.Lon))
 		*path = append(*path, nodesInBetween...)
 
 		*ePath = append(*ePath, edge)
@@ -334,7 +338,8 @@ func (rt *RouteAlgorithm) unpackBackward(edge datastructure.EdgeCH, path *[]data
 }
 
 // dari common vertex ke target vertex
-func (rt *RouteAlgorithm) unpackForward(edge datastructure.EdgeCH, path *[]datastructure.Coordinate, ePath *[]datastructure.EdgeCH, eta *float64, dist *float64) {
+func (rt *RouteAlgorithm) unpackForward(edge datastructure.EdgeCH, path *[]datastructure.Coordinate, ePath *[]datastructure.EdgeCH,
+	eta, dist *float64) {
 	if !edge.IsShortcut {
 		if rt.ch.GetNode(edge.ToNodeIDX).TrafficLight {
 			*eta += 3.0
@@ -345,7 +350,7 @@ func (rt *RouteAlgorithm) unpackForward(edge datastructure.EdgeCH, path *[]datas
 		nodesInBetween := edge.NodesInBetween
 		toNode := rt.ch.GetNode(edge.ToNodeIDX)
 
-		*path = append(*path,datastructure.NewCoordinate(toNode.Lat, toNode.Lon) )
+		*path = append(*path, datastructure.NewCoordinate(toNode.Lat, toNode.Lon))
 		*path = append(*path, nodesInBetween...)
 
 		*ePath = append(*ePath, edge)

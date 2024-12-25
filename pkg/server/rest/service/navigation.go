@@ -26,10 +26,14 @@ type ContractedGraph interface {
 	GetNumNodes() int
 	Contraction() (err error)
 	SetCHReady()
-	GetStreetDirection(streetName string) [2]bool
 	SaveToFile() error
 	LoadGraph() error
-	GetStreetInfo(streetName string) datastructure.StreetExtraInfo
+	GetStreetDirection(streetName int) [2]bool
+	GetStreetInfo(streetName int) datastructure.StreetExtraInfo
+	GetStreetNameFromID(streetName int) string
+	GetRoadClassFromID(roadClass int) string
+	GetRoadClassLinkFromID(roadClassLink int) string
+	
 }
 
 type RoutingAlgorithm interface {

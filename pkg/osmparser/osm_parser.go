@@ -36,10 +36,13 @@ type ContractedGraph interface {
 	SetCHReady()
 	SnapLocationToRoadNetworkNodeH3(ways []datastructure.SmallWay, wantToSnap []float64) int32
 	SnapLocationToRoadNetworkNodeH3ForMapMatching(ways []datastructure.SmallWay, wantToSnap []float64) []datastructure.State
-	GetStreetDirection(streetName string) [2]bool
 	SaveToFile() error
 	LoadGraph() error
-	GetStreetInfo(streetName string) datastructure.StreetExtraInfo
+	GetStreetDirection(streetName int) [2]bool
+	GetStreetInfo(streetName int) datastructure.StreetExtraInfo
+	GetStreetNameFromID(streetName int) string
+	GetRoadClassFromID(roadClass int) string
+	GetRoadClassLinkFromID(roadClassLink int) string
 }
 
 type OSMParser struct {

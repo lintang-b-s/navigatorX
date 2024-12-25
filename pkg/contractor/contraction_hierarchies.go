@@ -13,6 +13,7 @@ import (
 	"lintang/navigatorx/pkg/datastructure"
 	"lintang/navigatorx/pkg/geo"
 	"lintang/navigatorx/pkg/server"
+	"lintang/navigatorx/pkg/util"
 
 	"github.com/k0kubun/go-ansi"
 
@@ -30,8 +31,8 @@ type Metadata struct {
 }
 
 type ContractedGraph struct {
-	Metadata   Metadata
-	Ready      bool
+	Metadata Metadata
+	Ready    bool
 
 	ContractedFirstOutEdge [][]int32
 	ContractedFirstInEdge  [][]int32
@@ -46,9 +47,12 @@ type ContractedGraph struct {
 	IsLoaded             bool
 	IsAStarLoaded        bool
 
-	StreetDirection map[string][2]bool // 0 = forward, 1 = backward
-	StreetInfo      map[string]datastructure.StreetExtraInfo
+	StreetDirection map[int][2]bool // 0 = forward, 1 = backward
+	StreetInfo      map[int]datastructure.StreetExtraInfo
 
+	StreetNameIDMap    util.IDMap
+	RoadClassIDMap     util.IDMap
+	RoadClassLinkIDMap util.IDMap
 }
 
 var maxPollFactorHeuristic = 5
@@ -60,21 +64,24 @@ func NewContractedGraph() *ContractedGraph {
 		ContractedInEdges:  make([]datastructure.EdgeCH, 0),
 		ContractedNodes:    make([]datastructure.CHNode2, 0),
 		Ready:              false,
-		StreetDirection:    make(map[string][2]bool),
-		StreetInfo: 	   make(map[string]datastructure.StreetExtraInfo),
+		StreetDirection:    make(map[int][2]bool),
+		StreetInfo:         make(map[int]datastructure.StreetExtraInfo),
+		StreetNameIDMap:    util.NewIdMap(),
+		RoadClassIDMap:     util.NewIdMap(),
+		RoadClassLinkIDMap: util.NewIdMap(),
 	}
 }
 
-func (ch *ContractedGraph) InitCHGraph(nodes []datastructure.Node, edgeCount int, streetDirections map[string][2]bool, sWays,hmmEdges []datastructure.SurakartaWay,
+func (ch *ContractedGraph) InitCHGraph(nodes []datastructure.Node, edgeCount int, streetDirections map[string][2]bool, sWays, hmmEdges []datastructure.SurakartaWay,
 	streetExtraInfo map[string]datastructure.StreetExtraInfo) map[int64]int32 {
 	gLen := len(nodes)
-	
+
 	var nodeIdxMap = make(map[int64]int32)
 	for streetName, direction := range streetDirections {
-		ch.StreetDirection[streetName] = direction
+		ch.StreetDirection[ch.StreetNameIDMap.GetID(streetName)] = direction
 	}
 	for streetName, extraInfo := range streetExtraInfo {
-		ch.StreetInfo[streetName] = extraInfo
+		ch.StreetInfo[ch.StreetNameIDMap.GetID(streetName)] = extraInfo
 	}
 
 	bar := progressbar.NewOptions(3,
@@ -92,8 +99,6 @@ func (ch *ContractedGraph) InitCHGraph(nodes []datastructure.Node, edgeCount int
 		}))
 
 	for i, node := range nodes {
-
-	
 
 		ch.ContractedNodes = append(ch.ContractedNodes, datastructure.CHNode2{
 			IDx:          int32(i),
@@ -124,12 +129,14 @@ func (ch *ContractedGraph) InitCHGraph(nodes []datastructure.Node, edgeCount int
 			maxSpeed := edge.MaxSpeed * 1000 / 60 // m /min
 			cost := edge.Cost / maxSpeed
 			toIdx := nodeIdxMap[edge.To.ID]
+			streetName := ch.StreetNameIDMap.GetID(edge.StreetName)
+			roadClass := ch.RoadClassIDMap.GetID(edge.RoadClass)
+			roadClassLink := ch.RoadClassLinkIDMap.GetID(edge.RoadClassLink)
 
-			
 			ch.ContractedFirstOutEdge[idx] = append(ch.ContractedFirstOutEdge[idx], int32(outEdgeIDx))
 			ch.ContractedOutEdges = append(ch.ContractedOutEdges, datastructure.EdgeCH{outEdgeIDx, cost, edge.Cost, toIdx,
-				 int32(idx), false, -1, -1, edge.StreetName, edge.Roundabout,
-				 edge.RoadClass, edge.RoadClassLink, edge.Lanes, edge.NodesInBetween})
+				int32(idx), false, -1, -1, streetName, edge.Roundabout,
+				roadClass, roadClassLink, edge.Lanes, edge.NodesInBetween})
 
 			// tambah degree nodenya
 			ch.Metadata.degrees[idx]++
@@ -148,11 +155,12 @@ func (ch *ContractedGraph) InitCHGraph(nodes []datastructure.Node, edgeCount int
 			edge := ch.ContractedOutEdges[outIDx]
 			to := edge.ToNodeIDX
 			weight := edge.Weight
-
+			nodesInBetween := edge.NodesInBetween // tidak perlu direverse
 			ch.ContractedFirstInEdge[to] = append(ch.ContractedFirstInEdge[to], int32(inEdgeIDx))
+
 			ch.ContractedInEdges = append(ch.ContractedInEdges, datastructure.EdgeCH{inEdgeIDx, weight,
-				edge.Dist, int32(i), to, false, -1, -1, edge.StreetName, 
-				edge.Roundabout, edge.RoadClass, edge.RoadClassLink, edge.Lanes, edge.NodesInBetween})
+				edge.Dist, int32(i), to, false, -1, -1, edge.StreetName,
+				edge.Roundabout, edge.RoadClass, edge.RoadClassLink, edge.Lanes, nodesInBetween})
 
 			// tambah degree nodenya
 			ch.Metadata.degrees[i]++
@@ -229,14 +237,13 @@ func (ch *ContractedGraph) Contraction() (err error) {
 		orderNum++
 		bar.Add(1)
 	}
-	fmt.Println("")
-	fmt.Println("total shortcuts dibuat: ", ch.Metadata.ShortcutsCount)
+	fmt.Printf("\ntotal shortcuts dibuat: %d \n", ch.Metadata.ShortcutsCount)
 
 	ch.Metadata = Metadata{}
 	runtime.GC()
 	runtime.GC()
 	end := time.Now().Sub(st)
-	fmt.Println("lama preprocessing contraction hierarchies: : ", end.Minutes(), " menit")
+	fmt.Printf("lama preprocessing contraction hierarchies: %v menit\n", end.Minutes())
 	return
 }
 
@@ -406,7 +413,7 @@ func (ch *ContractedGraph) addShortcut(fromNodeIDx, toNodeIDx int32, weight floa
 
 		currEdgeIDx := int32(len(ch.ContractedOutEdges))
 		ch.ContractedOutEdges = append(ch.ContractedOutEdges, datastructure.EdgeCH{currEdgeIDx, weight, dist, toNodeIDx, fromNodeIDx, true,
-			removedEdgeOne.EdgeIDx, removedEdgeTwo.EdgeIDx, "", false, "", "", 0, []datastructure.Coordinate{}})
+			removedEdgeOne.EdgeIDx, removedEdgeTwo.EdgeIDx, 0, false, 0, 0, 0, []datastructure.Coordinate{}})
 		ch.ContractedFirstOutEdge[fromNodeIDx] = append(ch.ContractedFirstOutEdge[fromNodeIDx], currEdgeIDx)
 		ch.Metadata.degrees[fromNodeIDx]++
 	}
@@ -429,7 +436,7 @@ func (ch *ContractedGraph) addShortcut(fromNodeIDx, toNodeIDx int32, weight floa
 
 		currEdgeIDx := int32(len(ch.ContractedInEdges))
 		ch.ContractedInEdges = append(ch.ContractedInEdges, datastructure.EdgeCH{currEdgeIDx, weight, dist, fromNodeIDx, toNodeIDx, true,
-			removedEdgeOne.EdgeIDx, removedEdgeTwo.EdgeIDx, "", false, "", "", 0, []datastructure.Coordinate{}})
+			removedEdgeOne.EdgeIDx, removedEdgeTwo.EdgeIDx, 0, false, 0, 0, 0, []datastructure.Coordinate{}})
 		ch.ContractedFirstInEdge[toNodeIDx] = append(ch.ContractedFirstInEdge[toNodeIDx], currEdgeIDx)
 
 		ch.Metadata.degrees[toNodeIDx]++
@@ -507,13 +514,24 @@ func (ch *ContractedGraph) SetCHReady() {
 	ch.Ready = true
 }
 
-func (ch *ContractedGraph) GetStreetDirection(streetName string) [2]bool {
+func (ch *ContractedGraph) GetStreetDirection(streetName int) [2]bool {
 	return ch.StreetDirection[streetName]
 }
 
-
-func (ch *ContractedGraph) GetStreetInfo(streetName string) datastructure.StreetExtraInfo {
+func (ch *ContractedGraph) GetStreetInfo(streetName int) datastructure.StreetExtraInfo {
 	return ch.StreetInfo[streetName]
+}
+
+func (ch *ContractedGraph) GetStreetNameFromID(streetName int) string {
+	return ch.StreetNameIDMap.GetStr(streetName)
+}
+
+func (ch *ContractedGraph) GetRoadClassFromID(roadClass int) string {
+	return ch.RoadClassIDMap.GetStr(roadClass)
+}
+
+func (ch *ContractedGraph) GetRoadClassLinkFromID(roadClassLink int) string {
+	return ch.RoadClassLinkIDMap.GetStr(roadClassLink)
 }
 
 func (ch *ContractedGraph) SaveToFile() error {
@@ -535,17 +553,17 @@ func (ch *ContractedGraph) SaveToFile() error {
 	return err
 }
 
-func (ch *ContractedGraph) LoadGraph() ( error) {
+func (ch *ContractedGraph) LoadGraph() error {
 	f, err := os.Open("./ch_graph.graph")
 	if err != nil {
-		return  err
+		return err
 	}
 	defer f.Close()
 
 	fileInfo, err := f.Stat()
 	if err != nil {
 		fmt.Println("Error getting file info:", err)
-		return  err
+		return err
 	}
 	fileSize := fileInfo.Size()
 
@@ -553,10 +571,9 @@ func (ch *ContractedGraph) LoadGraph() ( error) {
 	_, err = io.ReadFull(f, data)
 	if err != nil {
 		fmt.Println("Error reading file:", err)
-		return  err
+		return err
 	}
 	dec := gob.NewDecoder(bytes.NewReader(data))
 	err = dec.Decode(&ch)
-	return   err
+	return err
 }
-
