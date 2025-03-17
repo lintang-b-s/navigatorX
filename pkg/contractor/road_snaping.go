@@ -7,19 +7,19 @@ import (
 	"sort"
 )
 
-
 type NodePoint struct {
-	Node datastructure.CHNode2
-	Dist float64
-	Idx  int32
+	Node     datastructure.CHNode
+	Dist     float64
+	Idx      int32
 	Location geo.Location
 }
 
 type SmallWay struct {
 	CenterLoc           []float64 // [lat, lon]
-	IntersectionNodesID []int64
-	NodesInBetween []datastructure.Coordinate
-	WayID int32}
+	IntersectionNodesID []int32
+	PointsInBetween     []datastructure.Coordinate
+	WayID               int32
+}
 
 type NearestStreet struct {
 	Dist   float64
@@ -63,13 +63,13 @@ func (ch *ContractedGraph) SnapLocationToRoadNetworkNodeH3(ways []datastructure.
 		streetNodes := []NodePoint{}
 		for _, nodeID := range street.Street.IntersectionNodesID {
 
-			node := ch.ContractedNodes[nodeID]
+			node := ch.GetNode(nodeID)
 			nodeLoc := geo.NewLocation(node.Lat, node.Lon)
-			cNode := datastructure.CHNode2{
+			cNode := datastructure.CHNode{
 				Lat:          node.Lat,
 				Lon:          node.Lon,
 				OrderPos:     node.OrderPos,
-				IDx:          node.IDx,
+				ID:           node.ID,
 				TrafficLight: node.TrafficLight,
 			}
 			streetNodes = append(streetNodes, NodePoint{cNode, geo.HaversineDistance(wantToSnapLoc, nodeLoc), int32(nodeID), nodeLoc})
@@ -97,7 +97,7 @@ func (ch *ContractedGraph) SnapLocationToRoadNetworkNodeH3(ways []datastructure.
 			nearestStPointLoc := geo.NewLocation(nearestStPoint.Lat, nearestStPoint.Lon)
 			if geo.HaversineDistance(wantToSnapLoc, nearestStPointLoc) < best {
 				best = geo.HaversineDistance(wantToSnapLoc, nearestStPointLoc)
-				snappedStNode = nearestStPoint.IDx
+				snappedStNode = nearestStPoint.ID
 			}
 		}
 
@@ -107,12 +107,31 @@ func (ch *ContractedGraph) SnapLocationToRoadNetworkNodeH3(ways []datastructure.
 }
 
 type State struct {
-	ID     int
-	Lat    float64
-	Lon    float64
-	Dist   float64
-	EdgeID int32
+	ID             int
+	Lat            float64
+	Lon            float64
+	Dist           float64
+	EdgeID         int32
 	NodesInBetween []datastructure.Coordinate
+}
+
+func (ch *ContractedGraph) SnapLocationToRoadNetworkNodeRtreeForMapMatching(nearestNodes []datastructure.OSMObject, wantToSnap []float64,
+	way map[int32]datastructure.SmallWay) []datastructure.State {
+	stsData := make([]datastructure.State, len(nearestNodes))
+
+	for i, node := range nearestNodes {
+		dist := geo.HaversineDistance(geo.NewLocation(wantToSnap[0], wantToSnap[1]), geo.NewLocation(node.Lat, node.Lon))
+		nodeWayID := int32(node.ID)
+		stsData[i] = datastructure.State{
+			Lat:             node.Lat,
+			Lon:             node.Lon,
+			Dist:            dist,
+			EdgeID:          nodeWayID,
+			PointsInBetween: way[nodeWayID].PointsInBetween,
+		}
+	}
+
+	return stsData
 }
 
 func (ch *ContractedGraph) SnapLocationToRoadNetworkNodeH3ForMapMatching(ways []datastructure.SmallWay, wantToSnap []float64) []datastructure.State {
@@ -126,10 +145,9 @@ func (ch *ContractedGraph) SnapLocationToRoadNetworkNodeH3ForMapMatching(ways []
 		nearestStreets = append(nearestStreets, NearestStreet{
 			Dist: geo.HaversineDistance(homeLoc, st),
 			Street: &SmallWay{
-				CenterLoc:           w.CenterLoc,
-				WayID: w.WayID,
-				NodesInBetween: w.NodesInBetween,
-
+				CenterLoc:       w.CenterLoc,
+				WayID:           w.WayID,
+				PointsInBetween: w.PointsInBetween,
 			},
 		})
 	}
@@ -150,10 +168,10 @@ func (ch *ContractedGraph) SnapLocationToRoadNetworkNodeH3ForMapMatching(ways []
 
 		// mencari 2 point dijalan yg paling dekat dg gps
 		streetNodes := []NodePoint{}
-		if len(street.NodesInBetween) < 2 {
+		if len(street.PointsInBetween) < 2 {
 			continue
 		}
-		for _, node := range street.NodesInBetween {
+		for _, node := range street.PointsInBetween {
 
 			nodeLoc := geo.NewLocation(node.Lat, node.Lon)
 			chNode := datastructure.NewCHNode(node.Lat, node.Lon, 0, 0, false)
@@ -164,13 +182,12 @@ func (ch *ContractedGraph) SnapLocationToRoadNetworkNodeH3ForMapMatching(ways []
 			return streetNodes[i].Dist < streetNodes[j].Dist
 		})
 
-	
 		sts = append(sts, State{
-			Lat:    streetNodes[0].Node.Lat,
-			Lon:    streetNodes[0].Node.Lon,
-			Dist:   geo.HaversineDistance(wantToSnapLoc, streetNodes[0].Location),
-			EdgeID: street.WayID,
-			NodesInBetween: street.NodesInBetween,
+			Lat:            streetNodes[0].Node.Lat,
+			Lon:            streetNodes[0].Node.Lon,
+			Dist:           geo.HaversineDistance(wantToSnapLoc, streetNodes[0].Location),
+			EdgeID:         street.WayID,
+			NodesInBetween: street.PointsInBetween,
 		})
 	}
 
@@ -181,16 +198,15 @@ func (ch *ContractedGraph) SnapLocationToRoadNetworkNodeH3ForMapMatching(ways []
 		}
 	}
 
-
 	stsData := make([]datastructure.State, len(sts))
 	for i, st := range sts {
 		stsData[i] = datastructure.State{
-			ID:     st.ID,
-			Lat:    st.Lat,
-			Lon:    st.Lon,
-			Dist:   st.Dist,
-			EdgeID: st.EdgeID,
-			NodesInBetween: st.NodesInBetween,
+			StateID:         st.ID,
+			Lat:             st.Lat,
+			Lon:             st.Lon,
+			Dist:            st.Dist,
+			EdgeID:          st.EdgeID,
+			PointsInBetween: st.NodesInBetween,
 		}
 	}
 

@@ -2,6 +2,7 @@ package contractor
 
 import (
 	"lintang/navigatorx/pkg/datastructure"
+	"lintang/navigatorx/pkg/util"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -39,51 +40,39 @@ setelah di kontraksi:
 */
 func NewGraph() *ContractedGraph {
 	chGraph := NewContractedGraph()
-	maxSpeed := 0.06
-	nodeP := datastructure.NewNode(1, 1, 0, "P", false, 2)
-	nodeV := datastructure.NewNode(1, 1, 1, "V", false, 2)
-	nodeQ := datastructure.NewNode(1, 1, 2, "Q", false, 2)
-	nodeW := datastructure.NewNode(1, 1, 3, "W", false, 2)
-	nodeR := datastructure.NewNode(1, 1, 4, "R", false, 2)
+	nodeP := datastructure.NewCHNode(1, 1, 0, 0, true)
+	nodeV := datastructure.NewCHNode(1, 1, 0, 1, true)
+	nodeQ := datastructure.NewCHNode(1, 1, 0, 2, true)
+	nodeW := datastructure.NewCHNode(1, 1, 0, 3, true)
+	nodeR := datastructure.NewCHNode(1, 1, 0, 4, true)
 
-	edgePv := datastructure.NewEdge(nodeP, nodeV, 10, "p->v", maxSpeed, false, "primary", "primary", 2, nil)
-	nodeP.AddEdge(edgePv)
+	edgePv := datastructure.NewEdgeCH(0, 10, 0, nodeP.ID, nodeV.ID, false, 0, 0, 0, false, 0, 0, 2, nil)
 
-	edgeVp := datastructure.NewEdge(nodeV, nodeP, 10, "v->p", maxSpeed, false, "primary", "primary", 2, nil)
-	nodeV.AddEdge(edgeVp)
+	edgeVp := datastructure.NewEdgeCH(1, 10, 0, nodeV.ID, nodeP.ID, false, 0, 0, 1, false, 1, 1, 2, nil)
 
-	edgeVr := datastructure.NewEdge(nodeV, nodeR, 3, "v->r", maxSpeed, false, "primary", "primary", 2, nil)
-	nodeV.AddEdge(edgeVr)
+	edgeVr := datastructure.NewEdgeCH(2, 3, 0, nodeV.ID, nodeR.ID, false, 0, 0, 2, false, 2, 2, 2, nil)
 
-	edgeRv := datastructure.NewEdge(nodeR, nodeV, 3, "r->v", maxSpeed, false, "primary", "primary", 2, nil)
-	nodeR.AddEdge(edgeRv)
+	edgeRv := datastructure.NewEdgeCH(3, 3, 0, nodeR.ID, nodeV.ID, false, 0, 0, 3, false, 3, 3, 2, nil)
 
-	edgeVq := datastructure.NewEdge(nodeV, nodeQ, 6, "v->q", maxSpeed, false, "primary", "primary", 2, nil)
-	nodeV.AddEdge(edgeVq)
+	edgeVq := datastructure.NewEdgeCH(4, 6, 0, nodeV.ID, nodeQ.ID, false, 0, 0, 4, false, 4, 4, 2, nil)
 
-	edgeQv := datastructure.NewEdge(nodeQ, nodeV, 6, "q->v", maxSpeed, false, "primary", "primary", 2, nil)
-	nodeQ.AddEdge(edgeQv)
+	edgeQv := datastructure.NewEdgeCH(5, 6, 0, nodeQ.ID, nodeV.ID, false, 0, 0, 5, false, 5, 5, 2, nil)
 
-	edgeQw := datastructure.NewEdge(nodeQ, nodeW, 5, "q->w", maxSpeed, false, "primary", "primary", 2, nil)
-	nodeQ.AddEdge(edgeQw)
+	edgeQw := datastructure.NewEdgeCH(6, 5, 0, nodeQ.ID, nodeW.ID, false, 0, 0, 6, false, 6, 6, 2, nil)
 
-	edgeWq := datastructure.NewEdge(nodeW, nodeQ, 5, "w->q", maxSpeed, false, "primary", "primary", 2, nil)
-	nodeW.AddEdge(edgeWq)
+	edgeWq := datastructure.NewEdgeCH(7, 5, 0, nodeW.ID, nodeQ.ID, false, 0, 0, 7, false, 7, 7, 2, nil)
 
-	edgeWr := datastructure.NewEdge(nodeW, nodeR, 5, "w->r", maxSpeed, false, "primary", "primary", 2, nil)
-	nodeW.AddEdge(edgeWr)
+	edgeWr := datastructure.NewEdgeCH(8, 5, 0, nodeW.ID, nodeR.ID, false, 0, 0, 8, false, 8, 8, 2, nil)
 
-	edgeRw := datastructure.NewEdge(nodeR, nodeW, 5, "r->w", maxSpeed, false, "primary", "primary", 2, nil)
-	nodeR.AddEdge(edgeRw)
+	edgeRw := datastructure.NewEdgeCH(9, 5, 0, nodeR.ID, nodeW.ID, false, 0, 0, 9, false, 9, 9, 2, nil)
 
+	edges := []datastructure.EdgeCH{edgePv, edgeVp, edgeVr, edgeRv, edgeVq, edgeQv, edgeQw, edgeWq, edgeWr, edgeRw}
 	streetDirections := make(map[string][2]bool)
-	streetExtraInfo := make(map[string]datastructure.StreetExtraInfo)
-	nodes := []datastructure.Node{*nodeP, *nodeV, *nodeQ, *nodeW, *nodeR}
-	chGraph.InitCHGraph(nodes, 5, streetDirections, streetExtraInfo)
+	nodes := []datastructure.CHNode{nodeP, nodeV, nodeQ, nodeW, nodeR}
+	chGraph.InitCHGraph(nodes, edges, streetDirections, util.NewIdMap())
 
 	return chGraph
 }
-
 
 func TestContractOneNode(t *testing.T) {
 	chGraph := NewGraph()
@@ -99,7 +88,7 @@ func TestContractOneNode(t *testing.T) {
 		assert.Equal(t, 16, inEdgesTotal)
 
 		// check node P
-		nodePEdges := chGraph.GetFirstOutEdge(0)
+		nodePEdges := chGraph.GetNodeFirstOutEdges(0)
 		pShortcutCount := 0
 		shortcutPQ := datastructure.NewEdgeCH(0, 16, 0, 2, 0, true, 0, 0, 0, false, 0, 0, 0, nil)
 		shortcutPR := datastructure.NewEdgeCH(0, 13, 0, 4, 0, true, 0, 0, 0, false, 0, 0, 0, nil)
@@ -109,16 +98,16 @@ func TestContractOneNode(t *testing.T) {
 				pShortcutCount++
 			}
 
-			if edge.IsShortcut && edge.ToNodeIDX == 2 {
+			if edge.IsShortcut && edge.ToNodeID == 2 {
 				assert.Equal(t, shortcutPQ.Weight, edge.Weight)
-			} else if edge.IsShortcut && edge.ToNodeIDX == 4 {
+			} else if edge.IsShortcut && edge.ToNodeID == 4 {
 				assert.Equal(t, shortcutPR.Weight, edge.Weight)
 			}
 		}
 		assert.Equal(t, 2, pShortcutCount)
 
 		// check node Q
-		nodeQEdges := chGraph.GetFirstOutEdge(2)
+		nodeQEdges := chGraph.GetNodeFirstOutEdges(2)
 		qShortcutCount := 0
 		shortcutQP := datastructure.NewEdgeCH(0, 16, 0, 0, 2, true, 0, 0, 0, false, 0, 0, 0, nil)
 		shortcutQR := datastructure.NewEdgeCH(0, 9, 0, 4, 2, true, 0, 0, 0, false, 0, 0, 0, nil)
@@ -128,16 +117,16 @@ func TestContractOneNode(t *testing.T) {
 				qShortcutCount++
 			}
 
-			if edge.IsShortcut && edge.ToNodeIDX == 0 {
+			if edge.IsShortcut && edge.ToNodeID == 0 {
 				assert.Equal(t, shortcutQP.Weight, edge.Weight)
-			} else if edge.IsShortcut && edge.ToNodeIDX == 4 {
+			} else if edge.IsShortcut && edge.ToNodeID == 4 {
 				assert.Equal(t, shortcutQR.Weight, edge.Weight)
 			}
 		}
 		assert.Equal(t, 2, qShortcutCount)
 
 		// check node R
-		nodeREdges := chGraph.GetFirstOutEdge(4)
+		nodeREdges := chGraph.GetNodeFirstOutEdges(4)
 		rShortcutCount := 0
 		shortcutRP := datastructure.NewEdgeCH(0, 13, 0, 0, 4, true, 0, 0, 0, false, 0, 0, 0, nil)
 		shortcutRQ := datastructure.NewEdgeCH(0, 9, 0, 2, 4, true, 0, 0, 0, false, 0, 0, 0, nil)
@@ -147,9 +136,9 @@ func TestContractOneNode(t *testing.T) {
 				rShortcutCount++
 			}
 
-			if edge.IsShortcut && edge.ToNodeIDX == 0 {
+			if edge.IsShortcut && edge.ToNodeID == 0 {
 				assert.Equal(t, shortcutRP.Weight, edge.Weight)
-			} else if edge.IsShortcut && edge.ToNodeIDX == 2 {
+			} else if edge.IsShortcut && edge.ToNodeID == 2 {
 				assert.Equal(t, shortcutRQ.Weight, edge.Weight)
 			}
 		}

@@ -45,3 +45,9 @@ func HaversineDistance(locationOne Location, locationTwo Location) float64 {
 	var central_angle_rad float64 = archaversine(hav_central_angle)
 	return earthRadiusKM * central_angle_rad
 }
+
+func CalculateHaversineDistance(lat, long, lat2, long2 float64) float64 {
+	locationOne := NewLocation(lat, long)
+	locationTwo := NewLocation(lat2, long2)
+	return HaversineDistance(locationOne, locationTwo)
+}

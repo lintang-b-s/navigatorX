@@ -96,7 +96,7 @@ func (aco *ACO) GetNextNode(curr int, nodesLeft []int) int {
 	sum := 0.0
 	for i, node := range nodesLeft {
 
-		trans_prob_val := aco.transitionProbMatrix[curr][node] 
+		trans_prob_val := aco.transitionProbMatrix[curr][node]
 		num[i] = trans_prob_val
 		sum += trans_prob_val
 	}
@@ -321,11 +321,11 @@ type RouteAlgorithm interface {
 	CallBidirectionalDijkstra(spMap []int32) datastructure.SPSingleResultResult
 }
 type ContractedGraph interface {
-	GetFirstOutEdge(nodeIDx int32) []int32
-	GetFirstInEdge(nodeIDx int32) []int32
-	GetNode(nodeIDx int32) datastructure.CHNode2
-	GetOutEdge(edgeIDx int32) datastructure.EdgeCH
-	GetInEdge(edgeIDx int32) datastructure.EdgeCH
+	GetNodeFirstOutEdges(nodeID int32) []int32
+	GetNodeFirstInEdges(nodeID int32) []int32
+	GetNode(nodeID int32) datastructure.CHNode
+	GetOutEdge(edgeID int32) datastructure.EdgeCH
+	GetInEdge(edgeID int32) datastructure.EdgeCH
 	GetNumNodes() int
 }
 
@@ -363,7 +363,9 @@ func (aco *Heuristics) TravelingSalesmanProblemAntColonyOptimization(cities []in
 	spMap := make(map[int32]map[int32]datastructure.SPSingleResultResult)
 
 	workers.Start(aco.route.CallBidirectionalDijkstra)
-	workers.Wait()
+	go func() {
+		workers.Wait()
+	}()
 
 	for i := 0; i < len(spPair); i++ {
 		spMap[spPair[i][0]] = make(map[int32]datastructure.SPSingleResultResult)

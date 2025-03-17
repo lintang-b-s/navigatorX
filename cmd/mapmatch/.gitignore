@@ -1,0 +1,10 @@
+navigatorxDB/
+bin/
+logs/
+*.svg
+*.pl
+*.graph
+*.osm.pbf
+*.csv
+*.text
+*.txt

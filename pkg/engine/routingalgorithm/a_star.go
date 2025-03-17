@@ -11,17 +11,17 @@ package routingalgorithm
 
 // 	costSoFar := make(map[int32]float64)
 
-// 	costSoFar[rt.ch.GetAstarNode(from).IDx] = 0.0
+// 	costSoFar[rt.ch.GetAstarNode(from).ID] = 0.0
 // 	distSoFar := make(map[int32]float64)
-// 	distSoFar[rt.ch.GetAstarNode(from).IDx] = 0.0
+// 	distSoFar[rt.ch.GetAstarNode(from).ID] = 0.0
 
 // 	cameFrom := make(map[int32]datastructure.CHNode)
-// 	cameFrom[rt.ch.GetAstarNode(from).IDx] = datastructure.CHNode{}
+// 	cameFrom[rt.ch.GetAstarNode(from).ID] = datastructure.CHNode{}
 
 // 	for {
-// 		if heap.Size() == 0 {
-// 			return
-// 		}
+// if heap.Size() == 0 {
+// 	return
+// }
 
 // 		current, _ := heap.ExtractMin()
 // 		if current.Item == to {
@@ -38,7 +38,7 @@ package routingalgorithm
 
 // 				path = append(path, currNode)
 
-// 				curr = heap.GetItem(cameFrom[curr.Item].IDx)
+// 				curr = heap.GetItem(cameFrom[curr.Item].ID)
 // 			}
 // 			path = append(path, rt.ch.GetAstarNode(from))
 // 			util.ReverseG(path)
@@ -55,26 +55,26 @@ package routingalgorithm
 // 			return pathN, s, costSoFar[current.Item] + etaTraffic, true, distSoFar[current.Item] / 1000
 // 		}
 // 		for _, neighbor := range rt.ch.GetOutEdgesAstar(current.Item) {
-// 			newCost := costSoFar[current.Item] + neighbor.Weight
-// 			dist := distSoFar[current.Item] + neighbor.Dist
-// 			neighborP := rt.ch.GetAstarNode(neighbor.ToNodeIDX)
-// 			neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: neighborP.IDx}
-// 			_, ok := costSoFar[neighborP.IDx]
-// 			if !ok {
-// 				costSoFar[neighborP.IDx] = newCost
-// 				distSoFar[neighborP.IDx] = dist
+// 	newCost := costSoFar[current.Item] + neighbor.Weight
+// 	dist := distSoFar[current.Item] + neighbor.Dist
+// 	neighborP := rt.ch.GetAstarNode(neighbor.ToNodeID)
+// 	neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: neighborP.ID}
+// 	_, ok := costSoFar[neighborP.ID]
+// 	if !ok {
+// 		costSoFar[neighborP.ID] = newCost
+// 		distSoFar[neighborP.ID] = dist
 
-// 				heap.Insert(neighborNode)
-// 				cameFromf[toNIDx] = cameFromPair{edge, node.Item}
-// 			} else if newCost < costSoFar[neighborP.IDx] {
-// 				costSoFar[neighborP.IDx] = newCost
-// 				distSoFar[neighborP.IDx] = dist
-// 				cameFrom[neighborP.IDx] = rt.ch.GetAstarNode(current.Item)
-// 				priority := newCost + neighborP.PathEstimatedCostETA(rt.ch.GetAstarNode(to))
-// 				neighborNode.Rank = priority
-// 				heap.DecreaseKey(neighborNode)
-// 				cameFromf[toNIDx] = cameFromPair{edge, node.Item}
-// 			}
-// 		}
+// 		heap.Insert(neighborNode)
+// 		cameFromf[toNID] = cameFromPair{edge, node.Item}
+// 	} else if newCost < costSoFar[neighborP.ID] {
+// 		costSoFar[neighborP.ID] = newCost
+// 		distSoFar[neighborP.ID] = dist
+// 		cameFrom[neighborP.ID] = rt.ch.GetAstarNode(current.Item)
+// 		priority := newCost + neighborP.PathEstimatedCostETA(rt.ch.GetAstarNode(to))
+// 		neighborNode.Rank = priority
+// 		heap.DecreaseKey(neighborNode)
+// 		cameFromf[toNID] = cameFromPair{edge, node.Item}
+// 	}
+// }
 // 	}
 // }
