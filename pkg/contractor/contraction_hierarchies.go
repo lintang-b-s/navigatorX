@@ -3,9 +3,9 @@ package contractor
 import (
 	"bytes"
 	"encoding/gob"
-	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"runtime"
 	"time"
@@ -14,10 +14,6 @@ import (
 	"lintang/navigatorx/pkg/geo"
 	"lintang/navigatorx/pkg/server"
 	"lintang/navigatorx/pkg/util"
-
-	"github.com/k0kubun/go-ansi"
-
-	"github.com/schollz/progressbar/v3"
 )
 
 type Metadata struct {
@@ -37,14 +33,11 @@ type ContractedGraph struct {
 	ContractedFirstInEdge  [][]int32
 	ContractedOutEdges     []datastructure.EdgeCH
 	ContractedInEdges      []datastructure.EdgeCH
-	ContractedNodes        []datastructure.CHNode2
+	ContractedNodes        []datastructure.CHNode
 
-	IsLoaded           bool
-	StreetDirection    map[int][2]bool // 0 = forward, 1 = backward
-	StreetInfo         map[int]datastructure.StreetExtraInfo
-	StreetNameIDMap    util.IDMap
-	RoadClassIDMap     util.IDMap
-	RoadClassLinkIDMap util.IDMap
+	StreetDirection map[int][2]bool // 0 = forward, 1 = backward
+	StreetInfo      map[int]datastructure.StreetExtraInfo
+	TagStringIDMap  util.IDMap
 }
 
 var maxPollFactorHeuristic = 5
@@ -54,122 +47,97 @@ func NewContractedGraph() *ContractedGraph {
 	return &ContractedGraph{
 		ContractedOutEdges: make([]datastructure.EdgeCH, 0),
 		ContractedInEdges:  make([]datastructure.EdgeCH, 0),
-		ContractedNodes:    make([]datastructure.CHNode2, 0),
+		ContractedNodes:    make([]datastructure.CHNode, 0),
 		Ready:              false,
 		StreetDirection:    make(map[int][2]bool),
 		StreetInfo:         make(map[int]datastructure.StreetExtraInfo),
-		StreetNameIDMap:    util.NewIdMap(),
-		RoadClassIDMap:     util.NewIdMap(),
-		RoadClassLinkIDMap: util.NewIdMap(),
+		TagStringIDMap:     util.NewIdMap(),
 	}
 }
 
-func (ch *ContractedGraph) InitCHGraph(nodes []datastructure.Node, edgeCount int, streetDirections map[string][2]bool,
-	streetExtraInfo map[string]datastructure.StreetExtraInfo) map[int64]int32 {
-	gLen := len(nodes)
+func (ch *ContractedGraph) InitCHGraph(processedNodes []datastructure.CHNode,
+	processedEdges []datastructure.EdgeCH, streetDirections map[string][2]bool,
+	tagStringIdMap util.IDMap) {
 
-	var nodeIdxMap = make(map[int64]int32)
+	ch.TagStringIDMap = tagStringIdMap
+
+	gLen := len(processedNodes)
+
 	for streetName, direction := range streetDirections {
-		ch.StreetDirection[ch.StreetNameIDMap.GetID(streetName)] = direction
-	}
-	for streetName, extraInfo := range streetExtraInfo {
-		ch.StreetInfo[ch.StreetNameIDMap.GetID(streetName)] = extraInfo
+		ch.StreetDirection[ch.TagStringIDMap.GetID(streetName)] = direction
 	}
 
-	bar := progressbar.NewOptions(3,
-		progressbar.OptionSetWriter(ansi.NewAnsiStdout()),
-		progressbar.OptionEnableColorCodes(true),
-		progressbar.OptionShowBytes(true),
-		progressbar.OptionSetWidth(15),
-		progressbar.OptionSetDescription("[cyan][3/7][reset] Membuat graph..."),
-		progressbar.OptionSetTheme(progressbar.Theme{
-			Saucer:        "[green]=[reset]",
-			SaucerHead:    "[green]>[reset]",
-			SaucerPadding: " ",
-			BarStart:      "[",
-			BarEnd:        "]",
-		}))
+	for _, node := range processedNodes {
 
-	for i, node := range nodes {
-
-		ch.ContractedNodes = append(ch.ContractedNodes, datastructure.CHNode2{
-			IDx:          int32(i),
+		ch.ContractedNodes = append(ch.ContractedNodes, datastructure.CHNode{
+			ID:           node.ID,
 			Lat:          node.Lat,
 			Lon:          node.Lon,
 			TrafficLight: node.TrafficLight,
 		})
-
-		nodeIdxMap[node.ID] = int32(i)
-
 	}
 
-	bar.Add(1)
 	ch.Metadata.degrees = make([]int, gLen)
 	ch.Metadata.InEdgeOrigCount = make([]int, gLen)
 	ch.Metadata.OutEdgeOrigCount = make([]int, gLen)
 	ch.Metadata.ShortcutsCount = 0
 
-	outEdgeIDx := int32(0)
-	inEdgeIDx := int32(0)
+	outEdgeID := int32(0)
+	inEdgeID := int32(0)
 	ch.ContractedFirstOutEdge = make([][]int32, len(ch.ContractedNodes))
 	ch.ContractedFirstInEdge = make([][]int32, len(ch.ContractedNodes))
 
+	duplicateEdges := make(map[int]map[int]struct{})
+
+	log.Printf("intializing original osm graph...")
+
 	// init graph original
-	for idx, node := range nodes {
-		outEdgeCounter := 0
-		for _, edge := range node.Out_to {
-			maxSpeed := edge.MaxSpeed * 1000 / 60 // m /min
-			cost := edge.Cost / maxSpeed
-			toIdx := nodeIdxMap[edge.To.ID]
-			streetName := ch.StreetNameIDMap.GetID(edge.StreetName)
-			roadClass := ch.RoadClassIDMap.GetID(edge.RoadClass)
-			roadClassLink := ch.RoadClassLinkIDMap.GetID(edge.RoadClassLink)
+	for _, edge := range processedEdges {
 
-			ch.ContractedFirstOutEdge[idx] = append(ch.ContractedFirstOutEdge[idx], int32(outEdgeIDx))
-			ch.ContractedOutEdges = append(ch.ContractedOutEdges, datastructure.EdgeCH{outEdgeIDx, cost, edge.Cost, toIdx,
-				int32(idx), false, -1, -1, streetName, edge.Roundabout,
-				roadClass, roadClassLink, edge.Lanes, edge.NodesInBetween})
-
-			// tambah degree nodenya
-			ch.Metadata.degrees[idx]++
-			outEdgeCounter++
-
-			outEdgeIDx++
+		if _, ok := duplicateEdges[int(edge.FromNodeID)]; !ok {
+			duplicateEdges[int(edge.FromNodeID)] = make(map[int]struct{})
 		}
-		ch.Metadata.OutEdgeOrigCount[idx] = outEdgeCounter
+
+		if _, ok := duplicateEdges[int(edge.FromNodeID)][int(edge.ToNodeID)]; ok {
+			continue
+		}
+
+		ch.ContractedFirstOutEdge[edge.FromNodeID] = append(ch.ContractedFirstOutEdge[edge.FromNodeID], int32(outEdgeID))
+		ch.ContractedOutEdges = append(ch.ContractedOutEdges, datastructure.NewEdgeCH(
+			outEdgeID, edge.Weight, edge.Dist, edge.ToNodeID, edge.FromNodeID, false, -1, -1,
+			edge.StreetName, edge.Roundabout, edge.RoadClass, edge.RoadClassLink, edge.Lanes, edge.PointsInBetween,
+		))
+
+		outEdgeID++
+		ch.Metadata.OutEdgeOrigCount[edge.FromNodeID] = int(outEdgeID)
+
+		ch.StreetInfo[edge.StreetName] = datastructure.StreetExtraInfo{
+			// skip
+		}
+
+		// in Edges
+		ch.ContractedFirstInEdge[edge.ToNodeID] = append(ch.ContractedFirstInEdge[edge.ToNodeID], int32(inEdgeID))
+
+		ch.ContractedInEdges = append(ch.ContractedInEdges, datastructure.NewEdgeCH(
+			inEdgeID, edge.Weight, edge.Dist, edge.FromNodeID, edge.ToNodeID, false, -1, -1,
+			edge.StreetName, edge.Roundabout, edge.RoadClass, edge.RoadClassLink, edge.Lanes, edge.PointsInBetween,
+		))
+
+		inEdgeID++
+		ch.Metadata.InEdgeOrigCount[edge.FromNodeID] = int(inEdgeID)
+
+		// tambah degree nodenya
+		ch.Metadata.degrees[edge.FromNodeID]++
+
+		duplicateEdges[int(edge.FromNodeID)][int(edge.ToNodeID)] = struct{}{}
 	}
 
-	bar.Add(1)
-	// init graph edge dibalik
-	for i := 0; i < gLen; i++ {
-		inEdgeCounter := 0
-		for _, outIDx := range ch.ContractedFirstOutEdge[i] {
-			edge := ch.ContractedOutEdges[outIDx]
-			to := edge.ToNodeIDX
-			weight := edge.Weight
-			nodesInBetween := edge.NodesInBetween // tidak perlu direverse
-			ch.ContractedFirstInEdge[to] = append(ch.ContractedFirstInEdge[to], int32(inEdgeIDx))
+	log.Printf("initializing osm graph done...")
 
-			ch.ContractedInEdges = append(ch.ContractedInEdges, datastructure.EdgeCH{inEdgeIDx, weight,
-				edge.Dist, int32(i), to, false, -1, -1, edge.StreetName,
-				edge.Roundabout, edge.RoadClass, edge.RoadClassLink, edge.Lanes, nodesInBetween})
-
-			// tambah degree nodenya
-			ch.Metadata.degrees[i]++
-			inEdgeCounter++
-
-			inEdgeIDx++
-		}
-		ch.Metadata.InEdgeOrigCount[i] = inEdgeCounter
-	}
-
-	bar.Add(1)
-
-	ch.Metadata.EdgeCount = edgeCount
+	ch.Metadata.EdgeCount = len(ch.ContractedOutEdges)
 	ch.Metadata.NodeCount = gLen
-	ch.Metadata.MeanDegree = float64(edgeCount * 1.0 / gLen)
+	ch.Metadata.MeanDegree = float64(len(ch.ContractedOutEdges) * 1.0 / gLen)
 
-	return nodeIdxMap
 }
 
 func (ch *ContractedGraph) Contraction() (err error) {
@@ -178,23 +146,13 @@ func (ch *ContractedGraph) Contraction() (err error) {
 
 	ch.UpdatePrioritiesOfRemainingNodes(nq) // bikin node ordering
 
+	log.Printf("total nodes: %d", len(ch.ContractedNodes))
+	log.Printf("total edges: %d", len(ch.ContractedOutEdges))
+
 	level := 0
 	contracted := make([]bool, ch.Metadata.NodeCount)
 	orderNum := int64(0)
 
-	bar := progressbar.NewOptions(nq.Size(),
-		progressbar.OptionSetWriter(ansi.NewAnsiStdout()),
-		progressbar.OptionEnableColorCodes(true),
-		progressbar.OptionShowBytes(true),
-		progressbar.OptionSetWidth(15),
-		progressbar.OptionSetDescription("[cyan][7/7][reset] Membuat contracted graph (contraction hiearchies)..."),
-		progressbar.OptionSetTheme(progressbar.Theme{
-			Saucer:        "[green]=[reset]",
-			SaucerHead:    "[green]>[reset]",
-			SaucerPadding: " ",
-			BarStart:      "[",
-			BarEnd:        "]",
-		}))
 	var polledItem, smallestItem PriorityQueueNode[int32]
 	for nq.Size() != 0 {
 		smallestItem, err = nq.GetMin()
@@ -202,7 +160,7 @@ func (ch *ContractedGraph) Contraction() (err error) {
 			err = server.WrapErrorf(err, server.ErrInternalServerError, "internal server error")
 			return
 		}
-		
+
 		polledItem, err = nq.ExtractMin()
 		if err != nil {
 			err = server.WrapErrorf(err, server.ErrInternalServerError, "internal server error")
@@ -224,29 +182,32 @@ func (ch *ContractedGraph) Contraction() (err error) {
 		contracted[polledItem.Item] = true
 		level++
 		orderNum++
-		bar.Add(1)
+
+		if (orderNum+1)%10000 == 0 {
+			log.Printf("contracting node: %d...", orderNum+1)
+		}
 	}
-	fmt.Printf("\ntotal shortcuts dibuat: %d \n", ch.Metadata.ShortcutsCount)
+	log.Printf("\ntotal shortcuts: %d \n", ch.Metadata.ShortcutsCount)
 
 	ch.Metadata = Metadata{}
 	runtime.GC()
 	runtime.GC()
-	end := time.Now().Sub(st)
-	fmt.Printf("lama preprocessing contraction hierarchies: %v menit\n", end.Minutes())
+	end := time.Since(st)
+	log.Printf("time for preprocessing contraction hierarchies: %v menit\n", end.Minutes())
 	return
 }
 
-func (ch *ContractedGraph) contractNode(nodeIDx int32, isContracted bool, contracted []bool) {
+func (ch *ContractedGraph) contractNode(nodeID int32, isContracted bool, contracted []bool) {
 
 	if isContracted {
 		return
 	}
-	ch.contractNodeNow(nodeIDx, contracted)
+	ch.contractNodeNow(nodeID, contracted)
 
 }
 
-func (ch *ContractedGraph) contractNodeNow(nodeIDx int32, contracted []bool) {
-	degree, _, _, _ := ch.findAndHandleShortcuts(nodeIDx, ch.addOrUpdateShortcut, int(ch.Metadata.MeanDegree*float64(maxPollFactorContraction)),
+func (ch *ContractedGraph) contractNodeNow(nodeID int32, contracted []bool) {
+	degree, _, _, _ := ch.findAndHandleShortcuts(nodeID, ch.addOrUpdateShortcut, int(ch.Metadata.MeanDegree*float64(maxPollFactorContraction)),
 		contracted)
 	ch.Metadata.MeanDegree = (ch.Metadata.MeanDegree*2 + float64(degree)) / 3
 
@@ -256,7 +217,7 @@ func (ch *ContractedGraph) contractNodeNow(nodeIDx int32, contracted []bool) {
 findAndHandleShortcuts , ketika mengontraksi node v, kita  harus cari shortest path dari node u ke w yang meng ignore node v, dimana u adalah node yang terhubung ke v dan edge (u,v) \in E, dan w adalah node yang terhubung dari v dan edge (v,w) \in E.
 kalau cost dari shortest path u->w  <= c(u,v) + c(v,w) , tambahkan shortcut edge (u,w).
 */
-func (ch *ContractedGraph) findAndHandleShortcuts(nodeIDx int32, shortcutHandler func(fromNodeIDx, toNodeIDx int32, nodeIdx int32, weight float64,
+func (ch *ContractedGraph) findAndHandleShortcuts(nodeID int32, shortcutHandler func(fromNodeID, toNodeID int32, nodeIdx int32, weight float64,
 	removedEdgeOne, removedEdgeTwo *datastructure.EdgeCH,
 	outOrigEdgeCount, inOrigEdgeCount int),
 	maxVisitedNodes int, contracted []bool) (int, int, int, error) {
@@ -267,20 +228,20 @@ func (ch *ContractedGraph) findAndHandleShortcuts(nodeIDx int32, shortcutHandler
 	pInMax := 0.0
 	pOutMax := 0.0
 
-	for _, idx := range ch.ContractedFirstInEdge[nodeIDx] {
+	for _, idx := range ch.ContractedFirstInEdge[nodeID] {
 		inEdge := ch.ContractedInEdges[idx]
-		toNIDx := inEdge.ToNodeIDX
-		if contracted[toNIDx] {
+		toNID := inEdge.ToNodeID
+		if contracted[toNID] {
 			continue
 		}
 		if inEdge.Weight > pInMax {
 			pInMax = inEdge.Weight
 		}
 	}
-	for _, idx := range ch.ContractedFirstOutEdge[nodeIDx] {
+	for _, idx := range ch.ContractedFirstOutEdge[nodeID] {
 		outEdge := ch.ContractedOutEdges[idx]
-		toNIDx := outEdge.ToNodeIDX
-		if contracted[toNIDx] {
+		toNID := outEdge.ToNodeID
+		if contracted[toNID] {
 			continue
 		}
 		if outEdge.Weight > pOutMax {
@@ -289,36 +250,36 @@ func (ch *ContractedGraph) findAndHandleShortcuts(nodeIDx int32, shortcutHandler
 	}
 	pMax = pInMax + pOutMax
 
-	for _, inIdx := range ch.ContractedFirstInEdge[nodeIDx] {
+	for _, inIdx := range ch.ContractedFirstInEdge[nodeID] {
 		inEdge := ch.ContractedInEdges[inIdx]
-		fromNodeIDx := inEdge.ToNodeIDX
-		if fromNodeIDx == int32(nodeIDx) {
-			return 0, 0, 0, errors.New(fmt.Sprintf(`unexpected loop-edge at node: %v `, nodeIDx))
+		fromNodeID := inEdge.ToNodeID
+		if fromNodeID == int32(nodeID) {
+			return 0, 0, 0, fmt.Errorf(`unexpected loop-edge at node: %v `, nodeID)
 		}
-		if contracted[fromNodeIDx] {
+		if contracted[fromNodeID] {
 			continue
 		}
 
 		incomingEdgeWeight := inEdge.Weight
 
-		// outging edge dari nodeIDx
+		// outging edge dari nodeID
 		degree++
 
-		for _, outIDx := range ch.ContractedFirstOutEdge[nodeIDx] {
-			outEdge := ch.ContractedOutEdges[outIDx]
-			toNode := outEdge.ToNodeIDX
+		for _, outID := range ch.ContractedFirstOutEdge[nodeID] {
+			outEdge := ch.ContractedOutEdges[outID]
+			toNode := outEdge.ToNodeID
 			if contracted[toNode] {
 				continue
 			}
 
-			if toNode == fromNodeIDx {
+			if toNode == fromNodeID {
 				// gak perlu search untuk witness dari node balik ke node itu lagi
 				continue
 			}
 
 			existingDirectWeight := incomingEdgeWeight + outEdge.Weight
 
-			maxWeight := ch.dijkstraWitnessSearch(fromNodeIDx, toNode, nodeIDx, existingDirectWeight, maxVisitedNodes, pMax,
+			maxWeight := ch.dijkstraWitnessSearch(fromNodeID, toNode, nodeID, existingDirectWeight, maxVisitedNodes, pMax,
 				contracted)
 
 			if maxWeight <= existingDirectWeight {
@@ -329,30 +290,29 @@ func (ch *ContractedGraph) findAndHandleShortcuts(nodeIDx int32, shortcutHandler
 			// Pw = existingDirectWeight = d(u,v) + d(v,w)
 			// d(u,v) = shortest path dari u ke w tanpa lewatin v. Atau path dari u ke w tanpa lewatin v yang cost nya <= Pw.
 			shortcutCount++
-			originalEdgesCount += ch.Metadata.InEdgeOrigCount[nodeIDx] + ch.Metadata.OutEdgeOrigCount[nodeIDx]
-			shortcutHandler(fromNodeIDx, toNode, nodeIDx, existingDirectWeight, &inEdge, &outEdge,
-				ch.Metadata.OutEdgeOrigCount[nodeIDx], ch.Metadata.InEdgeOrigCount[nodeIDx])
+			originalEdgesCount += ch.Metadata.InEdgeOrigCount[nodeID] + ch.Metadata.OutEdgeOrigCount[nodeID]
+			shortcutHandler(fromNodeID, toNode, nodeID, existingDirectWeight, &inEdge, &outEdge,
+				ch.Metadata.OutEdgeOrigCount[nodeID], ch.Metadata.InEdgeOrigCount[nodeID])
 
 		}
 	}
 	return degree, shortcutCount, originalEdgesCount, nil
 }
 
-func countShortcut(fromNodeIDx, toNodeIDx int32, nodeIDx int32, weight float64, removedEdgeOne, removedEdgeTwo *datastructure.EdgeCH,
+func countShortcut(fromNodeID, toNodeID int32, nodeID int32, weight float64, removedEdgeOne, removedEdgeTwo *datastructure.EdgeCH,
 	outOrigEdgeCount, inOrigEdgeCount int) {
-	// shortcutCount++
 }
 
 /*
 addOrUpdateShortcut, menambahkan shortcut (u,w) jika path dari u->w tanpa lewati v cost nya lebih kecil dari c(u,v) + c(v,w).
 */
-func (ch *ContractedGraph) addOrUpdateShortcut(fromNodeIDx, toNodeIDx int32, nodeIDx int32, weight float64, removedEdgeOne, removedEdgeTwo *datastructure.EdgeCH,
+func (ch *ContractedGraph) addOrUpdateShortcut(fromNodeID, toNodeID int32, nodeID int32, weight float64, removedEdgeOne, removedEdgeTwo *datastructure.EdgeCH,
 	outOrigEdgeCount, inOrigEdgeCount int) {
 
 	exists := false
-	for _, outIDx := range ch.ContractedFirstOutEdge[fromNodeIDx] {
-		edge := ch.ContractedOutEdges[outIDx]
-		if edge.ToNodeIDX != toNodeIDx || !edge.IsShortcut {
+	for _, outID := range ch.ContractedFirstOutEdge[fromNodeID] {
+		edge := ch.ContractedOutEdges[outID]
+		if edge.ToNodeID != toNodeID || !edge.IsShortcut {
 			continue
 		}
 		exists = true
@@ -361,9 +321,9 @@ func (ch *ContractedGraph) addOrUpdateShortcut(fromNodeIDx, toNodeIDx int32, nod
 		}
 	}
 
-	for _, inIDx := range ch.ContractedFirstInEdge[toNodeIDx] {
-		edge := ch.ContractedInEdges[inIDx]
-		if edge.ToNodeIDX != fromNodeIDx || !edge.IsShortcut {
+	for _, inID := range ch.ContractedFirstInEdge[toNodeID] {
+		edge := ch.ContractedInEdges[inID]
+		if edge.ToNodeID != fromNodeID || !edge.IsShortcut {
 			continue
 		}
 		exists = true
@@ -373,49 +333,52 @@ func (ch *ContractedGraph) addOrUpdateShortcut(fromNodeIDx, toNodeIDx int32, nod
 	}
 
 	if !exists {
-		ch.addShortcut(fromNodeIDx, toNodeIDx, weight, removedEdgeOne, removedEdgeTwo)
+		ch.addShortcut(fromNodeID, toNodeID, weight, removedEdgeOne, removedEdgeTwo)
 		ch.Metadata.ShortcutsCount++
 	}
 }
 
-func (ch *ContractedGraph) addShortcut(fromNodeIDx, toNodeIDx int32, weight float64, removedEdgeOne, removedEdgeTwo *datastructure.EdgeCH) {
+func (ch *ContractedGraph) addShortcut(fromNodeID, toNodeID int32, weight float64, removedEdgeOne, removedEdgeTwo *datastructure.EdgeCH) {
 
-	fromN := ch.ContractedNodes[fromNodeIDx]
-	toN := ch.ContractedNodes[toNodeIDx]
+	fromN := ch.ContractedNodes[fromNodeID]
+	toN := ch.ContractedNodes[toNodeID]
 	fromLoc := geo.NewLocation(fromN.Lat, fromN.Lon)
 	toLoc := geo.NewLocation(toN.Lat, toN.Lon)
 	dist := geo.HaversineDistance(fromLoc, toLoc)
 	// add shortcut outcoming edge
 	dup := false
-	for _, outIDx := range ch.ContractedFirstOutEdge[fromNodeIDx] {
-		edge := ch.ContractedOutEdges[outIDx]
-		if edge.ToNodeIDX == toNodeIDx && edge.Weight > weight {
-			edge.Weight = weight
-			edge.Dist = dist
-			edge.RemovedEdgeOne = removedEdgeOne.EdgeIDx
-			edge.RemovedEdgeTwo = removedEdgeTwo.EdgeIDx
+	for _, outID := range ch.ContractedFirstOutEdge[fromNodeID] {
+		edge := ch.ContractedOutEdges[outID]
+		if edge.ToNodeID == toNodeID && edge.Weight > weight {
+			ch.ContractedOutEdges[outID].Weight = weight
+			ch.ContractedOutEdges[outID].Dist = dist
+			ch.ContractedOutEdges[outID].RemovedEdgeOne = removedEdgeOne.EdgeID
+			ch.ContractedOutEdges[outID].RemovedEdgeTwo = removedEdgeTwo.EdgeID
 			dup = true
 			break
 		}
 	}
 	if !dup {
 
-		currEdgeIDx := int32(len(ch.ContractedOutEdges))
-		ch.ContractedOutEdges = append(ch.ContractedOutEdges, datastructure.EdgeCH{currEdgeIDx, weight, dist, toNodeIDx, fromNodeIDx, true,
-			removedEdgeOne.EdgeIDx, removedEdgeTwo.EdgeIDx, 0, false, 0, 0, 0, nil})
-		ch.ContractedFirstOutEdge[fromNodeIDx] = append(ch.ContractedFirstOutEdge[fromNodeIDx], currEdgeIDx)
-		ch.Metadata.degrees[fromNodeIDx]++
+		currEdgeID := int32(len(ch.ContractedOutEdges))
+
+		ch.ContractedOutEdges = append(ch.ContractedOutEdges, datastructure.NewEdgeCH(
+			currEdgeID, weight, dist, toNodeID, fromNodeID, true, removedEdgeOne.EdgeID, removedEdgeTwo.EdgeID, 0, false, 0, 0, 0, nil,
+		))
+
+		ch.ContractedFirstOutEdge[fromNodeID] = append(ch.ContractedFirstOutEdge[fromNodeID], currEdgeID)
+		ch.Metadata.degrees[fromNodeID]++
 	}
 
 	dup = false
 	// add shortcut incoming edge
-	for _, inIDx := range ch.ContractedFirstInEdge[toNodeIDx] {
-		edge := ch.ContractedInEdges[inIDx]
-		if edge.ToNodeIDX == fromNodeIDx && edge.Weight > weight {
-			edge.Weight = weight
-			edge.Dist = dist
-			edge.RemovedEdgeOne = removedEdgeOne.EdgeIDx
-			edge.RemovedEdgeTwo = removedEdgeTwo.EdgeIDx
+	for _, inID := range ch.ContractedFirstInEdge[toNodeID] {
+		edge := ch.ContractedInEdges[inID]
+		if edge.ToNodeID == fromNodeID && edge.Weight > weight {
+			ch.ContractedInEdges[inID].Weight = weight
+			ch.ContractedInEdges[inID].Dist = dist
+			ch.ContractedInEdges[inID].RemovedEdgeOne = removedEdgeOne.EdgeID
+			ch.ContractedInEdges[inID].RemovedEdgeTwo = removedEdgeTwo.EdgeID
 			dup = true
 			break
 		}
@@ -423,73 +386,155 @@ func (ch *ContractedGraph) addShortcut(fromNodeIDx, toNodeIDx int32, weight floa
 	}
 	if !dup {
 
-		currEdgeIDx := int32(len(ch.ContractedInEdges))
-		ch.ContractedInEdges = append(ch.ContractedInEdges, datastructure.EdgeCH{currEdgeIDx, weight, dist, fromNodeIDx, toNodeIDx, true,
-			removedEdgeOne.EdgeIDx, removedEdgeTwo.EdgeIDx, 0, false, 0, 0, 0, nil})
-		ch.ContractedFirstInEdge[toNodeIDx] = append(ch.ContractedFirstInEdge[toNodeIDx], currEdgeIDx)
+		currEdgeID := int32(len(ch.ContractedInEdges))
 
-		ch.Metadata.degrees[toNodeIDx]++
+		ch.ContractedInEdges = append(ch.ContractedInEdges, datastructure.NewEdgeCH(
+			currEdgeID, weight, dist, fromNodeID, toNodeID, true, removedEdgeOne.EdgeID, removedEdgeTwo.EdgeID, 0, false, 0, 0, 0, nil,
+		))
+
+		ch.ContractedFirstInEdge[toNodeID] = append(ch.ContractedFirstInEdge[toNodeID], currEdgeID)
+
+		ch.Metadata.degrees[toNodeID]++
 
 	}
 }
 
-func (ch *ContractedGraph) calculatePriority(nodeIDx int32, contracted []bool) float64 {
+func (ch *ContractedGraph) calculatePriority(nodeID int32, contracted []bool) float64 {
 
-	_, shortcutsCount, originalEdgesCount, _ := ch.findAndHandleShortcuts(nodeIDx, countShortcut, int(ch.Metadata.MeanDegree*float64(maxPollFactorHeuristic)),
+	_, shortcutsCount, originalEdgesCount, _ := ch.findAndHandleShortcuts(nodeID, countShortcut, int(ch.Metadata.MeanDegree*float64(maxPollFactorHeuristic)),
 		contracted)
 
 	// |shortcuts(v)| − |{(u, v) | v uncontracted}| − |{(v, w) | v uncontracted}|
 	// outDegree+inDegree
-	edgeDifference := shortcutsCount - ch.Metadata.degrees[nodeIDx]
+	edgeDifference := shortcutsCount - ch.Metadata.degrees[nodeID]
 
 	return float64(10*edgeDifference + 1*originalEdgesCount)
 }
 
 func (ch *ContractedGraph) UpdatePrioritiesOfRemainingNodes(nq *MinHeap[int32]) {
 
-	bar := progressbar.NewOptions(len(ch.ContractedNodes),
-		progressbar.OptionSetWriter(ansi.NewAnsiStdout()),
-		progressbar.OptionEnableColorCodes(true),
-		progressbar.OptionShowBytes(true),
-		progressbar.OptionSetWidth(15),
-		progressbar.OptionSetDescription("[cyan][6/7][reset] Membuat node ordering (contraction hiearchies)..."),
-		progressbar.OptionSetTheme(progressbar.Theme{
-			Saucer:        "[green]=[reset]",
-			SaucerHead:    "[green]>[reset]",
-			SaucerPadding: " ",
-			BarStart:      "[",
-			BarEnd:        "]",
-		}))
-
 	contracted := make([]bool, ch.Metadata.NodeCount)
 
-	for nodeIDx, _ := range ch.ContractedNodes {
+	for nodeID, _ := range ch.ContractedNodes {
 
-		priority := ch.calculatePriority(int32(nodeIDx), contracted)
-		nq.Insert(PriorityQueueNode[int32]{Item: int32(nodeIDx), Rank: priority})
-		bar.Add(1)
+		priority := ch.calculatePriority(int32(nodeID), contracted)
+		nq.Insert(PriorityQueueNode[int32]{Item: int32(nodeID), Rank: priority})
+
+		if (nodeID+1)%10000 == 0 {
+			log.Printf("updating priority of node: %d...", nodeID+1)
+		}
 	}
-	fmt.Println("")
+}
+
+func (ch *ContractedGraph) AddEdge(newEdge datastructure.EdgeCH) {
+
+	fromNodeID := newEdge.FromNodeID
+	toNodeID := newEdge.ToNodeID
+
+	currEdgeID := int32(len(ch.ContractedOutEdges)) // new edge ID
+
+	// add outEdges && inEdges for fromNodeID
+	if len(ch.ContractedFirstOutEdge) <= int(fromNodeID) {
+		ch.ContractedFirstOutEdge = append(ch.ContractedFirstOutEdge, []int32{})
+	}
+
+	if len(ch.ContractedFirstInEdge) <= int(toNodeID) {
+		ch.ContractedFirstInEdge = append(ch.ContractedFirstInEdge, []int32{})
+	}
+
+	newEdge.EdgeID = currEdgeID
+
+	// check for duplicate edge
+	for _, outID := range ch.ContractedFirstOutEdge[fromNodeID] {
+		edge := ch.ContractedOutEdges[outID]
+		if edge.ToNodeID == toNodeID {
+			return
+		}
+	}
+
+	// add outEdge
+	ch.ContractedOutEdges = append(ch.ContractedOutEdges, newEdge)
+
+	ch.ContractedFirstOutEdge[fromNodeID] = append(ch.ContractedFirstOutEdge[fromNodeID], currEdgeID)
+
+	// add inEdge
+	currEdgeID = int32(len(ch.ContractedInEdges))
+
+	temp := newEdge.FromNodeID
+	newEdge.FromNodeID = newEdge.ToNodeID
+	newEdge.ToNodeID = temp
+
+	reversedPoints := make([]datastructure.Coordinate, len(newEdge.PointsInBetween))
+	copy(reversedPoints, newEdge.PointsInBetween)
+	util.ReverseG(reversedPoints)
+	newEdge.PointsInBetween = reversedPoints
+
+	ch.ContractedInEdges = append(ch.ContractedInEdges, newEdge)
+
+	ch.ContractedFirstInEdge[toNodeID] = append(ch.ContractedFirstInEdge[toNodeID], currEdgeID)
+}
+
+func (ch *ContractedGraph) AddNode(node datastructure.CHNode) {
+	ch.ContractedNodes = append(ch.ContractedNodes, node)
+}
+
+func (ch *ContractedGraph) RemoveEdge(edgeID int32, fromNodeID int32, toNodeID int32) {
+
+	// remove outgoing edge
+	for i, idx := range ch.ContractedFirstOutEdge[fromNodeID] {
+		if idx == edgeID {
+			ch.ContractedFirstOutEdge[fromNodeID] = append(ch.ContractedFirstOutEdge[fromNodeID][:i], ch.ContractedFirstOutEdge[fromNodeID][i+1:]...)
+			break
+		}
+	}
+
+	// remove incoming edge
+	for i, idx := range ch.ContractedFirstInEdge[toNodeID] {
+		if idx == edgeID {
+			ch.ContractedFirstInEdge[toNodeID] = append(ch.ContractedFirstInEdge[toNodeID][:i], ch.ContractedFirstInEdge[toNodeID][i+1:]...)
+			break
+		}
+	}
 }
 
 func (ch *ContractedGraph) IsChReady() bool {
 	return ch.Ready
 }
 
-func (ch *ContractedGraph) GetFirstOutEdge(nodeIDx int32) []int32 {
-	return ch.ContractedFirstOutEdge[nodeIDx]
+func (ch *ContractedGraph) GetNodeFirstOutEdges(nodeID int32) []int32 {
+	return ch.ContractedFirstOutEdge[nodeID]
 }
 
-func (ch *ContractedGraph) GetFirstInEdge(nodeIDx int32) []int32 {
-	return ch.ContractedFirstInEdge[nodeIDx]
+func (ch *ContractedGraph) GetNodeFirstInEdges(nodeID int32) []int32 {
+	return ch.ContractedFirstInEdge[nodeID]
 }
 
-func (ch *ContractedGraph) GetOutEdge(edgeIDx int32) datastructure.EdgeCH {
-	return ch.ContractedOutEdges[edgeIDx]
+func (ch *ContractedGraph) GetFirstOutNonShortcutEdge(nodeID int32) []int32 {
+	nonShortcutEdges := make([]int32, 0, len(ch.ContractedFirstOutEdge[nodeID]))
+	for _, edgeID := range ch.ContractedFirstOutEdge[nodeID] {
+		if !ch.ContractedOutEdges[edgeID].IsShortcut {
+			nonShortcutEdges = append(nonShortcutEdges, edgeID)
+		}
+	}
+	return nonShortcutEdges
 }
 
-func (ch *ContractedGraph) GetInEdge(edgeIDx int32) datastructure.EdgeCH {
-	return ch.ContractedInEdges[edgeIDx]
+func (ch *ContractedGraph) GetFirstInNonShortcutEdge(nodeID int32) []int32 {
+	nonShortcutEdges := make([]int32, 0, len(ch.ContractedFirstInEdge[nodeID]))
+	for _, edgeID := range ch.ContractedFirstInEdge[nodeID] {
+		if !ch.ContractedInEdges[edgeID].IsShortcut {
+			nonShortcutEdges = append(nonShortcutEdges, edgeID)
+		}
+	}
+	return nonShortcutEdges
+}
+
+func (ch *ContractedGraph) GetOutEdge(edgeID int32) datastructure.EdgeCH {
+	return ch.ContractedOutEdges[edgeID]
+}
+
+func (ch *ContractedGraph) GetInEdge(edgeID int32) datastructure.EdgeCH {
+	return ch.ContractedInEdges[edgeID]
 }
 
 func (ch *ContractedGraph) GetOutEdges() []datastructure.EdgeCH {
@@ -500,8 +545,20 @@ func (ch *ContractedGraph) GetInEdges() []datastructure.EdgeCH {
 	return ch.ContractedInEdges
 }
 
-func (ch *ContractedGraph) GetNode(nodeIDx int32) datastructure.CHNode2 {
-	return ch.ContractedNodes[nodeIDx]
+func (ch *ContractedGraph) GetNodes() []datastructure.CHNode {
+	return ch.ContractedNodes
+}
+
+func (ch *ContractedGraph) GetFirstInEdges() [][]int32 {
+	return ch.ContractedFirstInEdge
+}
+
+func (ch *ContractedGraph) GetFirstOutEdges() [][]int32 {
+	return ch.ContractedFirstOutEdge
+}
+
+func (ch *ContractedGraph) GetNode(nodeID int32) datastructure.CHNode {
+	return ch.ContractedNodes[nodeID]
 }
 
 func (ch *ContractedGraph) GetNumNodes() int {
@@ -515,20 +572,24 @@ func (ch *ContractedGraph) GetStreetDirection(streetName int) [2]bool {
 	return ch.StreetDirection[streetName]
 }
 
+func (ch *ContractedGraph) GetstreetInfo(streetName int) datastructure.StreetExtraInfo {
+	return ch.StreetInfo[streetName]
+}
+
 func (ch *ContractedGraph) GetStreetInfo(streetName int) datastructure.StreetExtraInfo {
 	return ch.StreetInfo[streetName]
 }
 
 func (ch *ContractedGraph) GetStreetNameFromID(streetName int) string {
-	return ch.StreetNameIDMap.GetStr(streetName)
+	return ch.TagStringIDMap.GetStr(streetName)
 }
 
 func (ch *ContractedGraph) GetRoadClassFromID(roadClass int) string {
-	return ch.RoadClassIDMap.GetStr(roadClass)
+	return ch.TagStringIDMap.GetStr(roadClass)
 }
 
 func (ch *ContractedGraph) GetRoadClassLinkFromID(roadClassLink int) string {
-	return ch.RoadClassLinkIDMap.GetStr(roadClassLink)
+	return ch.TagStringIDMap.GetStr(roadClassLink)
 }
 
 func (ch *ContractedGraph) SaveToFile() error {
@@ -559,7 +620,7 @@ func (ch *ContractedGraph) LoadGraph() error {
 
 	fileInfo, err := f.Stat()
 	if err != nil {
-		fmt.Println("Error getting file info:", err)
+		log.Println("Error getting file info:", err)
 		return err
 	}
 	fileSize := fileInfo.Size()
@@ -567,7 +628,7 @@ func (ch *ContractedGraph) LoadGraph() error {
 	data := make([]byte, fileSize)
 	_, err = io.ReadFull(f, data)
 	if err != nil {
-		fmt.Println("Error reading file:", err)
+		log.Println("Error reading file:", err)
 		return err
 	}
 	dec := gob.NewDecoder(bytes.NewReader(data))

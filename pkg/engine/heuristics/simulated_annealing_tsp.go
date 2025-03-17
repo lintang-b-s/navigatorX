@@ -115,7 +115,9 @@ func (sa *Heuristics) TravelingSalesmanProblemSimulatedAnnealing(cities []int32)
 	spMap := make(map[int32]map[int32]datastructure.SPSingleResultResult)
 
 	workers.Start(sa.route.CallBidirectionalDijkstra)
-	workers.Wait()
+	go func() {
+		workers.Wait()
+	}()
 
 	for i := 0; i < len(spPair); i++ {
 		spMap[spPair[i][0]] = make(map[int32]datastructure.SPSingleResultResult)

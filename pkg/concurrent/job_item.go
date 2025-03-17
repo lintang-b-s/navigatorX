@@ -2,9 +2,11 @@ package concurrent
 
 type SmallWay struct {
 	CenterLoc           []float64 // [lat, lon]
-	IntersectionNodesID []int64
-	NodesInBetween []Coordinate
-	WayID int32
+	IntersectionNodesID []int32
+	PointsInBetween     []Coordinate
+	WayID               int32
+	FromNodeID          int32
+	ToNodeID            int32
 }
 type SaveWayJobItem struct {
 	KeyStr string
@@ -12,7 +14,7 @@ type SaveWayJobItem struct {
 }
 
 type JobI interface {
-	[]int32 | SaveWayJobItem
+	[]int32 | SaveWayJobItem | []SmallWay
 }
 
 type Job[T JobI] struct {

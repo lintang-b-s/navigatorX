@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"lintang/navigatorx/pkg/datastructure"
-	"lintang/navigatorx/pkg/geo"
 	"lintang/navigatorx/pkg/guidance"
 	"lintang/navigatorx/pkg/server"
 
@@ -14,14 +13,11 @@ type ContractedGraph interface {
 	SnapLocationToRoadNetworkNodeH3(ways []datastructure.SmallWay, wantToSnap []float64) int32
 	SnapLocationToRoadNetworkNodeH3ForMapMatching(ways []datastructure.SmallWay, wantToSnap []float64) []datastructure.State
 
-	IsChReady() bool
-	InitCHGraph(nodes []datastructure.Node, edgeCount int, streetDirections map[string][2]bool,
-		streetExtraInfo map[string]datastructure.StreetExtraInfo) map[int64]int32
-	GetFirstOutEdge(nodeIDx int32) []int32
-	GetFirstInEdge(nodeIDx int32) []int32
-	GetNode(nodeIDx int32) datastructure.CHNode2
-	GetOutEdge(edgeIDx int32) datastructure.EdgeCH
-	GetInEdge(edgeIDx int32) datastructure.EdgeCH
+	GetNodeFirstOutEdges(nodeID int32) []int32
+	GetNodeFirstInEdges(nodeID int32) []int32
+	GetNode(nodeID int32) datastructure.CHNode
+	GetOutEdge(edgeID int32) datastructure.EdgeCH
+	GetInEdge(edgeID int32) datastructure.EdgeCH
 	GetNumNodes() int
 	Contraction() (err error)
 	SetCHReady()
@@ -35,18 +31,14 @@ type ContractedGraph interface {
 }
 
 type RoutingAlgorithm interface {
-	ShortestPathBiDijkstra(from, to int32) ([]datastructure.Coordinate, []datastructure.EdgeCH, float64, float64)
-	// AStar(from, to int32) (pathN []datastructure.CHNode, path string, eta float64, found bool, dist float64)
+	ShortestPathBiDijkstraCH(from, to int32) ([]datastructure.Coordinate, []datastructure.EdgeCH, float64, float64)
 	ShortestPathManyToManyBiDijkstraWorkers(from []int32, to []int32) map[int32]map[int32]datastructure.SPSingleResultResult
 	CreateDistMatrix(spPair [][]int32) map[int32]map[int32]datastructure.SPSingleResultResult
+	ShortestPathAStar(from, to int32) ([]datastructure.Coordinate, []datastructure.EdgeCH, float64, float64)
 }
 
 type KVDB interface {
-	GetNearestStreetsFromPointCoord(lat, lon float64, hmm bool) ([]datastructure.SmallWay, error)
-}
-
-type Matching interface {
-	HiddenMarkovModelDecodingMapMatching(gps []datastructure.StateObservationPair) []datastructure.Coordinate
+	GetNearestStreetsFromPointCoord(lat, lon float64) ([]datastructure.SmallWay, error)
 }
 
 type Heuristics interface {
@@ -62,59 +54,49 @@ type Hungarian interface {
 	Solve(original [][]float64) (float64, map[int]int, error)
 }
 type NavigationService struct {
-	CH          ContractedGraph
-	KV          KVDB
-	hungarian   Hungarian
-	routing     RoutingAlgorithm
-	mapMatching Matching
-	heuristic   Heuristics
+	CH        ContractedGraph
+	KV        KVDB
+	hungarian Hungarian
+	routing   RoutingAlgorithm
+	heuristic Heuristics
 }
 
-func NewNavigationService(contractedGraph ContractedGraph, kv KVDB, hung Hungarian, routing RoutingAlgorithm, mapMatching Matching, heu Heuristics) *NavigationService {
-	return &NavigationService{CH: contractedGraph, KV: kv, hungarian: hung, routing: routing, mapMatching: mapMatching, heuristic: heu}
+func NewNavigationService(contractedGraph ContractedGraph, kv KVDB, hung Hungarian, routing RoutingAlgorithm, heu Heuristics) *NavigationService {
+	return &NavigationService{CH: contractedGraph, KV: kv, hungarian: hung, routing: routing, heuristic: heu}
 }
 
 func (uc *NavigationService) ShortestPathETA(ctx context.Context, srcLat, srcLon float64,
-	dstLat float64, dstLon float64) (string, float64, []guidance.DrivingInstruction, bool, []datastructure.Coordinate, float64, bool, error) {
+	dstLat float64, dstLon float64) (string, float64, []guidance.DrivingInstruction, bool, []datastructure.Coordinate, float64,
+	[]datastructure.EdgeCH, bool, error) {
 
-	from := &datastructure.Node{
+	from := &datastructure.CHNode{
 		Lat: srcLat,
 		Lon: srcLon,
 	}
-	to := &datastructure.Node{
+	to := &datastructure.CHNode{
 		Lat: dstLat,
 		Lon: dstLon,
 	}
 
-	var err error
 	fromSurakartaNode, err := uc.SnapLocToStreetNode(from.Lat, from.Lon)
 	if err != nil {
-		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, false, server.WrapErrorf(err, server.ErrNotFound, "sorry!! the location you entered is not covered on my map :(, please use diferrent opensteetmap pbf file")
+		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, []datastructure.EdgeCH{}, false, server.WrapErrorf(err, server.ErrNotFound, "sorry!! the location you entered is not covered on my map :(, please use diferrent opensteetmap pbf file")
 	}
 	toSurakartaNode, err := uc.SnapLocToStreetNode(to.Lat, to.Lon)
 	if err != nil {
-		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, false, server.WrapErrorf(err, server.ErrNotFound, "sorry!! the location you entered is not covered on my map :(, please use diferrent opensteetmap pbf file")
+		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, []datastructure.EdgeCH{}, false, server.WrapErrorf(err, server.ErrNotFound, "sorry!! the location you entered is not covered on my map :(, please use diferrent opensteetmap pbf file")
 	}
 
-	var pN = []datastructure.Coordinate{}
-	var p string
-	var eta float64
-	var found bool
-	var dist float64
-	var ePath []datastructure.EdgeCH
-	if uc.CH.IsChReady() {
+	found := false
 
-		pN, ePath, eta, dist = uc.routing.ShortestPathBiDijkstra(fromSurakartaNode, toSurakartaNode)
-		p = datastructure.RenderPath2(pN)
-		if eta != -1 {
-			found = true
-		}
-	} else {
-		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, false, server.WrapErrorf(err, server.ErrBadParamInput, "wait until contraction hierarchies preprocessing finish!!")
+	pN, ePath, eta, dist := uc.routing.ShortestPathBiDijkstraCH(fromSurakartaNode, toSurakartaNode)
+	p := datastructure.RenderPath2(pN)
+	if eta != -1 {
+		found = true
 	}
 
 	if !found {
-		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, false, server.WrapErrorf(err, server.ErrNotFound, "sorry!! the location you entered is not covered on my map :(, please use diferrent opensteetmap pbf file")
+		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, []datastructure.EdgeCH{}, false, server.WrapErrorf(err, server.ErrNotFound, "sorry!! the location you entered is not covered on my map :(, please use diferrent opensteetmap pbf file")
 	}
 	var route []datastructure.Coordinate = make([]datastructure.Coordinate, 0)
 
@@ -122,20 +104,20 @@ func (uc *NavigationService) ShortestPathETA(ctx context.Context, srcLat, srcLon
 	instructions, err := drivingInstruction.GetDrivingInstructions(ePath)
 
 	if err != nil {
-		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, false, server.WrapErrorf(err, server.ErrInternalServerError, "internal server error")
+		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, []datastructure.EdgeCH{}, false, server.WrapErrorf(err, server.ErrInternalServerError, "internal server error")
 	}
 
-	return p, dist, instructions, found, route, eta, true, nil
+	return p, dist, instructions, found, route, eta, ePath, true, nil
 }
 
 func (uc *NavigationService) SnapLocToStreetNode(lat, lon float64) (int32, error) {
-	ways, err := uc.KV.GetNearestStreetsFromPointCoord(lat, lon, false)
+	ways, err := uc.KV.GetNearestStreetsFromPointCoord(lat, lon)
 	if err != nil {
 		return 0, err
 	}
-	streetNodeIDx := uc.CH.SnapLocationToRoadNetworkNodeH3(ways, []float64{lat, lon})
+	streetNodeID := uc.CH.SnapLocationToRoadNetworkNodeH3(ways, []float64{lat, lon})
 
-	return streetNodeIDx, nil
+	return streetNodeID, nil
 }
 
 type ShortestPathResult struct {
@@ -153,17 +135,17 @@ func (uc *NavigationService) ShortestPathAlternativeStreetETA(ctx context.Contex
 	alternativeStreetLat float64, alternativeStreetLon float64,
 	dstLat float64, dstLon float64) (string, float64, []guidance.DrivingInstruction, bool, []datastructure.Coordinate, float64, bool, error) {
 
-	from := &datastructure.Node{
+	from := &datastructure.CHNode{
 		Lat: srcLat,
 		Lon: srcLon,
 	}
 
-	alternativeStreet := &datastructure.Node{
+	alternativeStreet := &datastructure.CHNode{
 		Lat: alternativeStreetLat,
 		Lon: alternativeStreetLon,
 	}
 
-	to := &datastructure.Node{
+	to := &datastructure.CHNode{
 		Lat: dstLat,
 		Lon: dstLon,
 	}
@@ -194,10 +176,6 @@ func (uc *NavigationService) ShortestPathAlternativeStreetETA(ctx context.Contex
 	wg.Add(1)
 	wg.Add(1)
 
-	if !uc.CH.IsChReady() {
-		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, false, server.WrapErrorf(err, server.ErrBadParamInput, "wait until contraction hierarchies preprocessing finish!!")
-
-	}
 	go func(wgg *sync.WaitGroup) {
 
 		defer wgg.Done()
@@ -207,13 +185,12 @@ func (uc *NavigationService) ShortestPathAlternativeStreetETA(ctx context.Contex
 		var dist float64
 		var isCH bool
 		var ePath []datastructure.EdgeCH
-		if uc.CH.IsChReady() {
-			pN, ePath, eta, dist = uc.routing.ShortestPathBiDijkstra(fromSurakartaNode, alternativeStreetSurakartaNode)
-			if eta != -1 {
-				found = true
-			}
-			isCH = true
+		pN, ePath, eta, dist = uc.routing.ShortestPathBiDijkstraCH(fromSurakartaNode, alternativeStreetSurakartaNode)
+		if eta != -1 {
+			found = true
 		}
+		isCH = true
+
 		pathChan <- ShortestPathResult{
 			PathsCH: pN,
 			ePath:   ePath,
@@ -235,17 +212,12 @@ func (uc *NavigationService) ShortestPathAlternativeStreetETA(ctx context.Contex
 		var isCH bool
 		var ePath []datastructure.EdgeCH
 
-		if uc.CH.IsChReady() {
-			pN, ePath, eta, dist = uc.routing.ShortestPathBiDijkstra(alternativeStreetSurakartaNode, toSurakartaNode)
-			if eta != -1 {
-				found = true
-			}
-			isCH = true
+		pN, ePath, eta, dist = uc.routing.ShortestPathBiDijkstraCH(alternativeStreetSurakartaNode, toSurakartaNode)
+		if eta != -1 {
+			found = true
 		}
-		//  else { di versi sebelumnya masih support A*, habis ganti algoritma driving instruction baru sementara tidak support A*
-		// 	ppp, _, eta, found, dist = uc.routing.AStarCH(alternativeStreetSurakartaNode, toSurakartaNode)
+		isCH = true
 
-		// }
 		pathChan <- ShortestPathResult{
 			PathsCH: pN,
 			ePath:   ePath,
@@ -271,12 +243,6 @@ func (uc *NavigationService) ShortestPathAlternativeStreetETA(ctx context.Contex
 		}
 	}
 
-	// concatedPaths := []datastructure.CHNode{}
-	// if !paths[0].IsCH {
-	// 	paths[0].Paths = paths[0].Paths[:len(paths[0].Paths)-1] // exclude start node dari paths[1]
-	// 	concatedPaths = append(concatedPaths, paths[0].Paths...)
-	// 	concatedPaths = append(concatedPaths, paths[1].Paths...)
-	// }
 	concatedPathsCH := []datastructure.Coordinate{}
 	concatedEdgesCH := []datastructure.EdgeCH{}
 	paths[0].PathsCH = paths[0].PathsCH[:len(paths[0].PathsCH)-1] // exclude start node dari paths[1]
@@ -303,49 +269,6 @@ func (uc *NavigationService) ShortestPathAlternativeStreetETA(ctx context.Contex
 	instructions, err := drivingInstruction.GetDrivingInstructions(concatedEdgesCH)
 
 	return navPaths, dist, instructions, found, route, eta, isCH, nil
-}
-
-func (uc *NavigationService) HiddenMarkovModelDecodingMapMatching(ctx context.Context, gps []datastructure.Coordinate) (string, []datastructure.Coordinate, error) {
-	hmmPair := []datastructure.StateObservationPair{}
-
-	stateID := 0
-	for i, gpsPoint := range gps {
-		if i < len(gps)-1 && len(gps) > 300 {
-			// // preprocessing , buang gps points yang jaraknya lebih dari 2*5 meter dari previous gps point
-			//  biar gak terlalu lama viterbinya O(T*|S|^2)
-			currGpsLoc := geo.NewLocation(gpsPoint.Lat, gpsPoint.Lon)
-			nextGpsLoc := geo.NewLocation(gps[i+1].Lat, gps[i+1].Lon)
-			if geo.HaversineDistance(currGpsLoc, nextGpsLoc)*1000 >= 2*5 {
-				continue
-			}
-		}
-		nearestRoadNodes, err := uc.NearestStreetNodesForMapMatching(gpsPoint.Lat, gpsPoint.Lon)
-		if len(nearestRoadNodes) == 0 {
-			continue
-		}
-		if err != nil {
-			return "", []datastructure.Coordinate{}, server.WrapErrorf(err, server.ErrNotFound, "sorry!! the location you entered is not covered on my map :(, please use diferrent opensteetmap pbf file")
-		}
-		for i := range nearestRoadNodes {
-			nearestRoadNodes[i].ID = stateID
-
-			stateID++
-		}
-
-		chNodeGPS := datastructure.CHNode2{
-			Lat: gpsPoint.Lat,
-			Lon: gpsPoint.Lon,
-		}
-
-		hmmPair = append(hmmPair, datastructure.StateObservationPair{
-			Observation: chNodeGPS,
-			State:       nearestRoadNodes,
-		})
-	}
-
-	path := uc.mapMatching.HiddenMarkovModelDecodingMapMatching(hmmPair)
-
-	return datastructure.RenderPath2(path), path, nil
 }
 
 type TargetResult struct {
@@ -456,7 +379,7 @@ func (uc *NavigationService) TravelingSalesmanProblemAntColonyOptimization(ctx c
 }
 
 func (uc *NavigationService) NearestStreetNodesForMapMatching(lat, lon float64) ([]datastructure.State, error) {
-	ways, err := uc.KV.GetNearestStreetsFromPointCoord(lat, lon, true)
+	ways, err := uc.KV.GetNearestStreetsFromPointCoord(lat, lon)
 	if err != nil {
 		return []datastructure.State{}, err
 	}
@@ -550,7 +473,7 @@ func (uc *NavigationService) WeightedBipartiteMatching(ctx context.Context, ride
 }
 
 func (uc *NavigationService) NodeFinder(srcLat, srcLon float64) (int32, error) {
-	from := &datastructure.Node{
+	from := &datastructure.CHNode{
 		Lat: srcLat,
 		Lon: srcLon,
 	}

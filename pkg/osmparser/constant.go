@@ -1,0 +1,21 @@
+package osmparser
+
+type NodeType int
+
+const (
+	END_NODE NodeType = iota
+	BETWEEN_NODE
+	JUNCTION_NODE
+)
+
+const (
+	STREET_NAME     = "STREET_NAME"
+	STREET_REF      = "STREET_REF"
+	WAY_DISTANCE    = "WAY_DISTANCE"
+	JUNCTION        = "JUNCTION"
+	MAXSPEED        = "MAXSPEED"
+	ROAD_CLASS      = "ROAD_CLASS"
+	ROAD_CLASS_LINK = "ROAD_CLASS_LINK"
+	LANES           = "LANES"
+	TRAFFIC_LIGHT   = "TRAFFIC_LIGHT"
+)

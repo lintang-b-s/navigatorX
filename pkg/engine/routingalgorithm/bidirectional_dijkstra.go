@@ -3,38 +3,20 @@ package routingalgorithm
 import (
 	"lintang/navigatorx/pkg/contractor"
 	"lintang/navigatorx/pkg/datastructure"
-	"lintang/navigatorx/pkg/util"
 	"math"
 )
 
-type cameFromPair struct {
-	Edge    datastructure.EdgeCH
-	NodeIDx int32
-}
+const (
+	maxVisitedNodes = 400 // pruning search when calculating route distance between two hidden states in map matching
+)
 
-type ContractedGraph interface {
-	GetFirstOutEdge(nodeIDx int32) []int32
-	GetFirstInEdge(nodeIDx int32) []int32
-	GetNode(nodeIDx int32) datastructure.CHNode2
-	GetOutEdge(edgeIDx int32) datastructure.EdgeCH
-	GetInEdge(edgeIDx int32) datastructure.EdgeCH
-	GetNumNodes() int
-}
-
-type RouteAlgorithm struct {
-	ch ContractedGraph
-}
-
-func NewRouteAlgorithm(ch ContractedGraph) *RouteAlgorithm {
-	return &RouteAlgorithm{ch: ch}
-}
-
-func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32) ([]datastructure.Coordinate, []datastructure.EdgeCH, float64, float64) {
-
+func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32, fromEdgeFilter, toEdgeFilter func(edge datastructure.EdgeCH) bool) ([]datastructure.Coordinate, []datastructure.EdgeCH,
+	float64, float64) {
+	if from == to {
+		return []datastructure.Coordinate{}, []datastructure.EdgeCH{}, 0, 0
+	}
 	forwQ := contractor.NewMinHeap[int32]()
 	backQ := contractor.NewMinHeap[int32]()
-	forwVisited := make(map[int32]bool)
-	backVisited := make(map[int32]bool)
 
 	df := make(map[int32]float64)
 	db := make(map[int32]float64)
@@ -60,10 +42,11 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32) ([]datastructur
 	frontFinished := false
 	backFinished := false
 
+	visitedCount := 0
 	frontier := forwQ
 	otherFrontier := backQ
 	turnF := true
-	for {
+	for visitedCount < maxVisitedNodes {
 		if frontier.Size() == 0 {
 			frontFinished = true
 		}
@@ -94,93 +77,103 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32) ([]datastructur
 				break
 			}
 			if turnF {
-				forwVisited[node.Item] = true
 
-				for _, arc := range rt.ch.GetFirstOutEdge(node.Item) {
+				for _, arc := range rt.ch.GetNodeFirstOutEdges(node.Item) {
 					edge := rt.ch.GetOutEdge(arc)
-					toNIDx := edge.ToNodeIDX
-					cost := edge.Weight
-					if forwVisited[toNIDx] {
+					if !fromEdgeFilter(edge) {
+						// if the source node is virtual node,  must start the search from outgoing virtual edge of source node.
 						continue
-					}
-					if rt.ch.GetNode(node.Item).OrderPos < rt.ch.GetNode(toNIDx).OrderPos {
-						// upward graph
-						newCost := cost + df[node.Item]
-						_, ok := df[toNIDx]
-						// relax edge
-						if !ok {
-							df[toNIDx] = newCost
-
-							neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNIDx}
-							frontier.Insert(neighborNode)
-							cameFromf[toNIDx] = cameFromPair{edge, node.Item}
-						} else if newCost < df[toNIDx] {
-							df[toNIDx] = newCost
-
-							neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNIDx}
-							frontier.DecreaseKey(neighborNode)
-
-							cameFromf[toNIDx] = cameFromPair{edge, node.Item}
-						}
-
-						_, ok = db[toNIDx]
-						if ok {
-							pathDistance := newCost + db[toNIDx]
-							if pathDistance < estimate {
-								// jika toNIDx visited di backward search & d(s,toNIDx) + d(t,toNIDx) < cost best candidate path, maka update best candidate path
-								estimate = pathDistance
-								bestCommonVertex = edge.ToNodeIDX
-
-							}
+					} else {
+						fromEdgeFilter = func(_ datastructure.EdgeCH) bool {
+							return true
 						}
 					}
+					toNID := edge.ToNodeID
+					cost := edge.Weight
+
+					// upward graph
+					newCost := cost + df[node.Item]
+					_, ok := df[toNID]
+					// relax edge
+					if !ok {
+						df[toNID] = newCost
+
+						neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
+						frontier.Insert(neighborNode)
+						cameFromf[toNID] = cameFromPair{edge, node.Item}
+					} else if newCost < df[toNID] {
+						df[toNID] = newCost
+
+						neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
+						frontier.DecreaseKey(neighborNode)
+
+						cameFromf[toNID] = cameFromPair{edge, node.Item}
+					}
+
+					_, ok = db[toNID]
+					if ok {
+						pathDistance := newCost + db[toNID]
+						if pathDistance < estimate {
+							// jika toNID visited di backward search & d(s,toNID) + d(t,toNID) < cost best candidate path, maka update best candidate path
+							estimate = pathDistance
+							bestCommonVertex = edge.ToNodeID
+
+						}
+					}
+
 				}
 
 			} else {
-				backVisited[node.Item] = true
-				for _, arc := range rt.ch.GetFirstInEdge(node.Item) {
-
+				for _, arc := range rt.ch.GetNodeFirstInEdges(node.Item) {
 					edge := rt.ch.GetInEdge(arc)
-					toNIDx := edge.ToNodeIDX
-					cost := edge.Weight
-					if backVisited[toNIDx] {
+
+					if !toEdgeFilter(edge) {
+						// if the target node node is virtual node,  must start the search from incoming virtual edge of target node.
 						continue
+					} else {
+						toEdgeFilter = func(_ datastructure.EdgeCH) bool {
+							return true
+						}
 					}
-					if rt.ch.GetNode(node.Item).OrderPos < rt.ch.GetNode(toNIDx).OrderPos {
-						// downward graph
-						newCost := cost + db[node.Item]
-						_, ok := db[toNIDx]
-						if !ok {
-							db[toNIDx] = newCost
+					toNID := edge.ToNodeID
+					cost := edge.Weight
 
-							neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNIDx}
-							frontier.Insert(neighborNode)
-							cameFromb[toNIDx] = cameFromPair{edge, node.Item}
+					// downward graph
+					newCost := cost + db[node.Item]
+					_, ok := db[toNID]
+					if !ok {
+						db[toNID] = newCost
+
+						neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
+						frontier.Insert(neighborNode)
+						cameFromb[toNID] = cameFromPair{edge, node.Item}
+					}
+					if newCost < db[toNID] {
+						db[toNID] = newCost
+
+						neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
+						frontier.DecreaseKey(neighborNode)
+
+						cameFromb[toNID] = cameFromPair{edge, node.Item}
+					}
+
+					_, ok = df[toNID]
+					if ok {
+						pathDistance := newCost + df[toNID]
+						if pathDistance < estimate {
+							estimate = pathDistance
+							bestCommonVertex = edge.ToNodeID
+
 						}
-						if newCost < db[toNIDx] {
-							db[toNIDx] = newCost
 
-							neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNIDx}
-							frontier.DecreaseKey(neighborNode)
-
-							cameFromb[toNIDx] = cameFromPair{edge, node.Item}
-						}
-
-						_, ok = df[toNIDx]
-						if ok {
-							pathDistance := newCost + df[toNIDx]
-							if pathDistance < estimate {
-								estimate = pathDistance
-								bestCommonVertex = edge.ToNodeIDX
-
-							}
-						}
 					}
 				}
 
 			}
 
 		}
+
+		visitedCount++
 
 		otherFinished := false
 
@@ -202,158 +195,10 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32) ([]datastructur
 		}
 	}
 
-	if estimate == math.MaxFloat64 {
+	if estimate == math.MaxFloat64 || visitedCount >= maxVisitedNodes {
 		return []datastructure.Coordinate{}, []datastructure.EdgeCH{}, -1, -1
 	}
-	// estimate dari bidirectional dijkstra pake shortcut edge jadi lebih cepet eta nya & gak akurat
+	// estimate dariway bidirectional dijkstra pake shortcut edge jadi lebih cepet eta nya & gak akurat
 	path, edgePath, eta, dist := rt.createPath(bestCommonVertex, from, to, cameFromf, cameFromb)
 	return path, edgePath, eta, dist
-}
-
-func (rt *RouteAlgorithm) createPath(commonVertex int32, from, to int32,
-	cameFromf, cameFromb map[int32]cameFromPair) ([]datastructure.Coordinate, []datastructure.EdgeCH, float64, float64) {
-
-	fPath := []datastructure.Coordinate{}
-	fedgePath := []datastructure.EdgeCH{}
-	eta := 0.0
-	dist := 0.0
-	v := commonVertex
-	if rt.ch.GetNode(v).TrafficLight {
-		eta += 3.0
-	}
-	ok := true
-	for ok && v != -1 {
-
-		if cameFromf[v].Edge.IsShortcut {
-
-			rt.unpackBackward(cameFromf[v].Edge, &fPath, &fedgePath, &eta, &dist)
-		} else {
-
-			if cameFromf[v].NodeIDx != -1 && rt.ch.GetNode(cameFromf[v].NodeIDx).TrafficLight {
-				eta += 3.0
-			}
-			eta += cameFromf[v].Edge.Weight
-			dist += cameFromf[v].Edge.Dist
-			if cameFromf[v].Edge.Weight != 0 {
-				fedgePath = append(fedgePath, cameFromf[v].Edge)
-			}
-
-			nodesInBetween := make([]datastructure.Coordinate, len(cameFromf[v].Edge.NodesInBetween))
-			copy(nodesInBetween, cameFromf[v].Edge.NodesInBetween)
-			util.ReverseG(nodesInBetween)
-
-			nodeV := rt.ch.GetNode(v)
-
-			fPath = append(fPath, datastructure.NewCoordinate(nodeV.Lat, nodeV.Lon))
-			fPath = append(fPath, nodesInBetween...)
-		}
-		_, ok = cameFromf[v]
-		v = cameFromf[v].NodeIDx
-
-	}
-
-	bPath := []datastructure.Coordinate{}
-	bEdgePath := []datastructure.EdgeCH{}
-	v = commonVertex
-	ok = true
-	for ok && v != -1 {
-
-		if cameFromb[v].Edge.IsShortcut {
-
-			rt.unpackForward(cameFromb[v].Edge, &bPath, &bEdgePath, &eta, &dist)
-
-		} else {
-
-			if cameFromb[v].NodeIDx != -1 && rt.ch.GetNode(cameFromb[v].NodeIDx).TrafficLight {
-				eta += 3.0
-			}
-			eta += cameFromb[v].Edge.Weight
-			dist += cameFromb[v].Edge.Dist
-			if cameFromb[v].Edge.Weight != 0 {
-				bEdgePath = append(bEdgePath, cameFromb[v].Edge)
-			}
-
-			nodeV := rt.ch.GetNode(v)
-
-			bPath = append(bPath, datastructure.NewCoordinate(nodeV.Lat, nodeV.Lon))
-			bPath = append(bPath, cameFromb[v].Edge.NodesInBetween...)
-		}
-		_, ok = cameFromb[v]
-		v = cameFromb[v].NodeIDx
-	}
-
-	util.ReverseG(fPath)
-	fPath = fPath[:len(fPath)-1]
-	path := []datastructure.Coordinate{}
-	path = append(path, fPath...)
-	path = append(path, bPath...)
-
-	edgePath := []datastructure.EdgeCH{}
-	util.ReverseG(fedgePath)
-
-	for i := 0; i < len(bEdgePath); i++ {
-		curr := bEdgePath[i]
-		// harus dibalik buat backward edge path nya
-		// karena base node arah dari target ke common vertex, sedangkan di driving instruction butuhnya dari common ke target
-		toNodeIDx := curr.BaseNodeIDx
-		baseNodeIDx := curr.ToNodeIDX
-		bEdgePath[i].BaseNodeIDx = baseNodeIDx
-		bEdgePath[i].ToNodeIDX = toNodeIDx
-	}
-	edgePath = append(edgePath, fedgePath...)
-
-	edgePath = append(edgePath, bEdgePath...)
-
-	return path, edgePath, eta, dist / 1000
-}
-
-// buat forward dijkstra
-// dari common vertex ke source vertex
-func (rt *RouteAlgorithm) unpackBackward(edge datastructure.EdgeCH, path *[]datastructure.Coordinate, ePath *[]datastructure.EdgeCH,
-	eta, dist *float64) {
-	if !edge.IsShortcut {
-		if rt.ch.GetNode(edge.ToNodeIDX).TrafficLight {
-			*eta += 3.0
-		}
-		*eta += edge.Weight
-		*dist += edge.Dist
-
-		nodesInBetween := make([]datastructure.Coordinate, len(edge.NodesInBetween))
-		copy(nodesInBetween, edge.NodesInBetween)
-		util.ReverseG(nodesInBetween)
-
-		toNode := rt.ch.GetNode(edge.ToNodeIDX)
-
-		*path = append(*path, datastructure.NewCoordinate(toNode.Lat, toNode.Lon))
-		*path = append(*path, nodesInBetween...)
-
-		*ePath = append(*ePath, edge)
-	} else {
-		rt.unpackBackward(rt.ch.GetOutEdge(edge.RemovedEdgeTwo), path, ePath, eta, dist)
-		rt.unpackBackward(rt.ch.GetOutEdge(edge.RemovedEdgeOne), path, ePath, eta, dist)
-	}
-}
-
-// dari common vertex ke target vertex
-func (rt *RouteAlgorithm) unpackForward(edge datastructure.EdgeCH, path *[]datastructure.Coordinate, ePath *[]datastructure.EdgeCH,
-	eta, dist *float64) {
-	if !edge.IsShortcut {
-		if rt.ch.GetNode(edge.ToNodeIDX).TrafficLight {
-			*eta += 3.0
-		}
-		*eta += edge.Weight
-		*dist += edge.Dist
-
-		nodesInBetween := edge.NodesInBetween
-		toNode := rt.ch.GetNode(edge.ToNodeIDX)
-
-		*path = append(*path, datastructure.NewCoordinate(toNode.Lat, toNode.Lon))
-		*path = append(*path, nodesInBetween...)
-
-		*ePath = append(*ePath, edge)
-	} else {
-		rt.unpackForward(rt.ch.GetInEdge(edge.RemovedEdgeOne), path, ePath, eta, dist)
-		rt.unpackForward(rt.ch.GetInEdge(edge.RemovedEdgeTwo), path, ePath, eta, dist)
-
-	}
 }

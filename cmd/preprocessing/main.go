@@ -8,15 +8,22 @@ import (
 	"lintang/navigatorx/pkg/kv"
 	"lintang/navigatorx/pkg/osmparser"
 	"log"
+	"os"
+	"runtime/pprof"
+	"strings"
+	"sync"
 
 	_ "net/http/pprof"
 
-	"github.com/cockroachdb/pebble"
+	badger "github.com/dgraph-io/badger/v4"
 )
 
 var (
 	listenAddr = flag.String("listenaddr", ":5000", "server listen address")
 	mapFile    = flag.String("f", "solo_jogja.osm.pbf", "openstreeetmap file buat road network graphnya")
+	cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
+	memprofile = flag.String("memprofile", "", "write memory profile to this file")
+	mapmatch   = flag.Bool("mapmatch", false, "enable map matching")
 )
 
 //	@title			navigatorx lintangbs API
@@ -34,11 +41,26 @@ var (
 // @schemes	http
 func main() {
 	flag.Parse()
-	ch := contractor.NewContractedGraph()
-	osmParser := osmparser.NewOSMParser(ch)
-	hmmEdges, nodeIdxMap, graphEdges := osmParser.BikinGraphFromOpenstreetmap(*mapFile)
+	if *cpuprofile != "" {
+		// https://go.dev/blog/pprof
+		// ./bin/osm-search-indexer -f "jabodetabek_big.osm.pbf" -cpuprofile=osmsearchcpu.prof -memprofile=osmsearchmem.mprof
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer f.Close()
 
-	db, err := pebble.Open("navigatorxDB", &pebble.Options{})
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
+
+	log.Printf("reading osm file %s", *mapFile)
+	osmParser := osmparser.NewOSMParserV2()
+	processedNodes, processedEdges, streetDirection, mapMatchOsmWays := osmParser.Parse(*mapFile)
+
+	ch := contractor.NewContractedGraph()
+
+	db, err := badger.Open(badger.DefaultOptions("./navigatorx_db"))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -46,17 +68,48 @@ func main() {
 	kvDB := kv.NewKVDB(db)
 	defer kvDB.Close()
 
+	recordMemProfile(memprofile, "parsing_osm_data")
+	var wg sync.WaitGroup
+	wg.Add(1)
 	go func() {
-		kvDB.CreateStreetKV(graphEdges, hmmEdges, nodeIdxMap, *listenAddr, true)
+		defer wg.Done()
+		err = kvDB.BuildH3IndexedEdges(processedEdges)
+		if err != nil {
+			panic(err)
+		}
+		err = kvDB.SaveBatchMapMatchOsmWays(mapMatchOsmWays)
+		if err != nil {
+			panic(err)
+		}
 	}()
 
-	osmParser.CH.Contraction()
-	osmParser.CH.SetCHReady()
-	err = osmParser.SaveToFile()
-	if err != nil {
-		log.Fatal(err)
+	ch.InitCHGraph(processedNodes, processedEdges, streetDirection, osmParser.GetTagStringIdMap())
+
+	if !*mapmatch {
+		ch.Contraction()
 	}
 
+	log.Printf("Saving Contracted Graph to a file...")
+	err = ch.SaveToFile()
+	if err != nil {
+		panic(err)
+	}
+
+	wg.Wait()
+	recordMemProfile(memprofile, "finish_contracting_graph")
+
 	fmt.Printf("\n Contraction Hieararchies + Bidirectional Dijkstra Ready!!")
+
+}
+func recordMemProfile(memprofile *string, name string) {
+	if *memprofile != "" {
+		*memprofile = strings.Replace(*memprofile, ".mprof", fmt.Sprintf("%s.mprof", name), -1)
+		f, err := os.Create(*memprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.WriteHeapProfile(f)
+		f.Close()
+	}
 
 }

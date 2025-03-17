@@ -21,13 +21,13 @@ import (
 
 type NavigationService interface {
 	ShortestPathETA(ctx context.Context, srcLat, srcLon float64,
-		dstLat float64, dstLon float64) (string, float64, []guidance.DrivingInstruction, bool, []datastructure.Coordinate, float64, bool, error)
+		dstLat float64, dstLon float64) (string, float64, []guidance.DrivingInstruction, bool, []datastructure.Coordinate, float64,
+		[]datastructure.EdgeCH, bool, error)
 
 	ShortestPathAlternativeStreetETA(ctx context.Context, srcLat, srcLon float64,
 		alternativeStreetLat float64, alternativeStreetLon float64,
 		dstLat float64, dstLon float64) (string, float64, []guidance.DrivingInstruction, bool, []datastructure.Coordinate, float64, bool, error)
 
-	HiddenMarkovModelDecodingMapMatching(ctx context.Context, gps []datastructure.Coordinate) (string, []datastructure.Coordinate, error)
 	ManyToManyQuery(ctx context.Context, sourcesLat, sourcesLon, destsLat, destsLon []float64) (map[datastructure.Coordinate][]service.TargetResult, error)
 
 	TravelingSalesmanProblemSimulatedAnneal(ctx context.Context, citiesLat []float64, citiesLon []float64) ([]datastructure.Coordinate, []guidance.DrivingInstruction, string, float64, float64, error)
@@ -47,8 +47,6 @@ func NavigatorRouter(r *chi.Mux, svc NavigationService, m *metrics) {
 		r.Route("/api/navigations", func(r chi.Router) {
 			r.Post("/shortest-path", handler.shortestPathETA)
 			r.Post("/shortest-path-alternative-street", handler.shortestPathAlternativeStreetETA)
-			// r.Post("/shortest-path-ch", handler.shortestPathETACH)
-			r.Post("/map-matching", handler.HiddenMarkovModelDecodingMapMatching)
 			r.Post("/many-to-many", handler.ManyToManyQuery)
 			r.Post("/tsp", handler.TravelingSalesmanProblemSimulatedAnnealing)
 			r.Post("/matching", handler.WeightedBipartiteMatching)
@@ -105,16 +103,41 @@ type ShortestPathResponse struct {
 	Found       bool                          `json:"found"`
 	Route       []datastructure.Coordinate    `json:"route,omitempty"`
 	Alg         string                        `json:"algorithm"`
+	EdgePath    []struct {
+		Source               datastructure.Coordinate   `json:"source"`
+		CoordinatesInBetween []datastructure.Coordinate `json:"coords_in_between"`
+		Target               datastructure.Coordinate   `json:"target"`
+	} `json:"edge_path,omitempty"`
 }
 
-func NewShortestPathResponse(path string, distance float64, navs []guidance.DrivingInstruction, eta float64, route []datastructure.Coordinate, found bool, isCH bool) *ShortestPathResponse {
+func NewShortestPathResponse(path string, distance float64, navs []guidance.DrivingInstruction, eta float64, route []datastructure.Coordinate, found bool,
+	edgePath []datastructure.EdgeCH, isCH bool) *ShortestPathResponse {
 
-	var alg string
-	if isCH {
-		alg = "Contraction Hieararchies + Bidirectional Dijkstra"
-	} else {
-		alg = "A* Algorithm"
+	alg := "Contraction Hieararchies + Bidirectional Dijkstra"
+	edgePathResp := make([]struct {
+		Source               datastructure.Coordinate   `json:"source"`
+		CoordinatesInBetween []datastructure.Coordinate `json:"coords_in_between"`
+		Target               datastructure.Coordinate   `json:"target"`
+	}, len(edgePath))
+
+	for i, e := range edgePath {
+		edgePathResp[i] = struct {
+			Source               datastructure.Coordinate   `json:"source"`
+			CoordinatesInBetween []datastructure.Coordinate `json:"coords_in_between"`
+			Target               datastructure.Coordinate   `json:"target"`
+		}{
+			Source: datastructure.Coordinate{
+				Lat: e.PointsInBetween[0].Lat,
+				Lon: e.PointsInBetween[0].Lon,
+			},
+			CoordinatesInBetween: e.PointsInBetween,
+			Target: datastructure.Coordinate{
+				Lat: e.PointsInBetween[len(e.PointsInBetween)-1].Lat,
+				Lon: e.PointsInBetween[len(e.PointsInBetween)-1].Lon,
+			},
+		}
 	}
+
 	return &ShortestPathResponse{
 		Path:        path,
 		Dist:        util.RoundFloat(distance, 2),
@@ -122,6 +145,7 @@ func NewShortestPathResponse(path string, distance float64, navs []guidance.Driv
 		Navigations: navs,
 		Found:       found,
 		Alg:         alg,
+		EdgePath:    edgePathResp,
 	}
 }
 
@@ -156,7 +180,7 @@ func (h *NavigationHandler) shortestPathETA(w http.ResponseWriter, r *http.Reque
 	}
 
 	h.promeMetrics.SPQueryCount.WithLabelValues("true").Inc()
-	p, dist, n, found, route, eta, isCH, err := h.svc.ShortestPathETA(r.Context(), data.SrcLat, data.SrcLon, data.DstLat, data.DstLon)
+	p, dist, n, found, route, eta, edgePath, isCH, err := h.svc.ShortestPathETA(r.Context(), data.SrcLat, data.SrcLon, data.DstLat, data.DstLon)
 	if err != nil {
 		if !found {
 			render.Render(w, r, ErrInvalidRequest(errors.New("node not found")))
@@ -167,7 +191,7 @@ func (h *NavigationHandler) shortestPathETA(w http.ResponseWriter, r *http.Reque
 	}
 
 	render.Status(r, http.StatusOK)
-	render.JSON(w, r, NewShortestPathResponse(p, dist, n, eta, route, found, isCH))
+	render.JSON(w, r, NewShortestPathResponse(p, dist, n, eta, route, found, edgePath, isCH))
 }
 
 // shortestPathAlternativeStreetETA
@@ -213,14 +237,8 @@ func (h *NavigationHandler) shortestPathAlternativeStreetETA(w http.ResponseWrit
 	}
 
 	render.Status(r, http.StatusOK)
-	render.JSON(w, r, NewShortestPathResponse(p, dist, n, eta, route, found, isCH))
-}
-
-// MapMatchingRequest model info
-//
-//	@Description	request body untuk map matching pakai hidden markov model
-type MapMatchingRequest struct {
-	Coordinates []Coord `json:"coordinates" validate:"required,dive"`
+	render.JSON(w, r, NewShortestPathResponse(p, dist, n, eta, route, found,
+		[]datastructure.EdgeCH{}, isCH))
 }
 
 // Coord model info
@@ -229,83 +247,6 @@ type MapMatchingRequest struct {
 type Coord struct {
 	Lat float64 `json:"lat" validate:"required,lt=90,gt=-90"`
 	Lon float64 `json:"lon" validate:"required,lt=180,gt=-180"`
-}
-
-func (s *MapMatchingRequest) Bind(r *http.Request) error {
-	if len(s.Coordinates) == 0 {
-		return errors.New("invalid request")
-	}
-	return nil
-}
-
-// MapMatchingResponse model info
-//
-//	@Description	response body untuk map matching pakai hidden markov model
-type MapMatchingResponse struct {
-	Path        string  `json:"path"`
-	Coordinates []Coord `json:"coordinates"`
-}
-
-func RenderMapMatchingResponse(path string, coords []datastructure.Coordinate) *MapMatchingResponse {
-	coordsResp := []Coord{}
-	for _, c := range coords {
-		coordsResp = append(coordsResp, Coord{
-			Lat: c.Lat,
-			Lon: c.Lon,
-		})
-	}
-
-	return &MapMatchingResponse{
-		Path:        path,
-		Coordinates: coordsResp,
-	}
-}
-
-// HiddenMarkovModelDecodingMapMatching
-//
-//	@Summary		map matching pakai hidden markov model. Snapping noisy GPS coordinates ke road network lokasi asal gps seharusnya
-//	@Description	map matching pakai hidden markov model. Snapping noisy GPS coordinates ke road network lokasi asal gps seharusnya
-//	@Tags			navigations
-//	@Param			body	body	MapMatchingRequest	true	"request body hidden markov model map matching"
-//	@Accept			application/json
-//	@Produce		application/json
-//	@Router			/navigations/map-matching [post]
-//	@Success		200	{object}	MapMatchingResponse
-//	@Failure		400	{object}	ErrResponse
-//	@Failure		500	{object}	ErrResponse
-func (h *NavigationHandler) HiddenMarkovModelDecodingMapMatching(w http.ResponseWriter, r *http.Request) {
-	data := &MapMatchingRequest{}
-	if err := render.Bind(r, data); err != nil {
-		render.Render(w, r, ErrInvalidRequest(err))
-		return
-	}
-	validate := validator.New()
-	if err := validate.Struct(*data); err != nil {
-		english := en.New()
-		uni := ut.New(english, english)
-		trans, _ := uni.GetTranslator("en")
-		_ = enTranslations.RegisterDefaultTranslations(validate, trans)
-		vv := translateError(err, trans)
-		render.Render(w, r, ErrValidation(err, vv))
-		return
-	}
-
-	coords := []datastructure.Coordinate{}
-	for _, c := range data.Coordinates {
-		coords = append(coords, datastructure.Coordinate{
-			Lat: c.Lat,
-			Lon: c.Lon,
-		})
-	}
-	p, pNode, err := h.svc.HiddenMarkovModelDecodingMapMatching(r.Context(), coords)
-	if err != nil {
-		render.Render(w, r, ErrInternalServerErrorRend(errors.New("internal server error")))
-
-		return
-	}
-
-	render.Status(r, http.StatusOK)
-	render.JSON(w, r, RenderMapMatchingResponse(p, pNode))
 }
 
 // ManyToManyQueryRequest model info
@@ -752,7 +693,6 @@ func getStatusCode(err error) int {
 			return http.StatusInternalServerError
 		}
 	}
-
 }
 
 func translateError(err error, trans ut.Translator) (errs []error) {

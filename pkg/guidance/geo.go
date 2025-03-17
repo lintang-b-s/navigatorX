@@ -44,7 +44,7 @@ func BearingTo(p1Lat, p1Lon, p2Lat, p2Lon float64) float64 {
 	y := math.Sin(dLon) * math.Cos(lat2)
 	x := math.Cos(lat1)*math.Sin(lat2) -
 		math.Sin(lat1)*math.Cos(lat2)*math.Cos(dLon)
-	brng := math.Atan2(y, x) * 180.0 / math.Pi
+	brng := math.Mod(math.Atan2(y, x)*180.0/math.Pi+360, 360.0)
 
 	return brng
 }

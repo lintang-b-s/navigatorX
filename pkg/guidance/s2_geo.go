@@ -13,7 +13,7 @@ type Coordinate struct {
 	Lon float64 `json:"lon"`
 }
 
-func MakeSixDigitsAfterComa2(n datastructure.CHNode2, precision int) datastructure.CHNode2 {
+func MakeSixDigitsAfterComa2(n datastructure.CHNode, precision int) datastructure.CHNode {
 
 	if util.CountDecimalPlacesF64(n.Lat) != precision {
 		n.Lat = util.RoundFloat(n.Lat+0.000001, 6)
@@ -32,7 +32,8 @@ func MakeSixDigitsAfterComaLatLon(lat, lon *float64, precision int) {
 		*lon = util.RoundFloat(*lon+0.000001, 6)
 	}
 }
-func ProjectPointToLineCoord(nearestStPoint datastructure.CHNode2, secondNearestStPoint datastructure.CHNode2,
+
+func ProjectPointToLineCoord(nearestStPoint datastructure.CHNode, secondNearestStPoint datastructure.CHNode,
 	snap rtreego.Point) Coordinate {
 	nearestStPoint = MakeSixDigitsAfterComa2(nearestStPoint, 6)
 	secondNearestStPoint = MakeSixDigitsAfterComa2(secondNearestStPoint, 6)

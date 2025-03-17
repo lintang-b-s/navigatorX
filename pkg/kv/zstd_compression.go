@@ -7,12 +7,13 @@ import (
 	"github.com/kelindar/binary"
 )
 
-// yang dipakai di road snap cuma intersection node sama centerLoc
 type SmallWay struct {
-	CenterLoc           []float64 // [lat, lon]
-	IntersectionNodesID []int64
-	NodesInBetween []Coordinate
-	WayID int32
+	CenterLoc           []float64
+	IntersectionNodesID []int32
+	PointsInBetween     []Coordinate
+	WayID               int32
+	FromNodeID          int32
+	ToNodeID            int32
 }
 type Coordinate struct {
 	Lat float64
@@ -34,26 +35,36 @@ func NewCoordinates(lat, lon []float64) []Coordinate {
 	return coords
 }
 
-
 func (s *SmallWay) toConcurrentWay() concurrent.SmallWay {
 	return concurrent.SmallWay{
 		CenterLoc:           s.CenterLoc,
 		IntersectionNodesID: s.IntersectionNodesID,
-	}	
+	}
 }
 
-func Encode(sw []SmallWay) []byte {
+func encode(sw []SmallWay) []byte {
 	encoded, _ := binary.Marshal(sw)
 	return encoded
 }
 
-func Decode(bb []byte) ([]SmallWay, error) {
+func decode(bb []byte) ([]SmallWay, error) {
 	var ch []SmallWay
 	binary.Unmarshal(bb, &ch)
 	return ch, nil
 }
 
-func Compress(bb []byte) ([]byte, error) {
+func encodeOneWay(sw SmallWay) []byte {
+	encoded, _ := binary.Marshal(sw)
+	return encoded
+}
+
+func decodeOneWay(bb []byte) (SmallWay, error) {
+	var ch SmallWay
+	binary.Unmarshal(bb, &ch)
+	return ch, nil
+}
+
+func compress(bb []byte) ([]byte, error) {
 	var bbCompressed []byte
 	bbCompressed, err := zstd.Compress(bbCompressed, bb)
 	if err != nil {
@@ -62,7 +73,7 @@ func Compress(bb []byte) ([]byte, error) {
 	return bbCompressed, nil
 }
 
-func Decompress(bbCompressed []byte) ([]byte, error) {
+func decompress(bbCompressed []byte) ([]byte, error) {
 	var bb []byte
 	bb, err := zstd.Decompress(bb, bbCompressed)
 	if err != nil {

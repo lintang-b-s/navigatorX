@@ -6,16 +6,16 @@ import (
 	_ "lintang/navigatorx/docs"
 	"lintang/navigatorx/pkg/contractor"
 	"lintang/navigatorx/pkg/engine/heuristics"
-	"lintang/navigatorx/pkg/engine/matching"
 	"lintang/navigatorx/pkg/engine/riderdrivermatching"
 	"lintang/navigatorx/pkg/engine/routingalgorithm"
 	"lintang/navigatorx/pkg/kv"
-	"lintang/navigatorx/pkg/osmparser"
 	"lintang/navigatorx/pkg/server/rest"
 	"lintang/navigatorx/pkg/server/rest/service"
 	"log"
 	"net/http"
-	"runtime"
+	"os"
+	"runtime/pprof"
+	"strings"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -23,15 +23,18 @@ import (
 
 	_ "net/http/pprof"
 
-	"github.com/cockroachdb/pebble"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+
+	badger "github.com/dgraph-io/badger/v4"
 )
 
 var (
 	listenAddr = flag.String("listenaddr", ":5000", "server listen address")
 	mapFile    = flag.String("f", "solo_jogja.osm.pbf", "openstreeetmap file buat road network graphnya")
+	cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
+	memprofile = flag.String("memprofile", "", "write memory profile to this file")
 )
 
 //	@title			navigatorx lintangbs API
@@ -49,14 +52,29 @@ var (
 // @schemes	http
 func main() {
 	flag.Parse()
+	if *cpuprofile != "" {
+		// https://go.dev/blog/pprof
+		// ./bin/osm-search-indexer -f "jabodetabek_big.osm.pbf" -cpuprofile=osmsearchcpu.prof -memprofile=osmsearchmem.mprof
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer f.Close()
+
+		pprof.StartCPUProfile(f)
+		defer pprof.StopCPUProfile()
+	}
+
+	flag.Parse()
 	ch := contractor.NewContractedGraph()
-	osmParser := osmparser.NewOSMParser(ch)
-	err := osmParser.LoadGraph()
+	err := ch.LoadGraph()
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	db, err := pebble.Open("navigatorxDB", &pebble.Options{})
+	recordMemProfile(memprofile, "load_contracted_graph")
+
+	db, err := badger.Open(badger.DefaultOptions("./navigatorx_db"))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -88,21 +106,32 @@ func main() {
 		httpSwagger.URL("http://localhost:5000/swagger/doc.json"), //The url pointing to API definition
 	))
 
-	routingAlgorithm := routingalgorithm.NewRouteAlgorithm(osmParser.CH)
+	routingAlgorithm := routingalgorithm.NewRouteAlgorithm(ch)
 	hungarian := riderdrivermatching.NewHungarian(routingAlgorithm)
 
-	heuristic := heuristics.NewHeuristics(routingAlgorithm, osmParser.CH)
-	mapMatching := matching.NewHMMMapMatching(osmParser.CH, kvDB, routingAlgorithm)
+	heuristic := heuristics.NewHeuristics(routingAlgorithm, ch)
 
-	navigatorSvc := service.NewNavigationService(osmParser.CH, kvDB, hungarian, routingAlgorithm, mapMatching, heuristic)
+	navigatorSvc := service.NewNavigationService(ch, kvDB, hungarian, routingAlgorithm, heuristic)
+	recordMemProfile(memprofile, "service_init")
+
 	rest.NavigatorRouter(r, navigatorSvc, m)
-
-	runtime.GC()
-	runtime.GC() // run garbage collection now biar heap size nya ngurang
 
 	fmt.Printf("\n Contraction Hieararchies + Bidirectional Dijkstra Ready!!")
 	fmt.Printf("\nserver started at %s\n", *listenAddr)
 	log.Fatal(http.ListenAndServe(*listenAddr, r))
+}
+
+func recordMemProfile(memprofile *string, name string) {
+	if *memprofile != "" {
+		*memprofile = strings.Replace(*memprofile, ".mprof", fmt.Sprintf("%s.mprof", name), -1)
+		f, err := os.Create(*memprofile)
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.WriteHeapProfile(f)
+		f.Close()
+	}
+
 }
 
 // use log middleware below if u want to use elk for logging

@@ -4,27 +4,6 @@ Simple Openstreetmap routing engine in go. This project uses Contraction Hierarc
 
 ## Quick Start
 
-#### Docker
-
-```
-1. docker compose up  --build
-2. wait for preprocessing contraction hierarchies to complete (about 3 minutes) [you can check it with 'docker logs navigatorx -f', wait until the text 'Contraction Hierarchies + Bidirectional Dijkstra Ready!!' appears  ]
-```
-
-#### Local (Preprocess + Server)
-
-```
-1. download the jogja & solo openstreetmap pbf file at: https://drive.google.com/file/d/1pEHN8wwUbB5XpuYMZm141fXQ_ZsIf4CO/view?usp=sharing
-Note: or you can also use another openstreetmap file with the osm.pbf format (https://download.geofabrik.de/)
-2.  put the download results into the root directory of this project
-3.  go mod tidy &&  mkdir bin
-4. CGO_ENABLED=1  go build -o ./bin/navigatorx ./cmd/auto
-5. ./bin/navigatorx
-(Minimum RAM 2.0 GB for the above openstreetmap data)
-note: or you can also do it with "make run"
-5.  wait for preprocessing contraction hierarchies to complete (about 3 minutes)
-Note: if error "resource temporary unavailable" -> just delete navigatorXDB directory and restart the steps above
-```
 
 #### Only Preprocessing
 
@@ -50,6 +29,7 @@ Make sure you have done the preprocessing stage above!
 2. ./bin/navigatorx-engine
 (Minimum free RAM 1 GB for the above data)
 ```
+
 
 #### Change Map Data
 
@@ -80,17 +60,6 @@ Note: Source & Destination Coordinates must be around Yogyakarta Province/Suraka
 5. Copy the polyline string path of the response endpoint result to https://valhalla.github.io/demos/polyline . Check Unsescape '\'. The shortest route will appear on the map. :)
 ```
 
-### Map Matching Hidden Markov Model Decoding
-find  the  most  likely  road  route  represented  by  a  time-stamped  sequence  of  latitude/longitude  pairs (gps).   
-```
-1. wait until there is a log "server started at :5000". If you want the query to be >10x faster, wait for the Contraction Hierarchies preprocessing to complete.
-2. request to the server with route list of gps coordinate data (or fake route coordinate data)
-curl --location 'http://localhost:5000/api/navigations/map-matching' \
---header 'Content-Type: application/json' -d @gps_hmm_map_matching.json
-
-Note:  GPS Coordinates must be around the Yogyakarta province/Surakarta city/Klaten if using OpenStreetMap data in the setup step
-3. Copy the polyline string path of the response endpoint result to https://valhalla.github.io/demos/polyline . Centang Unsescape '\'. The map matching results in the form of a list of road network node coordinates will appear on the map. :)
-```
 
 ### Traveling Salesman Problem Using Simulated Annealing or Ant-Colony Optimization
 
@@ -450,4 +419,3 @@ Note:  "sources" and "targets" must be around the province of Yogyakarta/Surakar
 -  http://theory.stanford.edu/~amitp/GameProgramming/ImplementationNotes.html
 ```
 
-go build -gcflags "-m -l" \*.go
