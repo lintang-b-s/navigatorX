@@ -6,7 +6,7 @@ import (
 	"github.com/kelindar/binary"
 )
 
-func encodeWays(sw []SmallWay) ([]byte, error) {
+func encodeWays(sw []kvEdge) ([]byte, error) {
 	bb := encode(sw)
 
 	bbCompressed := bb
@@ -14,23 +14,23 @@ func encodeWays(sw []SmallWay) ([]byte, error) {
 	return bbCompressed, nil
 }
 
-func loadWays(bbCompressed []byte) ([]SmallWay, error) {
-	var sw []SmallWay
+func loadWays(bbCompressed []byte) ([]kvEdge, error) {
+	var sw []kvEdge
 
 	sw, err := decode(bbCompressed)
 
 	return sw, err
 }
 
-func encodeWay(sw SmallWay) ([]byte, error) {
+func encodeWay(sw kvEdge) ([]byte, error) {
 	bb := encodeOneWay(sw)
 
 	bbCompressed := bb
 
 	return bbCompressed, nil
 }
-func loadWay(bbCompressed []byte) (SmallWay, error) {
-	var sw SmallWay
+func loadWay(bbCompressed []byte) (kvEdge, error) {
+	var sw kvEdge
 
 	sw, err := decodeOneWay(bbCompressed)
 

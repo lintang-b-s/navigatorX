@@ -54,8 +54,8 @@ func (rt *RouteAlgorithm) ShortestPathAStar(from, to int32) ([]datastructure.Coo
 
 			fromNode := rt.ch.GetNode(from)
 			pathCoords = append(pathCoords, datastructure.Coordinate{Lat: fromNode.Lat, Lon: fromNode.Lon})
-			util.ReverseG(pathCoords)
-			util.ReverseG(pathEdges)
+			pathCoords = util.ReverseG(pathCoords)
+			pathEdges = util.ReverseG(pathEdges)
 
 			return pathCoords, pathEdges, costSoFar[current.Item] + etaTraffic, distSoFar[current.Item] / 1000
 		}
@@ -92,9 +92,8 @@ func (rt *RouteAlgorithm) ShortestPathAStar(from, to int32) ([]datastructure.Coo
 }
 
 func (rt *RouteAlgorithm) pathEstimatedCostETA(from, to datastructure.CHNode) float64 {
-	currLoc := geo.NewLocation(from.Lat, from.Lon)
-	toLoc := geo.NewLocation(to.Lat, to.Lon)
-	dist := geo.HaversineDistance(currLoc, toLoc) // in km
+
+	dist := geo.CalculateHaversineDistance(from.Lat, from.Lon, to.Lat, to.Lon) // in km
 
 	toEdgeSpeed := 40.0 // km/h
 

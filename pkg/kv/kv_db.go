@@ -1,7 +1,7 @@
 package kv
 
 import (
-	"encoding/binary"
+	"context"
 	"errors"
 	"fmt"
 	"lintang/navigatorx/pkg/datastructure"
@@ -20,22 +20,30 @@ func NewKVDB(db *badger.DB) *KVDB {
 	return &KVDB{db}
 }
 
-func (k *KVDB) BuildH3IndexedEdges(ways []datastructure.EdgeCH) error {
+func (k *KVDB) BuildH3IndexedEdges(ctx context.Context, edges []datastructure.EdgeCH, edgesExtraInfo []datastructure.EdgeExtraInfo) error {
 	log.Printf("wait until loading contracted graph complete...")
 
 	log.Printf("creating & saving h3 indexed street to key-value db...")
-	kv := make(map[string][]SmallWay)
-	for i, w := range ways {
-		street := ways[i]
+	kv := make(map[string][]kvEdge)
+	for i := range edges {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("context cancelled")
+		default:
+		}
 
-		wayLat := w.PointsInBetween[0].Lat
-		wayLon := w.PointsInBetween[0].Lon
+		roadSegment := edges[i]
 
-		h3LatLon := h3.NewLatLng(wayLat, wayLon)
+		pointsInBetween := edgesExtraInfo[i].PointsInBetween
+
+		edgeLat := pointsInBetween[0].Lat
+		edgeLon := pointsInBetween[0].Lon
+
+		h3LatLon := h3.NewLatLng(edgeLat, edgeLon)
 		cell := h3.LatLngToCell(h3LatLon, 9)
-		smallStreet := SmallWay{
-			CenterLoc:           []float64{wayLat, wayLon},
-			IntersectionNodesID: []int32{street.FromNodeID, street.ToNodeID},
+		smallStreet := kvEdge{
+			CenterLoc:           []float64{edgeLat, edgeLon},
+			IntersectionNodesID: []int32{roadSegment.FromNodeID, roadSegment.ToNodeID},
 		}
 
 		kv[cell.String()] = append(kv[cell.String()], smallStreet)
@@ -45,15 +53,31 @@ func (k *KVDB) BuildH3IndexedEdges(ways []datastructure.EdgeCH) error {
 	batchSize := 1000
 	batches := make([]batchData, 0, batchSize)
 	for key, value := range kv {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("context cancelled")
+		default:
+		}
+
 		batches = append(batches, batchData{
 			key:   key,
 			value: value,
 		})
 		if len(batches) == batchSize {
-			k.saveBatchEdges(batches)
+			err := k.saveBatchEdges(ctx, batches)
+			if err != nil {
+				return err
+			}
 			batches = make([]batchData, 0, batchSize)
 		}
 
+	}
+
+	if len(batches) > 0 {
+		err := k.saveBatchEdges(ctx, batches)
+		if err != nil {
+			return err
+		}
 	}
 
 	log.Printf("creating & saving h3 indexed street to key-value db done...")
@@ -62,25 +86,30 @@ func (k *KVDB) BuildH3IndexedEdges(ways []datastructure.EdgeCH) error {
 
 type batchData struct {
 	key   string
-	value []SmallWay
+	value []kvEdge
 }
 
-func (k *KVDB) saveBatchEdges(batchData []batchData) interface{} {
+func (k *KVDB) saveBatchEdges(ctx context.Context, batchData []batchData) error {
 	batch := k.db.NewWriteBatch()
 	defer batch.Cancel()
 
 	for _, data := range batchData {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("context cancelled")
+		default:
+		}
 
 		key := []byte(data.key)
 
 		val, err := encodeWays(data.value)
 
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
 
 		if err := batch.Set(key, val); err != nil {
-			log.Fatal(err)
+			return err
 		}
 	}
 
@@ -110,8 +139,8 @@ func (k *KVDB) get(val, key []byte) ([]byte, error) {
 }
 
 // GetNearestStreetsFromPointCoord buat road snaping. Untuk menentukan jalan-jalan yang paling dekat dengan titik start/end rute yang di tunjuk sama pengguna
-func (k *KVDB) GetNearestStreetsFromPointCoord(lat, lon float64) ([]datastructure.SmallWay, error) {
-	ways := []SmallWay{}
+func (k *KVDB) GetNearestStreetsFromPointCoord(lat, lon float64) ([]datastructure.KVEdge, error) {
+	ways := []kvEdge{}
 
 	home := h3.NewLatLng(lat, lon)
 	cell := h3.LatLngToCell(home, 9)
@@ -122,7 +151,7 @@ func (k *KVDB) GetNearestStreetsFromPointCoord(lat, lon float64) ([]datastructur
 	val, err := k.get(val, []byte(cellString))
 
 	if err != nil {
-		return []datastructure.SmallWay{}, err
+		return []datastructure.KVEdge{}, err
 	}
 
 	streets, _ := loadWays(val)
@@ -141,12 +170,12 @@ func (k *KVDB) GetNearestStreetsFromPointCoord(lat, lon float64) ([]datastructur
 			val, err = k.get(val, []byte(currCellString))
 
 			if err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
-				return []datastructure.SmallWay{}, err
+				return []datastructure.KVEdge{}, err
 			}
 
 			streets, err := loadWays(val)
 			if err != nil {
-				return []datastructure.SmallWay{}, err
+				return []datastructure.KVEdge{}, err
 			}
 			ways = append(ways, streets...)
 		}
@@ -165,11 +194,11 @@ func (k *KVDB) GetNearestStreetsFromPointCoord(lat, lon float64) ([]datastructur
 				val, err = k.get(val, []byte(currCellString))
 
 				if err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
-					return []datastructure.SmallWay{}, err
+					return []datastructure.KVEdge{}, err
 				}
 				streets, err := loadWays(val)
 				if err != nil {
-					return []datastructure.SmallWay{}, err
+					return []datastructure.KVEdge{}, err
 				}
 				ways = append(ways, streets...)
 			}
@@ -180,9 +209,9 @@ func (k *KVDB) GetNearestStreetsFromPointCoord(lat, lon float64) ([]datastructur
 
 	if len(ways) == 0 {
 
-		return []datastructure.SmallWay{}, fmt.Errorf("tidak ada jalan di sekitar lokasi")
+		return []datastructure.KVEdge{}, fmt.Errorf("tidak ada jalan di sekitar lokasi")
 	}
-	waysData := make([]datastructure.SmallWay, len(ways))
+	waysData := make([]datastructure.KVEdge, len(ways))
 	for i, way := range ways {
 		nodeInBetweenLats := []float64{}
 		nodeInBetweenLons := []float64{}
@@ -191,7 +220,7 @@ func (k *KVDB) GetNearestStreetsFromPointCoord(lat, lon float64) ([]datastructur
 			nodeInBetweenLons = append(nodeInBetweenLons, node.Lon)
 		}
 		coords := datastructure.NewCoordinates(nodeInBetweenLats, nodeInBetweenLons)
-		waysData[i] = datastructure.SmallWay{
+		waysData[i] = datastructure.KVEdge{
 			CenterLoc:           way.CenterLoc,
 			IntersectionNodesID: way.IntersectionNodesID,
 			PointsInBetween:     coords,
@@ -204,8 +233,8 @@ func (k *KVDB) GetNearestStreetsFromPointCoord(lat, lon float64) ([]datastructur
 
 /*
 *
-  - https://observablehq.com/@nrabinowitz/h3-radius-lookup?collection=@nrabinowitz/h3
-    search cell neighbor dari cell dari lat,lon  yang radius nya = searchRadiusKm
+
+	search cell neighbor dari cell dari lat,lon  yang radius nya = searchRadiusKm
 */
 func kRingIndexesArea(lat, lon, searchRadiusKm float64) []h3.Cell {
 	home := h3.NewLatLng(lat, lon)
@@ -227,88 +256,4 @@ func kRingIndexesArea(lat, lon, searchRadiusKm float64) []h3.Cell {
 
 func (k *KVDB) Close() {
 	k.db.Close()
-}
-
-const (
-	prefixMapMatchWay = "hmm-"
-	initialSize       = 1e5
-)
-
-func (k *KVDB) SaveBatchMapMatchOsmWays(osmWays []datastructure.MapMatchOsmWay) error {
-	batch := k.db.NewWriteBatch()
-	defer batch.Cancel()
-
-	for _, data := range osmWays {
-
-		var key = make([]byte, 8)
-
-		binary.LittleEndian.PutUint32(key, uint32(data.ID))
-		key = append([]byte(prefixMapMatchWay), key...)
-
-		val, err := encodeMapMatchWay(data)
-
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		if err := batch.Set(key, val); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	if err := batch.Flush(); err != nil {
-		log.Printf("error saving ways: %v", err)
-		return err
-	}
-	log.Printf("saving %d ways done", len(osmWays))
-	return nil
-}
-
-func (k *KVDB) GetMapMatchWay(key int32) (datastructure.MapMatchOsmWay, error) {
-	var val []byte
-
-	keyByte := make([]byte, 8)
-	binary.LittleEndian.PutUint32(keyByte, uint32(key))
-	keyByte = append([]byte(prefixMapMatchWay), keyByte...)
-
-	err := k.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get(keyByte)
-		if err != nil {
-			return err
-		}
-
-		val, err = item.ValueCopy(nil)
-		return err
-	})
-	if err != nil {
-		return datastructure.MapMatchOsmWay{}, err
-	}
-
-	decoded, err := decodeMapMatchWay(val)
-	return decoded, err
-}
-
-func (k *KVDB) GetAllMapMatchWays() ([]datastructure.MapMatchOsmWay, error) {
-	mapMatchOsmWays := make([]datastructure.MapMatchOsmWay, 0, initialSize)
-	err := k.db.View(func(txn *badger.Txn) error {
-		it := txn.NewIterator(badger.DefaultIteratorOptions)
-		defer it.Close()
-		prefix := []byte(prefixMapMatchWay)
-		for it.Seek(prefix); it.ValidForPrefix(prefix); it.Next() {
-			item := it.Item()
-			err := item.Value(func(v []byte) error {
-				decoded, err := decodeMapMatchWay(v)
-				if err != nil {
-					return err
-				}
-				mapMatchOsmWays = append(mapMatchOsmWays, decoded)
-				return nil
-			})
-			if err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-	return mapMatchOsmWays, err
 }

@@ -5,7 +5,7 @@ import "testing"
 func TestQuickSort(t *testing.T) {
 
 	arr := []int{4, 3, 2, 1, 10, 5555, -1, 20, 100, -100}
-	QuickSort(arr, 0, len(arr)-1, func(a, b int) int {
+	arr = QuickSortG(arr, func(a, b int) int {
 		if a < b {
 			return -1
 		} else if a > b {

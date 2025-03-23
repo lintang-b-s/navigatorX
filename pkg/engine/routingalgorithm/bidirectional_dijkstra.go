@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	maxVisitedNodes = 400 // pruning search when calculating route distance between two hidden states in map matching
+	maxVisitedNodes = 15  // prevState->nextState should be less than 15 node visit. idk
 )
 
 func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32, fromEdgeFilter, toEdgeFilter func(edge datastructure.EdgeCH) bool) ([]datastructure.Coordinate, []datastructure.EdgeCH,
@@ -55,7 +55,7 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32, fromEdgeFilter,
 		}
 
 		if frontFinished && backFinished {
-			// stop pencarian jika kedua priority queue kosong
+			// stop search if both front and back search finished  (forw and backw priority queue empty)
 			break
 		}
 

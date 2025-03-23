@@ -1,6 +1,6 @@
 package concurrent
 
-type SmallWay struct {
+type KVEdge struct {
 	CenterLoc           []float64 // [lat, lon]
 	IntersectionNodesID []int32
 	PointsInBetween     []Coordinate
@@ -10,11 +10,11 @@ type SmallWay struct {
 }
 type SaveWayJobItem struct {
 	KeyStr string
-	ValArr []SmallWay
+	ValArr []KVEdge
 }
 
 type JobI interface {
-	[]int32 | SaveWayJobItem | []SmallWay
+	[]int32 | SaveWayJobItem | []KVEdge
 }
 
 type Job[T JobI] struct {

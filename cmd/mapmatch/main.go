@@ -5,7 +5,6 @@ import (
 	"lintang/navigatorx/pkg/contractor"
 	"lintang/navigatorx/pkg/datastructure"
 	"lintang/navigatorx/pkg/engine/matching"
-	"lintang/navigatorx/pkg/engine/routingalgorithm"
 	"lintang/navigatorx/pkg/kv"
 	mmrest "lintang/navigatorx/pkg/server/mm_rest"
 	"lintang/navigatorx/pkg/server/mm_rest/service"
@@ -44,17 +43,11 @@ func main() {
 	rtree := datastructure.NewRtree(25, 50, 2)
 	roadSnapper := snap.NewRoadSnapper(rtree)
 
-	mapMatchOsmWays, err := kvDB.GetAllMapMatchWays()
-	if err != nil {
-		log.Fatal(err)
-	}
-	roadSnapper.BuildRoadSnapper(mapMatchOsmWays, ch)
+	roadSnapper.BuildRoadSnapper(ch)
 
-	routingAlgorithm := routingalgorithm.NewRouteAlgorithm(ch)
+	mapMatching := matching.NewHMMMapMatching(ch, kvDB)
 
-	mapMatching := matching.NewHMMMapMatching(ch, kvDB, routingAlgorithm)
-
-	mmSvc := service.NewMapMatchingService(mapMatching, roadSnapper, kvDB, ch, routingAlgorithm)
+	mmSvc := service.NewMapMatchingService(mapMatching, roadSnapper, kvDB, ch)
 
 	// server
 

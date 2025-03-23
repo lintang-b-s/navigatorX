@@ -11,10 +11,9 @@ coba/
 
 *.prof
 *.mprof
-hmm/
 navigatorx_db/
-ngaco/
 
 .vscode/
 frontend/
 
+output*

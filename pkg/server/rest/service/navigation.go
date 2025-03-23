@@ -10,8 +10,7 @@ import (
 )
 
 type ContractedGraph interface {
-	SnapLocationToRoadNetworkNodeH3(ways []datastructure.SmallWay, wantToSnap []float64) int32
-	SnapLocationToRoadNetworkNodeH3ForMapMatching(ways []datastructure.SmallWay, wantToSnap []float64) []datastructure.State
+	SnapLocationToRoadNetworkNodeH3(ways []datastructure.KVEdge, wantToSnap []float64) int32
 
 	GetNodeFirstOutEdges(nodeID int32) []int32
 	GetNodeFirstInEdges(nodeID int32) []int32
@@ -24,10 +23,13 @@ type ContractedGraph interface {
 	SaveToFile() error
 	LoadGraph() error
 	GetStreetDirection(streetName int) [2]bool
-	GetStreetInfo(streetName int) datastructure.StreetExtraInfo
+
 	GetStreetNameFromID(streetName int) string
 	GetRoadClassFromID(roadClass int) string
 	GetRoadClassLinkFromID(roadClassLink int) string
+
+	GetEdgeExtraInfo(edgeID int) datastructure.EdgeExtraInfo
+	IsRoundabout(edgeID int32) bool
 }
 
 type RoutingAlgorithm interface {
@@ -38,7 +40,7 @@ type RoutingAlgorithm interface {
 }
 
 type KVDB interface {
-	GetNearestStreetsFromPointCoord(lat, lon float64) ([]datastructure.SmallWay, error)
+	GetNearestStreetsFromPointCoord(lat, lon float64) ([]datastructure.KVEdge, error)
 }
 
 type Heuristics interface {
@@ -90,7 +92,7 @@ func (uc *NavigationService) ShortestPathETA(ctx context.Context, srcLat, srcLon
 	found := false
 
 	pN, ePath, eta, dist := uc.routing.ShortestPathBiDijkstraCH(fromSurakartaNode, toSurakartaNode)
-	p := datastructure.RenderPath2(pN)
+	p := datastructure.CreatePolyline(pN)
 	if eta != -1 {
 		found = true
 	}
@@ -263,7 +265,7 @@ func (uc *NavigationService) ShortestPathAlternativeStreetETA(ctx context.Contex
 	var route []datastructure.Coordinate = make([]datastructure.Coordinate, 0)
 
 	navPaths := ""
-	navPaths = datastructure.RenderPath2(concatedPathsCH)
+	navPaths = datastructure.CreatePolyline(concatedPathsCH)
 
 	drivingInstruction := guidance.NewInstructionsFromEdges(uc.CH)
 	instructions, err := drivingInstruction.GetDrivingInstructions(concatedEdgesCH)
@@ -304,7 +306,7 @@ func (uc *NavigationService) ManyToManyQuery(ctx context.Context, sourcesLat, so
 		}
 
 		for j, dest := range dests {
-			currPath := datastructure.RenderPath2(scMap[src][dest].Paths)
+			currPath := datastructure.CreatePolyline(scMap[src][dest].Paths)
 			currDist := scMap[src][dest].Dist
 			currETA := scMap[src][dest].Eta
 			curEdgePath := scMap[src][dest].EdgePath
@@ -351,7 +353,7 @@ func (uc *NavigationService) TravelingSalesmanProblemSimulatedAnneal(ctx context
 	if err != nil {
 		return []datastructure.Coordinate{}, []guidance.DrivingInstruction{}, "", 0, 0, server.WrapErrorf(err, server.ErrInternalServerError, "internal server error")
 	}
-	return cititesTour, instructions, datastructure.RenderPath2(tspTourNodes), bestETA, bestDistance, nil
+	return cititesTour, instructions, datastructure.CreatePolyline(tspTourNodes), bestETA, bestDistance, nil
 }
 
 func (uc *NavigationService) TravelingSalesmanProblemAntColonyOptimization(ctx context.Context, citiesLat []float64, citiesLon []float64) ([]datastructure.Coordinate, []guidance.DrivingInstruction, string, float64, float64, error) {
@@ -375,20 +377,7 @@ func (uc *NavigationService) TravelingSalesmanProblemAntColonyOptimization(ctx c
 	if err != nil {
 		return []datastructure.Coordinate{}, []guidance.DrivingInstruction{}, "", 0, 0, server.WrapErrorf(err, server.ErrInternalServerError, "internal server error")
 	}
-	return cititesTour, instructions, datastructure.RenderPath2(tspTourNodes), bestETA, bestDistance, nil
-}
-
-func (uc *NavigationService) NearestStreetNodesForMapMatching(lat, lon float64) ([]datastructure.State, error) {
-	ways, err := uc.KV.GetNearestStreetsFromPointCoord(lat, lon)
-	if err != nil {
-		return []datastructure.State{}, err
-	}
-	streetNodes := uc.CH.SnapLocationToRoadNetworkNodeH3ForMapMatching(ways, []float64{lat, lon})
-
-	if err != nil {
-		return []datastructure.State{}, err
-	}
-	return streetNodes, nil
+	return cititesTour, instructions, datastructure.CreatePolyline(tspTourNodes), bestETA, bestDistance, nil
 }
 
 type MatchedRiderDriver struct {

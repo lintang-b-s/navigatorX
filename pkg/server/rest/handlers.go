@@ -103,40 +103,12 @@ type ShortestPathResponse struct {
 	Found       bool                          `json:"found"`
 	Route       []datastructure.Coordinate    `json:"route,omitempty"`
 	Alg         string                        `json:"algorithm"`
-	EdgePath    []struct {
-		Source               datastructure.Coordinate   `json:"source"`
-		CoordinatesInBetween []datastructure.Coordinate `json:"coords_in_between"`
-		Target               datastructure.Coordinate   `json:"target"`
-	} `json:"edge_path,omitempty"`
 }
 
 func NewShortestPathResponse(path string, distance float64, navs []guidance.DrivingInstruction, eta float64, route []datastructure.Coordinate, found bool,
 	edgePath []datastructure.EdgeCH, isCH bool) *ShortestPathResponse {
 
 	alg := "Contraction Hieararchies + Bidirectional Dijkstra"
-	edgePathResp := make([]struct {
-		Source               datastructure.Coordinate   `json:"source"`
-		CoordinatesInBetween []datastructure.Coordinate `json:"coords_in_between"`
-		Target               datastructure.Coordinate   `json:"target"`
-	}, len(edgePath))
-
-	for i, e := range edgePath {
-		edgePathResp[i] = struct {
-			Source               datastructure.Coordinate   `json:"source"`
-			CoordinatesInBetween []datastructure.Coordinate `json:"coords_in_between"`
-			Target               datastructure.Coordinate   `json:"target"`
-		}{
-			Source: datastructure.Coordinate{
-				Lat: e.PointsInBetween[0].Lat,
-				Lon: e.PointsInBetween[0].Lon,
-			},
-			CoordinatesInBetween: e.PointsInBetween,
-			Target: datastructure.Coordinate{
-				Lat: e.PointsInBetween[len(e.PointsInBetween)-1].Lat,
-				Lon: e.PointsInBetween[len(e.PointsInBetween)-1].Lon,
-			},
-		}
-	}
 
 	return &ShortestPathResponse{
 		Path:        path,
@@ -145,7 +117,6 @@ func NewShortestPathResponse(path string, distance float64, navs []guidance.Driv
 		Navigations: navs,
 		Found:       found,
 		Alg:         alg,
-		EdgePath:    edgePathResp,
 	}
 }
 

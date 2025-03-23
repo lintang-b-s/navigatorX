@@ -4,7 +4,6 @@ import (
 	"lintang/navigatorx/pkg/datastructure"
 	"lintang/navigatorx/pkg/util"
 
-	"github.com/dhconnelly/rtreego"
 	"github.com/golang/geo/s2"
 )
 
@@ -34,7 +33,7 @@ func MakeSixDigitsAfterComaLatLon(lat, lon *float64, precision int) {
 }
 
 func ProjectPointToLineCoord(nearestStPoint datastructure.CHNode, secondNearestStPoint datastructure.CHNode,
-	snap rtreego.Point) Coordinate {
+	snap []float64) Coordinate {
 	nearestStPoint = MakeSixDigitsAfterComa2(nearestStPoint, 6)
 	secondNearestStPoint = MakeSixDigitsAfterComa2(secondNearestStPoint, 6)
 	snapLat := snap[0]

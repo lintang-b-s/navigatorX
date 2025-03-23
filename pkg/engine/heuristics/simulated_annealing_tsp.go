@@ -173,7 +173,7 @@ func swapReverseSA(route []int, tourPosOne int, tourPosTwo int) {
 	var reversedRoute = make([]int, len(route))
 	copy(reversedRoute, route)
 	reversedRoute = reversedRoute[tourPosOne : tourPosOne+tourPosTwo]
-	util.ReverseG(reversedRoute)
+	reversedRoute = util.ReverseG(reversedRoute)
 	idx := 0
 	for i := tourPosOne; i < tourPosOne+tourPosTwo; i++ {
 		route[i] = reversedRoute[idx]
