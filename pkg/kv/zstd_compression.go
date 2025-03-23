@@ -7,7 +7,7 @@ import (
 	"github.com/kelindar/binary"
 )
 
-type SmallWay struct {
+type kvEdge struct {
 	CenterLoc           []float64
 	IntersectionNodesID []int32
 	PointsInBetween     []Coordinate
@@ -35,31 +35,31 @@ func NewCoordinates(lat, lon []float64) []Coordinate {
 	return coords
 }
 
-func (s *SmallWay) toConcurrentWay() concurrent.SmallWay {
-	return concurrent.SmallWay{
+func (s *kvEdge) toConcurrentWay() concurrent.KVEdge {
+	return concurrent.KVEdge{
 		CenterLoc:           s.CenterLoc,
 		IntersectionNodesID: s.IntersectionNodesID,
 	}
 }
 
-func encode(sw []SmallWay) []byte {
+func encode(sw []kvEdge) []byte {
 	encoded, _ := binary.Marshal(sw)
 	return encoded
 }
 
-func decode(bb []byte) ([]SmallWay, error) {
-	var ch []SmallWay
+func decode(bb []byte) ([]kvEdge, error) {
+	var ch []kvEdge
 	binary.Unmarshal(bb, &ch)
 	return ch, nil
 }
 
-func encodeOneWay(sw SmallWay) []byte {
+func encodeOneWay(sw kvEdge) []byte {
 	encoded, _ := binary.Marshal(sw)
 	return encoded
 }
 
-func decodeOneWay(bb []byte) (SmallWay, error) {
-	var ch SmallWay
+func decodeOneWay(bb []byte) (kvEdge, error) {
+	var ch kvEdge
 	binary.Unmarshal(bb, &ch)
 	return ch, nil
 }

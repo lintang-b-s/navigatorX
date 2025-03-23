@@ -2,7 +2,7 @@ package kv
 
 type SaveWayJobItem struct {
 	KeyStr string
-	ValArr []SmallWay
+	ValArr []kvEdge
 }
 
 type JobI interface {

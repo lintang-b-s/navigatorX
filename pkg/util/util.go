@@ -25,10 +25,13 @@ func CountDecimalPlacesF64(value float64) int {
 	return len(parts[1])
 }
 
-func ReverseG[T any](arr []T) {
-	for i, j := 0, len(arr)-1; i < j; i, j = i+1, j-1 {
-		arr[i], arr[j] = arr[j], arr[i]
+func ReverseG[T any](arr []T) []T {
+	copyArr := make([]T, len(arr)) // should do on the copy )
+	copy(copyArr, arr)
+	for i, j := 0, len(copyArr)-1; i < j; i, j = i+1, j-1 {
+		copyArr[i], copyArr[j] = copyArr[j], copyArr[i]
 	}
+	return copyArr
 }
 
 func BinarySearch[T any](arr []T, target T, compare func(a, b T) int) int {
@@ -52,8 +55,13 @@ func generateRandomInt(min, max int) int {
 	return min + rand.Intn(max-min)
 }
 
+func QuickSortG[T any](arr []T, compare func(a, b T) int) []T {
+	copyArr := make([]T, len(arr)) // should do on the copy )
+	copy(copyArr, arr)
+	return QuickSort(copyArr, 0, len(arr)-1, compare)
+}
 
-func QuickSort[T any](arr []T, low, high int, compare func(a, b T) int) {
+func QuickSort[T any](arr []T, low, high int, compare func(a, b T) int) []T {
 	if low < high {
 		pivotIndex := generateRandomInt(low, high)
 		pivotValue := arr[pivotIndex]
@@ -74,4 +82,5 @@ func QuickSort[T any](arr []T, low, high int, compare func(a, b T) int) {
 		QuickSort(arr, low, i, compare)
 		QuickSort(arr, i+2, high, compare)
 	}
+	return arr
 }

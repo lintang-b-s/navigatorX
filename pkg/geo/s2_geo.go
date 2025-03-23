@@ -54,7 +54,7 @@ func PointPositionBetweenLinePoints(lat, lon float64, linePoints []datastructure
 		diff := math.Abs(currQueryDist + nextQueryDist - currNextDist)
 		if diff < tolerancePonintInLine && diff < minDiff {
 			minDiff = diff
-			pos = i + 1
+			pos = i 
 		}
 	}
 	return pos

@@ -35,34 +35,42 @@ func NewGraph() *contractor.ContractedGraph {
 	nodeR := datastructure.NewCHNode(4, 4, 0, 4, false)
 	nodeF := datastructure.NewCHNode(5, 5, 0, 5, false)
 
-	edgePv := datastructure.NewEdgeCH(0, 10, 10, nodeP.ID, nodeV.ID, false, 0, 0, 0, false, 0, 0, 2, nil)
+	edgePv := datastructure.NewEdgeCH(0, 10, 10, nodeP.ID, nodeV.ID, 0, 0)
 
-	edgeVp := datastructure.NewEdgeCH(1, 10, 10, nodeV.ID, nodeP.ID, false, 0, 0, 1, false, 1, 1, 2, nil)
+	edgeVp := datastructure.NewEdgeCH(1, 10, 10, nodeV.ID, nodeP.ID, 0, 0)
 
-	edgeVr := datastructure.NewEdgeCH(2, 3, 3, nodeV.ID, nodeR.ID, false, 0, 0, 2, false, 2, 2, 2, nil)
+	edgeVr := datastructure.NewEdgeCH(2, 3, 3, nodeV.ID, nodeR.ID, 0, 0)
 
-	edgeRv := datastructure.NewEdgeCH(3, 3, 3, nodeR.ID, nodeV.ID, false, 0, 0, 3, false, 3, 3, 2, nil)
+	edgeRv := datastructure.NewEdgeCH(3, 3, 3, nodeR.ID, nodeV.ID, 0, 0)
 
-	edgeVq := datastructure.NewEdgeCH(4, 6, 6, nodeV.ID, nodeQ.ID, false, 0, 0, 4, false, 4, 4, 2, nil)
+	edgeVq := datastructure.NewEdgeCH(4, 6, 6, nodeV.ID, nodeQ.ID, 0, 0)
 
-	edgeQv := datastructure.NewEdgeCH(5, 6, 6, nodeQ.ID, nodeV.ID, false, 0, 0, 5, false, 5, 5, 2, nil)
+	edgeQv := datastructure.NewEdgeCH(5, 6, 6, nodeQ.ID, nodeV.ID, 0, 0)
 
-	edgeQw := datastructure.NewEdgeCH(6, 5, 5, nodeQ.ID, nodeW.ID, false, 0, 0, 6, false, 6, 6, 2, nil)
+	edgeQw := datastructure.NewEdgeCH(6, 5, 5, nodeQ.ID, nodeW.ID, 0, 0)
 
-	edgeWq := datastructure.NewEdgeCH(7, 5, 5, nodeW.ID, nodeQ.ID, false, 0, 0, 7, false, 7, 7, 2, nil)
+	edgeWq := datastructure.NewEdgeCH(7, 5, 5, nodeW.ID, nodeQ.ID, 0, 0)
 
-	edgeWr := datastructure.NewEdgeCH(8, 5, 5, nodeW.ID, nodeR.ID, false, 0, 0, 8, false, 8, 8, 2, nil)
+	edgeWr := datastructure.NewEdgeCH(8, 5, 5, nodeW.ID, nodeR.ID, 0, 0)
 
-	edgeRw := datastructure.NewEdgeCH(9, 5, 5, nodeR.ID, nodeW.ID, false, 0, 0, 9, false, 9, 9, 2, nil)
+	edgeRw := datastructure.NewEdgeCH(9, 5, 5, nodeR.ID, nodeW.ID, 0, 0)
 
-	edgeWf := datastructure.NewEdgeCH(10, 15, 15, nodeW.ID, nodeF.ID, false, 0, 0, 10, false, 10, 10, 2, nil)
+	edgeWf := datastructure.NewEdgeCH(10, 15, 15, nodeW.ID, nodeF.ID, 0, 0)
 
-	edgeFw := datastructure.NewEdgeCH(11, 15, 15, nodeF.ID, nodeW.ID, false, 0, 0, 11, false, 11, 11, 2, nil)
+	edgeFw := datastructure.NewEdgeCH(11, 15, 15, nodeF.ID, nodeW.ID, 0, 0)
+
+	edgesExtraInfo := make([]datastructure.EdgeExtraInfo, 0)
+	for i := 0; i < 12; i++ {
+		edgesExtraInfo = append(edgesExtraInfo, datastructure.EdgeExtraInfo{
+			PointsInBetween: make([]datastructure.Coordinate, 0),
+		})
+	}
 
 	edges := []datastructure.EdgeCH{edgePv, edgeVp, edgeVr, edgeRv, edgeVq, edgeQv, edgeQw, edgeWq, edgeWr, edgeRw, edgeWf, edgeFw}
 	streetDirections := make(map[string][2]bool)
 	nodes := []datastructure.CHNode{nodeP, nodeV, nodeQ, nodeW, nodeR, nodeF}
-	chGraph.InitCHGraph(nodes, edges, streetDirections, util.NewIdMap())
+	chGraph.InitCHGraph(nodes, edges, streetDirections, util.NewIdMap(),
+		edgesExtraInfo)
 
 	return chGraph
 }

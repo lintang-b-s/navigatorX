@@ -44,9 +44,8 @@ ProjectionID can be graph node ID or virtual node ID.
 */
 
 type State struct {
-	StateID               int
-	Lat                   float64
-	Lon                   float64
+	StateID int
+
 	Dist                  float64
 	EdgeID                int32
 	PointsInBetween       []Coordinate
@@ -84,27 +83,31 @@ func (s *State) ID() int {
 }
 
 type MapMatchOsmWay struct {
-	ID              int
-	PointsInBetween []Coordinate
-	FromNodeID      int32
-	ToNodeID        int32
-	Speed           float64
-	Dist            float64
+	ID               int
+	PointsInBetween  []Coordinate
+	NodeIDsInBetween []int32
+	FromNodeID       int32
+	ToNodeID         int32
+	Speed            float64
+	Dist             float64
+	IsMotorway       bool
 }
 
-func NewMathMatchOsmWay(id int, points []Coordinate, from, to int32, speed, dist float64) MapMatchOsmWay {
+func NewMathMatchOsmWay(id int, points []Coordinate, nodeIDs []int32, from, to int32, speed, dist float64, isMotorway bool) MapMatchOsmWay {
 	return MapMatchOsmWay{
-		ID:              id,
-		PointsInBetween: points,
-		FromNodeID:      from,
-		ToNodeID:        to,
-		Speed:           speed,
-		Dist:            dist,
+		ID:               id,
+		PointsInBetween:  points,
+		NodeIDsInBetween: nodeIDs,
+		FromNodeID:       from,
+		ToNodeID:         to,
+		Speed:            speed,
+		Dist:             dist,
+		IsMotorway:       isMotorway,
 	}
 }
 
 // not used
-type SmallWay struct {
+type KVEdge struct {
 	CenterLoc           []float64 // [lat, lon]
 	IntersectionNodesID []int32
 	PointsInBetween     []Coordinate
@@ -113,14 +116,14 @@ type SmallWay struct {
 	FromNodeID          int32
 }
 
-func (s *SmallWay) ToConcurrentWay() concurrent.SmallWay {
+func (s *KVEdge) ToConcurrentWay() concurrent.KVEdge {
 	pointsInbetweenLat := []float64{}
 	pointsInbetweenLon := []float64{}
 	for _, n := range s.PointsInBetween {
 		pointsInbetweenLat = append(pointsInbetweenLat, n.Lat)
 		pointsInbetweenLon = append(pointsInbetweenLon, n.Lon)
 	}
-	return concurrent.SmallWay{
+	return concurrent.KVEdge{
 		CenterLoc:           s.CenterLoc,
 		IntersectionNodesID: s.IntersectionNodesID,
 		PointsInBetween:     concurrent.NewCoordinates(pointsInbetweenLat, pointsInbetweenLon),
@@ -130,7 +133,7 @@ func (s *SmallWay) ToConcurrentWay() concurrent.SmallWay {
 	}
 }
 
-func RenderPath2(path []Coordinate) string {
+func CreatePolyline(path []Coordinate) string {
 	s := ""
 	coords := make([][]float64, 0)
 	for _, p := range path {

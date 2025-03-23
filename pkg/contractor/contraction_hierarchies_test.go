@@ -46,30 +46,31 @@ func NewGraph() *ContractedGraph {
 	nodeW := datastructure.NewCHNode(1, 1, 0, 3, true)
 	nodeR := datastructure.NewCHNode(1, 1, 0, 4, true)
 
-	edgePv := datastructure.NewEdgeCH(0, 10, 0, nodeP.ID, nodeV.ID, false, 0, 0, 0, false, 0, 0, 2, nil)
+	edgePv := datastructure.NewEdgeCH(0, 10, 0, nodeP.ID, nodeV.ID, 0, 0)
 
-	edgeVp := datastructure.NewEdgeCH(1, 10, 0, nodeV.ID, nodeP.ID, false, 0, 0, 1, false, 1, 1, 2, nil)
+	edgeVp := datastructure.NewEdgeCH(1, 10, 0, nodeV.ID, nodeP.ID, 0, 0)
 
-	edgeVr := datastructure.NewEdgeCH(2, 3, 0, nodeV.ID, nodeR.ID, false, 0, 0, 2, false, 2, 2, 2, nil)
+	edgeVr := datastructure.NewEdgeCH(2, 3, 0, nodeV.ID, nodeR.ID, 0, 0)
 
-	edgeRv := datastructure.NewEdgeCH(3, 3, 0, nodeR.ID, nodeV.ID, false, 0, 0, 3, false, 3, 3, 2, nil)
+	edgeRv := datastructure.NewEdgeCH(3, 3, 0, nodeR.ID, nodeV.ID, 0, 0)
 
-	edgeVq := datastructure.NewEdgeCH(4, 6, 0, nodeV.ID, nodeQ.ID, false, 0, 0, 4, false, 4, 4, 2, nil)
+	edgeVq := datastructure.NewEdgeCH(4, 6, 0, nodeV.ID, nodeQ.ID, 0, 0)
 
-	edgeQv := datastructure.NewEdgeCH(5, 6, 0, nodeQ.ID, nodeV.ID, false, 0, 0, 5, false, 5, 5, 2, nil)
+	edgeQv := datastructure.NewEdgeCH(5, 6, 0, nodeQ.ID, nodeV.ID, 0, 0)
 
-	edgeQw := datastructure.NewEdgeCH(6, 5, 0, nodeQ.ID, nodeW.ID, false, 0, 0, 6, false, 6, 6, 2, nil)
+	edgeQw := datastructure.NewEdgeCH(6, 5, 0, nodeQ.ID, nodeW.ID, 0, 0)
 
-	edgeWq := datastructure.NewEdgeCH(7, 5, 0, nodeW.ID, nodeQ.ID, false, 0, 0, 7, false, 7, 7, 2, nil)
+	edgeWq := datastructure.NewEdgeCH(7, 5, 0, nodeW.ID, nodeQ.ID, 0, 0)
 
-	edgeWr := datastructure.NewEdgeCH(8, 5, 0, nodeW.ID, nodeR.ID, false, 0, 0, 8, false, 8, 8, 2, nil)
+	edgeWr := datastructure.NewEdgeCH(8, 5, 0, nodeW.ID, nodeR.ID, 0, 0)
 
-	edgeRw := datastructure.NewEdgeCH(9, 5, 0, nodeR.ID, nodeW.ID, false, 0, 0, 9, false, 9, 9, 2, nil)
+	edgeRw := datastructure.NewEdgeCH(9, 5, 0, nodeR.ID, nodeW.ID, 0, 0)
 
 	edges := []datastructure.EdgeCH{edgePv, edgeVp, edgeVr, edgeRv, edgeVq, edgeQv, edgeQw, edgeWq, edgeWr, edgeRw}
 	streetDirections := make(map[string][2]bool)
 	nodes := []datastructure.CHNode{nodeP, nodeV, nodeQ, nodeW, nodeR}
-	chGraph.InitCHGraph(nodes, edges, streetDirections, util.NewIdMap())
+	chGraph.InitCHGraph(nodes, edges, streetDirections, util.NewIdMap(),
+		make([]datastructure.EdgeExtraInfo, 0))
 
 	return chGraph
 }
@@ -90,17 +91,18 @@ func TestContractOneNode(t *testing.T) {
 		// check node P
 		nodePEdges := chGraph.GetNodeFirstOutEdges(0)
 		pShortcutCount := 0
-		shortcutPQ := datastructure.NewEdgeCH(0, 16, 0, 2, 0, true, 0, 0, 0, false, 0, 0, 0, nil)
-		shortcutPR := datastructure.NewEdgeCH(0, 13, 0, 4, 0, true, 0, 0, 0, false, 0, 0, 0, nil)
+		shortcutPQ := datastructure.NewEdgeCH(0, 16, 0, 2, 0, 0, 0)
+		shortcutPR := datastructure.NewEdgeCH(0, 13, 0, 4, 0, 0, 0)
 		for _, edgeID := range nodePEdges {
 			edge := chGraph.GetOutEdge(edgeID)
-			if edge.IsShortcut {
+			isShortcut := chGraph.IsShortcut(edgeID)
+			if isShortcut {
 				pShortcutCount++
 			}
 
-			if edge.IsShortcut && edge.ToNodeID == 2 {
+			if isShortcut && edge.ToNodeID == 2 {
 				assert.Equal(t, shortcutPQ.Weight, edge.Weight)
-			} else if edge.IsShortcut && edge.ToNodeID == 4 {
+			} else if isShortcut && edge.ToNodeID == 4 {
 				assert.Equal(t, shortcutPR.Weight, edge.Weight)
 			}
 		}
@@ -109,17 +111,19 @@ func TestContractOneNode(t *testing.T) {
 		// check node Q
 		nodeQEdges := chGraph.GetNodeFirstOutEdges(2)
 		qShortcutCount := 0
-		shortcutQP := datastructure.NewEdgeCH(0, 16, 0, 0, 2, true, 0, 0, 0, false, 0, 0, 0, nil)
-		shortcutQR := datastructure.NewEdgeCH(0, 9, 0, 4, 2, true, 0, 0, 0, false, 0, 0, 0, nil)
+		shortcutQP := datastructure.NewEdgeCH(0, 16, 0, 0, 2, 0, 0)
+		shortcutQR := datastructure.NewEdgeCH(0, 9, 0, 4, 2, 0, 0)
 		for _, edgeID := range nodeQEdges {
 			edge := chGraph.GetOutEdge(edgeID)
-			if edge.IsShortcut {
+			isShortcut := chGraph.IsShortcut(edgeID)
+
+			if isShortcut {
 				qShortcutCount++
 			}
 
-			if edge.IsShortcut && edge.ToNodeID == 0 {
+			if isShortcut && edge.ToNodeID == 0 {
 				assert.Equal(t, shortcutQP.Weight, edge.Weight)
-			} else if edge.IsShortcut && edge.ToNodeID == 4 {
+			} else if isShortcut && edge.ToNodeID == 4 {
 				assert.Equal(t, shortcutQR.Weight, edge.Weight)
 			}
 		}
@@ -128,17 +132,19 @@ func TestContractOneNode(t *testing.T) {
 		// check node R
 		nodeREdges := chGraph.GetNodeFirstOutEdges(4)
 		rShortcutCount := 0
-		shortcutRP := datastructure.NewEdgeCH(0, 13, 0, 0, 4, true, 0, 0, 0, false, 0, 0, 0, nil)
-		shortcutRQ := datastructure.NewEdgeCH(0, 9, 0, 2, 4, true, 0, 0, 0, false, 0, 0, 0, nil)
+		shortcutRP := datastructure.NewEdgeCH(0, 13, 0, 0, 4, 0, 0)
+		shortcutRQ := datastructure.NewEdgeCH(0, 9, 0, 2, 4, 0, 0)
 		for _, edgeID := range nodeREdges {
 			edge := chGraph.GetOutEdge(edgeID)
-			if edge.IsShortcut {
+			isShortcut := chGraph.IsShortcut(edgeID)
+
+			if isShortcut {
 				rShortcutCount++
 			}
 
-			if edge.IsShortcut && edge.ToNodeID == 0 {
+			if isShortcut && edge.ToNodeID == 0 {
 				assert.Equal(t, shortcutRP.Weight, edge.Weight)
-			} else if edge.IsShortcut && edge.ToNodeID == 2 {
+			} else if isShortcut && edge.ToNodeID == 2 {
 				assert.Equal(t, shortcutRQ.Weight, edge.Weight)
 			}
 		}

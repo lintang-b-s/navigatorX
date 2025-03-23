@@ -16,7 +16,7 @@ import (
 )
 
 type MapMatchingService interface {
-	HiddenMarkovModelDecodingMapMatching(ctx context.Context, gps []datastructure.Coordinate) (string,
+	MapMatch(ctx context.Context, gps []datastructure.Coordinate) (string,
 		[]datastructure.Coordinate, []datastructure.EdgeCH, []datastructure.Coordinate, error)
 	NearestRoadSegments(ctx context.Context, lat, lon float64, radius float64, k int) ([]datastructure.EdgeCH, []float64, error)
 }
@@ -30,7 +30,7 @@ func MapMatchingRouter(r *chi.Mux, svc MapMatchingService) {
 
 	r.Group(func(r chi.Router) {
 		r.Route("/api/map-match", func(r chi.Router) {
-			r.Post("/map-matching", handler.HiddenMarkovModelDecodingMapMatching)
+			r.Post("/map-matching", handler.MapMatch)
 			r.Post("/nearest-road-segment", handler.NearestRoadSegments)
 
 		})
@@ -103,7 +103,7 @@ func RenderMapMatchingResponse(path string, coords []datastructure.Coordinate, e
 	}
 }
 
-// HiddenMarkovModelDecodingMapMatching
+// MapMatch
 //
 //	@Summary		map matching pakai hidden markov model. Snapping noisy GPS coordinates ke road network lokasi asal gps seharusnya
 //	@Description	map matching pakai hidden markov model. Snapping noisy GPS coordinates ke road network lokasi asal gps seharusnya
@@ -115,7 +115,7 @@ func RenderMapMatchingResponse(path string, coords []datastructure.Coordinate, e
 //	@Success		200	{object}	MapMatchingResponse
 //	@Failure		400	{object}	ErrResponse
 //	@Failure		500	{object}	ErrResponse
-func (h *MapMatchingHandler) HiddenMarkovModelDecodingMapMatching(w http.ResponseWriter, r *http.Request) {
+func (h *MapMatchingHandler) MapMatch(w http.ResponseWriter, r *http.Request) {
 	data := &MapMatchingRequest{}
 	if err := render.Bind(r, data); err != nil {
 		render.Render(w, r, ErrInvalidRequest(err))
@@ -139,7 +139,7 @@ func (h *MapMatchingHandler) HiddenMarkovModelDecodingMapMatching(w http.Respons
 			Lon: c.Lon,
 		})
 	}
-	p, pNode, edges, obsPath, err := h.svc.HiddenMarkovModelDecodingMapMatching(r.Context(), coords)
+	p, pNode, edges, obsPath, err := h.svc.MapMatch(r.Context(), coords)
 	if err != nil {
 		render.Render(w, r, ErrInternalServerErrorRend(errors.New("internal server error")))
 

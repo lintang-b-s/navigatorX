@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	_ "lintang/navigatorx/docs"
@@ -56,7 +57,8 @@ func main() {
 
 	log.Printf("reading osm file %s", *mapFile)
 	osmParser := osmparser.NewOSMParserV2()
-	processedNodes, processedEdges, streetDirection, mapMatchOsmWays := osmParser.Parse(*mapFile)
+	processedNodes, processedEdges, streetDirection,
+		edgesExtraInfo := osmParser.Parse(*mapFile)
 
 	ch := contractor.NewContractedGraph()
 
@@ -64,6 +66,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
 	kvDB := kv.NewKVDB(db)
 	defer kvDB.Close()
@@ -73,17 +78,14 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		err = kvDB.BuildH3IndexedEdges(processedEdges)
-		if err != nil {
-			panic(err)
-		}
-		err = kvDB.SaveBatchMapMatchOsmWays(mapMatchOsmWays)
+		err = kvDB.BuildH3IndexedEdges(ctx, processedEdges, edgesExtraInfo)
 		if err != nil {
 			panic(err)
 		}
 	}()
 
-	ch.InitCHGraph(processedNodes, processedEdges, streetDirection, osmParser.GetTagStringIdMap())
+	ch.InitCHGraph(processedNodes, processedEdges, streetDirection, osmParser.GetTagStringIdMap(),
+		edgesExtraInfo)
 
 	if !*mapmatch {
 		ch.Contraction()

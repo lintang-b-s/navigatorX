@@ -35,8 +35,10 @@ type ContractedGraph struct {
 	ContractedInEdges      []datastructure.EdgeCH
 	ContractedNodes        []datastructure.CHNode
 
+	// edge extra info
+	EdgeInfo []datastructure.EdgeExtraInfo
+
 	StreetDirection map[int][2]bool // 0 = forward, 1 = backward
-	StreetInfo      map[int]datastructure.StreetExtraInfo
 	TagStringIDMap  util.IDMap
 }
 
@@ -50,16 +52,53 @@ func NewContractedGraph() *ContractedGraph {
 		ContractedNodes:    make([]datastructure.CHNode, 0),
 		Ready:              false,
 		StreetDirection:    make(map[int][2]bool),
-		StreetInfo:         make(map[int]datastructure.StreetExtraInfo),
 		TagStringIDMap:     util.NewIdMap(),
+		EdgeInfo:           make([]datastructure.EdgeExtraInfo, 0),
+	}
+}
+
+func NewContractedGraphFromOtherGraph(otherGraph *ContractedGraph) *ContractedGraph {
+	outEdges := otherGraph.GetOutEdges()
+	qOutEdges := make([]datastructure.EdgeCH, len(outEdges))
+	copy(qOutEdges, outEdges)
+
+	inEdges := otherGraph.GetInEdges()
+	qInEdges := make([]datastructure.EdgeCH, len(inEdges))
+	copy(qInEdges, inEdges)
+
+	graphNodes := otherGraph.GetNodes()
+	qNodes := make([]datastructure.CHNode, len(graphNodes))
+	copy(qNodes, graphNodes)
+
+	nodeOutEdges := otherGraph.GetFirstOutEdges()
+	qFirstOutEdges := make([][]int32, len(nodeOutEdges))
+	copy(qFirstOutEdges, nodeOutEdges)
+
+	nodeInEdges := otherGraph.GetFirstInEdges()
+	qFirstInEdges := make([][]int32, len(nodeInEdges))
+	copy(qFirstInEdges, nodeInEdges)
+	return &ContractedGraph{
+		Metadata:               otherGraph.Metadata,
+		Ready:                  otherGraph.Ready,
+		ContractedOutEdges:     qOutEdges,
+		ContractedInEdges:      qInEdges,
+		ContractedNodes:        qNodes,
+		ContractedFirstOutEdge: qFirstOutEdges,
+		ContractedFirstInEdge:  qFirstInEdges,
+		EdgeInfo:               otherGraph.EdgeInfo,
+
+		StreetDirection: otherGraph.StreetDirection,
+		TagStringIDMap:  otherGraph.TagStringIDMap,
 	}
 }
 
 func (ch *ContractedGraph) InitCHGraph(processedNodes []datastructure.CHNode,
 	processedEdges []datastructure.EdgeCH, streetDirections map[string][2]bool,
-	tagStringIdMap util.IDMap) {
+	tagStringIdMap util.IDMap, edgesExtraInfo []datastructure.EdgeExtraInfo) {
 
 	ch.TagStringIDMap = tagStringIdMap
+
+	ch.EdgeInfo = edgesExtraInfo
 
 	gLen := len(processedNodes)
 
@@ -67,15 +106,9 @@ func (ch *ContractedGraph) InitCHGraph(processedNodes []datastructure.CHNode,
 		ch.StreetDirection[ch.TagStringIDMap.GetID(streetName)] = direction
 	}
 
-	for _, node := range processedNodes {
+	ch.ContractedNodes = make([]datastructure.CHNode, gLen)
 
-		ch.ContractedNodes = append(ch.ContractedNodes, datastructure.CHNode{
-			ID:           node.ID,
-			Lat:          node.Lat,
-			Lon:          node.Lon,
-			TrafficLight: node.TrafficLight,
-		})
-	}
+	copy(ch.ContractedNodes, processedNodes)
 
 	ch.Metadata.degrees = make([]int, gLen)
 	ch.Metadata.InEdgeOrigCount = make([]int, gLen)
@@ -87,40 +120,24 @@ func (ch *ContractedGraph) InitCHGraph(processedNodes []datastructure.CHNode,
 	ch.ContractedFirstOutEdge = make([][]int32, len(ch.ContractedNodes))
 	ch.ContractedFirstInEdge = make([][]int32, len(ch.ContractedNodes))
 
-	duplicateEdges := make(map[int]map[int]struct{})
-
 	log.Printf("intializing original osm graph...")
 
 	// init graph original
 	for _, edge := range processedEdges {
 
-		if _, ok := duplicateEdges[int(edge.FromNodeID)]; !ok {
-			duplicateEdges[int(edge.FromNodeID)] = make(map[int]struct{})
-		}
-
-		if _, ok := duplicateEdges[int(edge.FromNodeID)][int(edge.ToNodeID)]; ok {
-			continue
-		}
-
 		ch.ContractedFirstOutEdge[edge.FromNodeID] = append(ch.ContractedFirstOutEdge[edge.FromNodeID], int32(outEdgeID))
 		ch.ContractedOutEdges = append(ch.ContractedOutEdges, datastructure.NewEdgeCH(
-			outEdgeID, edge.Weight, edge.Dist, edge.ToNodeID, edge.FromNodeID, false, -1, -1,
-			edge.StreetName, edge.Roundabout, edge.RoadClass, edge.RoadClassLink, edge.Lanes, edge.PointsInBetween,
+			outEdgeID, edge.Weight, edge.Dist, edge.ToNodeID, edge.FromNodeID, -1, -1,
 		))
 
 		outEdgeID++
 		ch.Metadata.OutEdgeOrigCount[edge.FromNodeID] = int(outEdgeID)
 
-		ch.StreetInfo[edge.StreetName] = datastructure.StreetExtraInfo{
-			// skip
-		}
-
 		// in Edges
 		ch.ContractedFirstInEdge[edge.ToNodeID] = append(ch.ContractedFirstInEdge[edge.ToNodeID], int32(inEdgeID))
 
 		ch.ContractedInEdges = append(ch.ContractedInEdges, datastructure.NewEdgeCH(
-			inEdgeID, edge.Weight, edge.Dist, edge.FromNodeID, edge.ToNodeID, false, -1, -1,
-			edge.StreetName, edge.Roundabout, edge.RoadClass, edge.RoadClassLink, edge.Lanes, edge.PointsInBetween,
+			inEdgeID, edge.Weight, edge.Dist, edge.FromNodeID, edge.ToNodeID, -1, -1,
 		))
 
 		inEdgeID++
@@ -129,7 +146,6 @@ func (ch *ContractedGraph) InitCHGraph(processedNodes []datastructure.CHNode,
 		// tambah degree nodenya
 		ch.Metadata.degrees[edge.FromNodeID]++
 
-		duplicateEdges[int(edge.FromNodeID)][int(edge.ToNodeID)] = struct{}{}
 	}
 
 	log.Printf("initializing osm graph done...")
@@ -193,7 +209,7 @@ func (ch *ContractedGraph) Contraction() (err error) {
 	runtime.GC()
 	runtime.GC()
 	end := time.Since(st)
-	log.Printf("time for preprocessing contraction hierarchies: %v menit\n", end.Minutes())
+	log.Printf("time for preprocessing contraction hierarchies: %v minutes\n", end.Minutes())
 	return
 }
 
@@ -312,7 +328,8 @@ func (ch *ContractedGraph) addOrUpdateShortcut(fromNodeID, toNodeID int32, nodeI
 	exists := false
 	for _, outID := range ch.ContractedFirstOutEdge[fromNodeID] {
 		edge := ch.ContractedOutEdges[outID]
-		if edge.ToNodeID != toNodeID || !edge.IsShortcut {
+		isShortcut := ch.GetEdgeExtraInfo(int(edge.EdgeID)).IsShortcut
+		if edge.ToNodeID != toNodeID || !isShortcut {
 			continue
 		}
 		exists = true
@@ -323,7 +340,8 @@ func (ch *ContractedGraph) addOrUpdateShortcut(fromNodeID, toNodeID int32, nodeI
 
 	for _, inID := range ch.ContractedFirstInEdge[toNodeID] {
 		edge := ch.ContractedInEdges[inID]
-		if edge.ToNodeID != fromNodeID || !edge.IsShortcut {
+		isShortcut := ch.GetEdgeExtraInfo(int(edge.EdgeID)).IsShortcut
+		if edge.ToNodeID != fromNodeID || !isShortcut {
 			continue
 		}
 		exists = true
@@ -342,9 +360,8 @@ func (ch *ContractedGraph) addShortcut(fromNodeID, toNodeID int32, weight float6
 
 	fromN := ch.ContractedNodes[fromNodeID]
 	toN := ch.ContractedNodes[toNodeID]
-	fromLoc := geo.NewLocation(fromN.Lat, fromN.Lon)
-	toLoc := geo.NewLocation(toN.Lat, toN.Lon)
-	dist := geo.HaversineDistance(fromLoc, toLoc)
+
+	dist := geo.CalculateHaversineDistance(fromN.Lat, fromN.Lon, toN.Lat, toN.Lon)
 	// add shortcut outcoming edge
 	dup := false
 	for _, outID := range ch.ContractedFirstOutEdge[fromNodeID] {
@@ -363,11 +380,21 @@ func (ch *ContractedGraph) addShortcut(fromNodeID, toNodeID int32, weight float6
 		currEdgeID := int32(len(ch.ContractedOutEdges))
 
 		ch.ContractedOutEdges = append(ch.ContractedOutEdges, datastructure.NewEdgeCH(
-			currEdgeID, weight, dist, toNodeID, fromNodeID, true, removedEdgeOne.EdgeID, removedEdgeTwo.EdgeID, 0, false, 0, 0, 0, nil,
+			currEdgeID, weight, dist, toNodeID, fromNodeID, removedEdgeOne.EdgeID, removedEdgeTwo.EdgeID,
 		))
 
 		ch.ContractedFirstOutEdge[fromNodeID] = append(ch.ContractedFirstOutEdge[fromNodeID], currEdgeID)
 		ch.Metadata.degrees[fromNodeID]++
+
+		ch.AppendEdgeInfo(datastructure.NewEdgeExtraInfo(
+			-1, -1, -1, -1, make([]datastructure.Coordinate, 0), false,
+		))
+
+		edgeInfo := ch.GetEdgeExtraInfo(int(currEdgeID))
+		edgeInfo.IsShortcut = true
+
+		ch.SetEdgeExtraInfo(int(currEdgeID), edgeInfo)
+
 	}
 
 	dup = false
@@ -389,7 +416,7 @@ func (ch *ContractedGraph) addShortcut(fromNodeID, toNodeID int32, weight float6
 		currEdgeID := int32(len(ch.ContractedInEdges))
 
 		ch.ContractedInEdges = append(ch.ContractedInEdges, datastructure.NewEdgeCH(
-			currEdgeID, weight, dist, fromNodeID, toNodeID, true, removedEdgeOne.EdgeID, removedEdgeTwo.EdgeID, 0, false, 0, 0, 0, nil,
+			currEdgeID, weight, dist, fromNodeID, toNodeID, removedEdgeOne.EdgeID, removedEdgeTwo.EdgeID,
 		))
 
 		ch.ContractedFirstInEdge[toNodeID] = append(ch.ContractedFirstInEdge[toNodeID], currEdgeID)
@@ -464,10 +491,7 @@ func (ch *ContractedGraph) AddEdge(newEdge datastructure.EdgeCH) {
 	newEdge.FromNodeID = newEdge.ToNodeID
 	newEdge.ToNodeID = temp
 
-	reversedPoints := make([]datastructure.Coordinate, len(newEdge.PointsInBetween))
-	copy(reversedPoints, newEdge.PointsInBetween)
-	util.ReverseG(reversedPoints)
-	newEdge.PointsInBetween = reversedPoints
+	newEdge.EdgeID = currEdgeID
 
 	ch.ContractedInEdges = append(ch.ContractedInEdges, newEdge)
 
@@ -507,26 +531,6 @@ func (ch *ContractedGraph) GetNodeFirstOutEdges(nodeID int32) []int32 {
 
 func (ch *ContractedGraph) GetNodeFirstInEdges(nodeID int32) []int32 {
 	return ch.ContractedFirstInEdge[nodeID]
-}
-
-func (ch *ContractedGraph) GetFirstOutNonShortcutEdge(nodeID int32) []int32 {
-	nonShortcutEdges := make([]int32, 0, len(ch.ContractedFirstOutEdge[nodeID]))
-	for _, edgeID := range ch.ContractedFirstOutEdge[nodeID] {
-		if !ch.ContractedOutEdges[edgeID].IsShortcut {
-			nonShortcutEdges = append(nonShortcutEdges, edgeID)
-		}
-	}
-	return nonShortcutEdges
-}
-
-func (ch *ContractedGraph) GetFirstInNonShortcutEdge(nodeID int32) []int32 {
-	nonShortcutEdges := make([]int32, 0, len(ch.ContractedFirstInEdge[nodeID]))
-	for _, edgeID := range ch.ContractedFirstInEdge[nodeID] {
-		if !ch.ContractedInEdges[edgeID].IsShortcut {
-			nonShortcutEdges = append(nonShortcutEdges, edgeID)
-		}
-	}
-	return nonShortcutEdges
 }
 
 func (ch *ContractedGraph) GetOutEdge(edgeID int32) datastructure.EdgeCH {
@@ -572,14 +576,6 @@ func (ch *ContractedGraph) GetStreetDirection(streetName int) [2]bool {
 	return ch.StreetDirection[streetName]
 }
 
-func (ch *ContractedGraph) GetstreetInfo(streetName int) datastructure.StreetExtraInfo {
-	return ch.StreetInfo[streetName]
-}
-
-func (ch *ContractedGraph) GetStreetInfo(streetName int) datastructure.StreetExtraInfo {
-	return ch.StreetInfo[streetName]
-}
-
 func (ch *ContractedGraph) GetStreetNameFromID(streetName int) string {
 	return ch.TagStringIDMap.GetStr(streetName)
 }
@@ -590,6 +586,27 @@ func (ch *ContractedGraph) GetRoadClassFromID(roadClass int) string {
 
 func (ch *ContractedGraph) GetRoadClassLinkFromID(roadClassLink int) string {
 	return ch.TagStringIDMap.GetStr(roadClassLink)
+}
+
+func (ch *ContractedGraph) IsShortcut(edgeID int32) bool {
+
+	return ch.GetEdgeExtraInfo(int(edgeID)).IsShortcut
+}
+
+func (ch *ContractedGraph) IsRoundabout(edgeID int32) bool {
+	return ch.GetEdgeExtraInfo(int(edgeID)).Roundabout
+}
+
+func (ch *ContractedGraph) GetEdgeExtraInfo(edgeID int) datastructure.EdgeExtraInfo {
+	return ch.EdgeInfo[edgeID]
+}
+
+func (ch *ContractedGraph) SetEdgeExtraInfo(edgeID int, edgeInfo datastructure.EdgeExtraInfo) {
+	ch.EdgeInfo[edgeID] = edgeInfo
+}
+
+func (ch *ContractedGraph) AppendEdgeInfo(edgeInfo datastructure.EdgeExtraInfo) {
+	ch.EdgeInfo = append(ch.EdgeInfo, edgeInfo)
 }
 
 func (ch *ContractedGraph) SaveToFile() error {

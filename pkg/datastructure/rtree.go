@@ -537,8 +537,34 @@ func NewPoint(lat, lon float64) Point {
 	return Point{Lat: lat, Lon: lon}
 }
 
-// minDist computes the square of the distance from a point to a rectangle. If the point is contained in the rectangle then the distance is zero.
-func (p Point) minDist(r RtreeBoundingBox) float64 {
+// MinDist computes the square of the distance from a point to a rectangle. If the point is contained in the rectangle then the distance is zero.
+func (p Point) MinDist(r RtreeBoundingBox) float64 {
+
+	// Edges[0] = {minLat, maxLat}
+	// Edges[1] = {minLon, maxLon}
+	rLat, rLon := 0.0, 0.0
+	if p.Lat < r.Edges[0][0] {
+		rLat = r.Edges[0][0]
+	} else if p.Lat > r.Edges[0][1] {
+		rLat = r.Edges[0][1]
+	} else {
+		rLat = p.Lat
+	}
+
+	if p.Lon < r.Edges[1][0] {
+		rLon = r.Edges[1][0]
+	} else if p.Lon > r.Edges[1][1] {
+		rLon = r.Edges[1][1]
+	} else {
+		rLon = p.Lon
+	}
+
+	sum := euclidianDistanceEquiRectangularAprox(p.Lat, p.Lon, rLat, rLon)
+
+	return sum
+}
+
+func (p Point) MinDistHaversine(r RtreeBoundingBox) float64 {
 
 	// Edges[0] = {minLat, maxLat}
 	// Edges[1] = {minLon, maxLon}
@@ -560,12 +586,12 @@ func (p Point) minDist(r RtreeBoundingBox) float64 {
 		rLon = p.Lon
 	}
 
-	sum += euclidianDistanceEquiRectangularAprox(p.Lat, p.Lon, rLat, rLon)
+	sum += HaversineDistance(p.Lat, p.Lon, rLat, rLon)
 
 	return sum
 }
 
-// minDist computes the square of the distance from a point to a rectangle (farthest point in rectangle). If the point is contained in the rectangle then the distance is zero.
+// MinDist computes the square of the distance from a point to a rectangle (farthest point in rectangle). If the point is contained in the rectangle then the distance is zero.
 func (p Point) maxDist(r RtreeBoundingBox) float64 {
 
 	// Edges[0] = {minLat, maxLat}
@@ -671,22 +697,34 @@ func (rt *Rtree) NearestNeighboursRadiusFilterOSM(k, offfset int, p Point, maxRa
 	return nearestLists
 }
 
+const (
+	maxK = 30
+)
+
 func (rt *Rtree) NearestNeighboursRadiusDifferentStreetID(p Point, maxRadius float64,
 ) []OSMObject {
-	nearestLists := make([]OSMObject, 0, 200)
-	streetIDSet := make(map[int]OSMObject)
+	nearestLists := make([]OSMObject, 0, maxK)
 
+	edgeSet := make(map[int]struct{})
+	edgeCoordSet := make(map[[2]float64]struct{}) // tiap nearby edges harus unique {lat,lon}nya (for map matching).
 	callback := func(n OSMObject) bool {
-		dist := p.minDist(n.GetBound()) // use this for better map matching result (instead of dist between lat,lon object and query point)
-		val := n.ID
-		_, sameStreet := streetIDSet[val]
 
-		if !sameStreet {
+		dist := HaversineDistance(p.Lat, p.Lon, n.Lat, n.Lon)
+
+		_, ok1 := edgeCoordSet[[2]float64{n.Lat, n.Lon}]
+		_, ok2 := edgeSet[n.ID]
+		if !ok1 && !ok2 {
 			nearestLists = append(nearestLists, n)
-			streetIDSet[val] = n
 		}
 
+		edgeSet[n.ID] = struct{}{}
+		edgeCoordSet[[2]float64{n.Lat, n.Lon}] = struct{}{}
+
 		return dist <= maxRadius
+		// if rt.Size > maxK {
+		// 	return len(nearestLists) < maxK && dist <= maxRadius
+		// }
+		// return len(nearestLists) < rt.Size
 	}
 
 	rt.incrementalNearestNeighbor(p, callback)
@@ -700,7 +738,7 @@ func (rt *Rtree) NearestNeighboursRadiusDifferentStreetIDWithinRadius(k, offfset
 	stretIDSet := make(map[int]OSMObject)
 
 	callback := func(n OSMObject) bool {
-		dist := p.minDist(n.GetBound()) // use this for better map matching result (instead of dist between lat,lon object and query point)
+		dist := HaversineDistance(p.Lat, p.Lon, n.Lat, n.Lon)
 		val := n.ID
 
 		sameObj, sameStreet := stretIDSet[val]
@@ -733,7 +771,8 @@ func (rt *Rtree) incrementalNearestNeighbor(p Point, callback func(OSMObject) bo
 		}
 		if element.Item.IsData() {
 
-			qObjectDist := p.minDist(element.Item.GetBound()) // use this, for better map matching result (instead of dist between lat,lon object and query point)
+			qObjectDist := euclidianDistanceEquiRectangularAprox(p.Lat, p.Lon,
+				element.Item.(*OSMObject).Lat, element.Item.(*OSMObject).Lon)
 
 			if first, pqSizeMoreThanZero := pq.GetMin(); element.isObjectBoundingRectangle &&
 				pqSizeMoreThanZero && qObjectDist > first.Rank {
@@ -748,12 +787,12 @@ func (rt *Rtree) incrementalNearestNeighbor(p Point, callback func(OSMObject) bo
 		} else if element.Item.isLeafNode() {
 
 			for _, item := range element.Item.(*RtreeNode).Items {
-				pq.Insert(NewPriorityQueueNodeRtree2(p.minDist(item.Leaf.GetBound()),
+				pq.Insert(NewPriorityQueueNodeRtree2(p.MinDist(item.Leaf.GetBound()),
 					&item.Leaf, true))
 			}
 		} else {
 			for _, item := range element.Item.(*RtreeNode).Items {
-				pq.Insert(NewPriorityQueueNodeRtree2(p.minDist(item.GetBound()), item, false))
+				pq.Insert(NewPriorityQueueNodeRtree2(p.MinDist(item.GetBound()), item, false))
 			}
 		}
 	}

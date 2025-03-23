@@ -26,15 +26,19 @@ func (rs *RoadSnapper) SnapToRoad(p datastructure.Point) datastructure.OSMObject
 	return rs.rtree.ImprovedNearestNeighbor(p)
 }
 
+const (
+	minRadius = 0.01 // 100 meter ( >= 50 meter)
+)
+
 func (rs *RoadSnapper) SnapToRoads(p datastructure.Point) []datastructure.OSMObject {
 	var nearestEdges []datastructure.OSMObject
 
-	radius := 0.1
+	radius := minRadius
 	nearestEdges = rs.rtree.NearestNeighboursRadiusDifferentStreetID(p, radius)
 
 	counter := 0
 
-	for counter < 5 && len(nearestEdges) == 0 {
+	for counter < 2 && len(nearestEdges) == 0 {
 		radius += 0.005
 		counter++
 		nearestEdges = rs.rtree.NearestNeighboursRadiusDifferentStreetID(p, radius)
@@ -51,7 +55,7 @@ func (rs *RoadSnapper) SnapToRoadsWithinRadius(p datastructure.Point, radius flo
 
 	counter := 0
 
-	for counter < 5 && len(nearestEdges) < k {
+	for counter < 2 && len(nearestEdges) < k {
 		radius += 0.05
 		counter++
 		nearestEdges = rs.rtree.NearestNeighboursRadiusDifferentStreetIDWithinRadius(k, 0, p, radius)
@@ -67,19 +71,18 @@ func (rs *RoadSnapper) InsertNode(bound datastructure.RtreeBoundingBox, leaf dat
 	rs.rtree.InsertLeaf(bound, leaf, reinsert)
 }
 
-// yang seharusnya diinsert di r-tree itu osm way bukan graph edge. biar candidate states setiap observation lebih dikit
-// & match candidatesnya lebih akurat.
-func (rs *RoadSnapper) BuildRoadSnapper(ways []datastructure.MapMatchOsmWay, ch *contractor.ContractedGraph) {
+// should not use osm ways directly, but use graph edges (for better map matching) [already tested]
+func (rs *RoadSnapper) BuildRoadSnapper(ch *contractor.ContractedGraph) {
 
 	duplicateEdges := make(map[int]map[int]struct{})
 
-	for idx, way := range ways {
+	for idx, edge := range ch.GetOutEdges() {
 
-		if _, ok := duplicateEdges[int(way.FromNodeID)]; !ok {
-			duplicateEdges[int(way.FromNodeID)] = make(map[int]struct{})
+		if _, ok := duplicateEdges[int(edge.FromNodeID)]; !ok {
+			duplicateEdges[int(edge.FromNodeID)] = make(map[int]struct{})
 		}
 
-		if _, ok := duplicateEdges[int(way.FromNodeID)][int(way.ToNodeID)]; ok {
+		if _, ok := duplicateEdges[int(edge.FromNodeID)][int(edge.ToNodeID)]; ok {
 			continue
 		}
 
@@ -87,42 +90,105 @@ func (rs *RoadSnapper) BuildRoadSnapper(ways []datastructure.MapMatchOsmWay, ch 
 			log.Printf("insert osm way id %d to r-tree...", idx+1)
 		}
 
-		rs.insertEdgeToRtree(way, ch)
+		rs.insertEdgeToRtree(edge, ch)
 
-		duplicateEdges[int(way.FromNodeID)][int(way.ToNodeID)] = struct{}{}
+		duplicateEdges[int(edge.FromNodeID)][int(edge.ToNodeID)] = struct{}{}
 	}
 }
 
+const (
+	tolerance = 0.0003
+)
+
 // insertEdgeToRtree insert filtered osm ways (road segments) to rtree
-func (rs *RoadSnapper) insertEdgeToRtree(way datastructure.MapMatchOsmWay, ch *contractor.ContractedGraph) {
+func (rs *RoadSnapper) insertEdgeToRtree(edge datastructure.EdgeCH, ch *contractor.ContractedGraph) {
 	tag := make(map[int]int)
-	tag[0] = int(way.ID)
+	tag[0] = int(edge.EdgeID)
 
-	fromNode := ch.GetNode(way.FromNodeID)
+	fromNode := ch.GetNode(edge.FromNodeID)
+	toNode := ch.GetNode(edge.ToNodeID)
 
-	// mid node
+	latMin := min(fromNode.Lat-tolerance, toNode.Lat-tolerance)
+	latMax := max(fromNode.Lat+tolerance, toNode.Lat+tolerance)
+	lonMin := min(fromNode.Lon-tolerance, toNode.Lon-tolerance)
+	lonMax := max(fromNode.Lon+tolerance, toNode.Lon+tolerance)
+
+	// from node
 	nodeBB := datastructure.NewRtreeBoundingBox(
-		2, []float64{fromNode.Lat - 0.001, fromNode.Lon - 0.001}, []float64{fromNode.Lat + 0.001, fromNode.Lon + 0.001},
+		2, []float64{latMin, lonMin}, []float64{latMax, lonMax},
 	)
 
 	osmObj := datastructure.NewOSMObject(
-		int(way.ID), fromNode.Lat, fromNode.Lon,
+		int(edge.EdgeID), fromNode.Lat, fromNode.Lon,
 		tag, nodeBB,
 	)
 
+
 	rs.rtree.InsertLeaf(nodeBB, osmObj, false)
 
-	// to node
-	toNode := ch.GetNode(way.ToNodeID)
+	pointsInbetween := ch.GetEdgeExtraInfo(int(edge.EdgeID)).PointsInBetween
+	if len(pointsInbetween) > 2 {
 
-	nodeBB = datastructure.NewRtreeBoundingBox(
-		2, []float64{toNode.Lat - 0.001, toNode.Lon - 0.001}, []float64{toNode.Lat + 0.001, toNode.Lon + 0.001},
-	)
+		quarterPoint := pointsInbetween[len(pointsInbetween)/4]
+
+		nodeBB = datastructure.NewRtreeBoundingBox(
+			2, []float64{latMin, lonMin}, []float64{latMax, lonMax},
+		)
+
+		osmObj = datastructure.NewOSMObject(
+			int(edge.EdgeID), quarterPoint.Lat, quarterPoint.Lon,
+			tag, nodeBB,
+		)
+		rs.rtree.InsertLeaf(nodeBB, osmObj, false)
+
+		midIdx := len(pointsInbetween) / 2
+		midPoint := pointsInbetween[midIdx]
+
+		nodeBB = datastructure.NewRtreeBoundingBox(
+			2, []float64{latMin, lonMin}, []float64{latMax, lonMax},
+		)
+
+		osmObj = datastructure.NewOSMObject(
+			int(edge.EdgeID), midPoint.Lat, midPoint.Lon,
+			tag, nodeBB,
+		)
+
+		rs.rtree.InsertLeaf(nodeBB, osmObj, false)
+
+		threeQuarterPoint := pointsInbetween[len(pointsInbetween)*3/4]
+
+		nodeBB = datastructure.NewRtreeBoundingBox(
+			2, []float64{latMin, lonMin}, []float64{latMax, lonMax},
+		)
+
+		osmObj = datastructure.NewOSMObject(
+			int(edge.EdgeID), threeQuarterPoint.Lat, threeQuarterPoint.Lon,
+			tag, nodeBB,
+		)
+
+		rs.rtree.InsertLeaf(nodeBB, osmObj, false)
+
+	}
 
 	osmObj = datastructure.NewOSMObject(
-		int(way.ID), toNode.Lat, toNode.Lon,
+		int(edge.EdgeID), toNode.Lat, toNode.Lon,
 		tag, nodeBB,
 	)
 
 	rs.rtree.InsertLeaf(nodeBB, osmObj, false)
+
+}
+
+func max(a, b float64) float64 {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+func min(a, b float64) float64 {
+	if a < b {
+		return a
+	}
+	return b
 }

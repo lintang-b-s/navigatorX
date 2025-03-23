@@ -293,6 +293,70 @@ func TestNNearestNeighborsPQ(t *testing.T) {
 	})
 }
 
+// func TestMapMatchNearbyRoadSegments(t *testing.T) {
+// 	itemsData := []datastructure.OSMObject{
+// 		{0, 47.667268, -122.11436590000001, nil, datastructure.RtreeBoundingBox{}},
+// 		{1, 47.667353, -122.121819, nil, datastructure.RtreeBoundingBox{}},
+// 		{2, 47.667118, -122.114535, nil, datastructure.RtreeBoundingBox{}},
+// 		{3, 47.668175, -122.109918, nil, datastructure.RtreeBoundingBox{}},
+// 		{4, 47.667899, -122.109868, nil, datastructure.RtreeBoundingBox{}},
+// 		{5, 47.667758, -122.109895, nil, datastructure.RtreeBoundingBox{}},
+// 		{6, 47.667447, -122.110216, nil, datastructure.RtreeBoundingBox{}},
+// 		{7, 47.668494, -122.117756, nil, datastructure.RtreeBoundingBox{}},
+// 		{8, 47.670015, -122.118697, nil, datastructure.RtreeBoundingBox{}},
+// 		{9, 47.669918, -122.121536, nil, datastructure.RtreeBoundingBox{}},
+// 		{10, 47.664474, -122.133176, nil, datastructure.RtreeBoundingBox{}},
+// 		{11, 47.667729, -122.101976, nil, datastructure.RtreeBoundingBox{}},
+// 		{12, 47.667144, -122.123049, nil, datastructure.RtreeBoundingBox{}},
+// 		{13, 47.668524, -122.122728, nil, datastructure.RtreeBoundingBox{}},
+// 	}
+
+// 	myRtree := datastructure.NewRtree(25, 50, 2)
+// 	for _, item := range itemsData {
+// 		bound := datastructure.NewRtreeBoundingBox(2, []float64{item.Lat - 0.0001, item.Lon - 0.0001},
+// 			[]float64{item.Lat + 0.0001, item.Lon + 0.0001})
+
+// 		myRtree.InsertLeaf(bound, item, false)
+// 	}
+
+// 	nn := myRtree.NearestNeighboursRadiusDifferentStreetID(datastructure.Point{47.66716667, -122.1166833},
+// 		0.2)
+// 	knn := myRtree.NearestNeighboursPQ(8, datastructure.Point{47.66716667, -122.1166833})
+
+// 	for i, n := range knn {
+// 		nrad := nn[i]
+// 		dist := datastructure.HaversineDistance(n.Lat, n.Lon, 47.66716667, -122.1166833)
+// 		t.Logf("ID: %d, Lat: %f, Lon: %f\n", n.ID, n.Lat, n.Lon)
+// 		t.Logf("Distance: %f\n", dist)
+// 		assert.Equal(t, n.ID, nrad.ID)
+// 	}
+
+// }
+
+// func Test_minDist(t *testing.T) {
+// 	qPoint := datastructure.Point{47.66716667, -122.1166833}
+
+// 	nearest := datastructure.Point{47.667268, -122.11436590000001}
+// 	nearest2 := datastructure.Point{47.668494, -122.117756}
+
+// 	nearestBB := datastructure.NewRtreeBoundingBox(2, []float64{nearest.Lat - 0.0001, nearest.Lon - 0.0001},
+// 		[]float64{nearest.Lat + 0.0001, nearest.Lon + 0.0001})
+
+// 	bbDist := qPoint.MinDist(nearestBB)
+
+// 	nearestBB2 := datastructure.NewRtreeBoundingBox(2, []float64{nearest2.Lat - 0.0001, nearest2.Lon - 0.0001},
+// 		[]float64{nearest2.Lat + 0.0001, nearest2.Lon + 0.0001})
+
+// 	bbDist2 := qPoint.MinDist(nearestBB2)
+
+// 	assert.Less(t, bbDist, bbDist2)
+
+// 	dist := datastructure.HaversineDistance(nearest.Lat, nearest.Lon, qPoint.Lat, qPoint.Lon)
+// 	dist2 := datastructure.HaversineDistance(nearest2.Lat, nearest2.Lon, qPoint.Lat, qPoint.Lon)
+
+// 	assert.Less(t, dist, dist2)
+// }
+
 func TestNearestNeighbor(t *testing.T) {
 	t.Run("Test N Nearest Neighbors kota surakarta", func(t *testing.T) {
 		itemsData := []datastructure.OSMObject{
@@ -468,9 +532,9 @@ func TestNearestNeighborRadiusFilterOsmFeature(t *testing.T) {
 
 		results := rt.NearestNeighboursRadiusFilterOSM(5, 0, myLocation, 3.0, 1)
 		for _, item := range results {
-			myLocationH := geo.NewLocation(myLocation.Lat, myLocation.Lon)
-			itemLocationH := geo.NewLocation(item.Lat, item.Lon)
-			if _, ok := item.Tag[1]; geo.HaversineDistance(myLocationH, itemLocationH) > 3.0 ||
+
+			if _, ok := item.Tag[1]; geo.CalculateHaversineDistance(myLocation.Lat, myLocation.Lon,
+				item.Lat, item.Lon) > 3.0 ||
 				!ok {
 				t.Errorf("Distance is more than 3.0 and tag not valid")
 			}
