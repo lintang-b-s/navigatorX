@@ -34,7 +34,7 @@ func ProjectPointToLineCoord(nearestStPoint Coordinate, secondNearestStPoint Coo
 }
 
 const (
-	tolerancePonintInLine = 1e-6
+	tolerancePointInLine = 1e-3
 )
 
 // IsPointBetweenLine checks if a point is between two points
@@ -52,9 +52,9 @@ func PointPositionBetweenLinePoints(lat, lon float64, linePoints []datastructure
 		currNextDist := s2.LatLngFromDegrees(linePoints[i].Lat, linePoints[i].Lon).Distance(s2.LatLngFromDegrees(linePoints[i+1].Lat, linePoints[i+1].Lon)).Radians()
 
 		diff := math.Abs(currQueryDist + nextQueryDist - currNextDist)
-		if diff < tolerancePonintInLine && diff < minDiff {
+		if diff < tolerancePointInLine && diff < minDiff {
 			minDiff = diff
-			pos = i 
+			pos = i
 		}
 	}
 	return pos

@@ -46,16 +46,15 @@ ProjectionID can be graph node ID or virtual node ID.
 type State struct {
 	StateID int
 
-	Dist                  float64
-	EdgeID                int32
-	PointsInBetween       []Coordinate
-	EdgeFromNodeID        int32
-	EdgeToNodeID          int32
-	EdgeWeight            float64
-	ProjectionLoc         [2]float64
-	ProjectionID          int32
-	StreetName            int
-	RoadClass             int
+	Dist            float64
+	EdgeID          int32
+	PointsInBetween []Coordinate
+	EdgeFromNodeID  int32
+	EdgeToNodeID    int32
+	EdgeWeight      float64
+	ProjectionLoc   [2]float64
+	ProjectionID    int32
+
 	IncomingVirtualEdgeID int32
 	OutgoingVirtualEdgeID int32
 	Type                  StatePosition

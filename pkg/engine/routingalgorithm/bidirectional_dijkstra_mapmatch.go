@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	maxVisitedNodes = 15  // prevState->nextState should be less than 15 node visit. idk
+	maxVisitedNodes = 25  // prevState->nextState should be less than 25 node visit. idk
 )
 
 func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32, fromEdgeFilter, toEdgeFilter func(edge datastructure.EdgeCH) bool) ([]datastructure.Coordinate, []datastructure.EdgeCH,

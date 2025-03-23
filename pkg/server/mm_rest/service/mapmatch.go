@@ -59,7 +59,7 @@ func NewMapMatchingService(mapMatching Matching, rs RoadSnapper, kv KVDB, ch Con
 }
 
 const (
-	distThresold = 4.07
+	distThresold = 4.0
 )
 
 func (uc *MapMatchingService) MapMatch(ctx context.Context, gps []datastructure.Coordinate) (string,
@@ -106,7 +106,6 @@ func (uc *MapMatchingService) MapMatch(ctx context.Context, gps []datastructure.
 			})
 			prevGpsPoint = gpsPoint
 		}
-
 	}
 
 	log.Printf("obs with lot nearby edges: %d\n", obsWithLotNearbyEdges)
@@ -119,33 +118,59 @@ func (uc *MapMatchingService) MapMatch(ctx context.Context, gps []datastructure.
 
 func (uc *MapMatchingService) NearestRoadSegmentsForMapMatching(lat, lon float64, obsID int) []*datastructure.State {
 	nearestEdges := uc.roadSnapper.SnapToRoads(datastructure.Point{Lat: lat, Lon: lon})
+	filteredEdges := uc.FilterEdges(nearestEdges, lat, lon, obsID)
 
-	stsData := make([]*datastructure.State, 0, len(nearestEdges))
-	for _, roadSegment := range nearestEdges {
+	return filteredEdges
+}
 
-		dist := geo.CalculateHaversineDistance(lat, lon, roadSegment.Lat, roadSegment.Lon) * 1000
-		edgeID := int32(roadSegment.ID)
+const (
+	radius = 80.0 // dist(projected, obs) <  80 meter
+)
+
+func (uc *MapMatchingService) FilterEdges(edges []datastructure.OSMObject, pLat, pLon float64,
+	obsID int) []*datastructure.State {
+	// create projection and check if dist(projection, queryPoint) < radius
+	filteredEdges := make([]*datastructure.State, 0, len(edges))
+
+	edgeSet := make(map[int32]struct{}, len(edges))
+
+	for _, edge := range edges {
+
+		if _, ok := edgeSet[int32(edge.ID)]; ok {
+			continue
+		}
+		edgeSet[int32(edge.ID)] = struct{}{}
+
+		edgeID := int32(edge.ID)
 
 		edge := uc.ch.GetOutEdge(edgeID)
+
 		pointsInBetween := uc.ch.GetEdgeExtraInfo(int(edgeID)).PointsInBetween
 
-		stsData = append(stsData, &datastructure.State{
+		pos := geo.PointPositionBetweenLinePoints(pLat, pLon, pointsInBetween)
 
-			Dist:            dist,
-			EdgeID:          edgeID, // edgeID sama edgeID di outEdge chGraph beda... how ????
-			PointsInBetween: pointsInBetween,
-			EdgeFromNodeID:  edge.FromNodeID,
-			EdgeToNodeID:    edge.ToNodeID,
-			StreetName:      roadSegment.Tag[1],
-			RoadClass:       roadSegment.Tag[2],
-			ProjectionID:    -1,
-			Type:            datastructure.VirtualNode, // by default all virtual node
-			ObservationID:   obsID,
-		})
+		fromPoint := geo.NewCoordinate(pointsInBetween[pos].Lat, pointsInBetween[pos].Lon)
+		toPoint := geo.NewCoordinate(pointsInBetween[pos+1].Lat, pointsInBetween[pos+1].Lon)
 
+		projection := geo.ProjectPointToLineCoord(fromPoint, toPoint, geo.NewCoordinate(pLat, pLon))
+
+		dist := geo.CalculateHaversineDistance(projection.Lat, projection.Lon, pLat, pLon) * 1000
+
+		if dist < radius {
+			filteredEdges = append(filteredEdges, &datastructure.State{
+				Dist:            dist,
+				EdgeID:          edgeID,
+				PointsInBetween: pointsInBetween,
+				EdgeFromNodeID:  edge.FromNodeID,
+				EdgeToNodeID:    edge.ToNodeID,
+				ProjectionID:    -1,
+				Type:            datastructure.VirtualNode, // by default all virtual node
+				ObservationID:   obsID,
+			})
+		}
 	}
 
-	return stsData
+	return filteredEdges
 }
 
 func (uc *MapMatchingService) NearestRoadSegments(ctx context.Context, lat, lon float64, radius float64, k int) ([]datastructure.EdgeCH, []float64, error) {
@@ -181,11 +206,6 @@ func (uc *MapMatchingService) NearestRoadSegments(ctx context.Context, lat, lon 
 	}
 
 	return edges, dists, nil
-}
-
-type transition struct {
-	from int32
-	to   int32
 }
 
 type State struct {

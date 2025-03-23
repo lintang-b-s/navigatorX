@@ -1,5 +1,6 @@
 package matching
 
 const (
-	minDistToGraphNode = 1 // 1 metre
+	minDistToGraphNode = 2 // 1 metre
+	maxTransitionDist = 2000.0 // 2km
 )
