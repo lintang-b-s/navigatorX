@@ -116,7 +116,7 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 			if distToSource < distToTarget && distToSource < minDistToGraphNode {
 				projectionID = fromNode.ID
 				gps[i].State[j].Type = datastructure.GraphNode
-			} else if distToTarget < distToSource && distToSource < minDistToGraphNode {
+			} else if distToTarget < distToSource && distToTarget < minDistToGraphNode {
 				projectionID = toNode.ID
 				gps[i].State[j].Type = datastructure.GraphNode
 			}
@@ -195,10 +195,28 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 
 				for k := 0; k < len(gps[i].State); k++ {
 
+					// if u-turn is detected, then skip this state pair
+					if prevObservation.State[j].EdgeFromNodeID == gps[i].State[k].EdgeToNodeID &&
+						prevObservation.State[j].EdgeToNodeID == gps[i].State[k].EdgeFromNodeID {
+						continue
+					}
+
 					// for every state between 2 adjacent gps observation, calculate the route length
 
 					prevState := prevObservation.State[j]
 					currentState := gps[i].State[k]
+
+					if prevState.EdgeToNodeID == currentState.EdgeFromNodeID {
+						projectionDist := geo.CalculateHaversineDistance(prevState.ProjectionLoc[0], prevState.ProjectionLoc[1],
+							currentState.ProjectionLoc[0], currentState.ProjectionLoc[1]) * 1000
+
+						transitionProb := computeTransitionLogProb(projectionDist,
+							linearDistance)
+
+						transition := Transition{From: prevState.StateID, To: currentState.StateID}
+
+						transitionProbMatrix[transition] = transitionProb
+					}
 
 					// if state is virtual node, then only consider the virtual edge
 					// if not, consider all edges of the state graph node
@@ -227,11 +245,12 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 					// calculate route shortest path distance between prev state and current state
 					path, _, _, routeDist := routeAlgo.ShortestPathBiDijkstra(prevState.ProjectionID, currentState.ProjectionID, sourceEdgeFilter,
 						targetEdgeFilter)
+					// shortest path harus dari antara 2 projectionPoint.
 
 					//
 					routeDist *= 1000
 
-					if routeDist != -1000 {
+					if routeDist != -1000 && math.Abs(routeDist-linearDistance) < maxTransitionDist {
 
 						statePairCount++
 						// not found a path from previous state edge to current state edge
@@ -260,27 +279,6 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 						transition := Transition{From: prevState.StateID, To: currentState.StateID}
 
 						transitionProbMatrix[transition] = transitionProb
-
-					} else {
-						path, _, _, routeDist := routeAlgo.ShortestPathBiDijkstra(prevState.EdgeFromNodeID, currentState.EdgeFromNodeID, sourceEdgeFilter,
-							targetEdgeFilter)
-
-						if routeDist != -1000 && math.Abs(routeDist-linearDistance) < 1000 {
-							statePairCount++
-
-							transitionProb := computeTransitionLogProb(routeDist,
-								linearDistance)
-
-							transition := Transition{From: prevState.StateID, To: currentState.StateID}
-
-							transitionProbMatrix[transition] = transitionProb
-
-							if _, ok := routePath[prevState.StateID]; !ok {
-								routePath[prevState.StateID] = make(map[int][]datastructure.Coordinate)
-							}
-							routePath[prevState.StateID][currentState.StateID] = path
-
-						}
 
 					}
 				}
@@ -313,9 +311,10 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 								prevState.EdgeID)
 							prevFromNode := hmm.ch.GetNode(prevState.EdgeFromNodeID)
 							prevToNode := hmm.ch.GetNode(prevState.EdgeToNodeID)
-							fmt.Fprintf(&sb, "edgeFromLat, edgeFromLat: %v, %v, edgeToLat, edgeFromLat: %v, %v\n", prevFromNode.Lat, prevFromNode.Lon,
+							fmt.Fprintf(&sb, "edgeFromLat, edgeFromLat: %v, %v, edgeToLat, edgeToLat: %v, %v\n", prevFromNode.Lat, prevFromNode.Lon,
 								prevToNode.Lat, prevToNode.Lon)
 
+							fmt.Fprintf(&sb, "fromNodeID, toNodeID: %v, %v\n", prevState.EdgeFromNodeID, prevState.EdgeToNodeID)
 						}
 
 						fmt.Fprintf(&sb, "\n currObs: %v\n", gps[i].Observation.ID)
@@ -326,8 +325,10 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 							fmt.Fprintf(&sb, "Observed stateID %v: lat, lon: %v, %v, stateEdgeID: %v\n", currState.StateID, currState.ProjectionLoc[0], currState.ProjectionLoc[1],
 								currState.EdgeID)
 
-							fmt.Fprintf(&sb, "edgeFromLat, edgeFromLat: %v, %v, edgeToLat, edgeFromLat: %v, %v\n", currFromNode.Lat, currFromNode.Lon,
+							fmt.Fprintf(&sb, "edgeFromLat, edgeFromLat: %v, %v, edgeToLat, edgeToLat: %v, %v\n", currFromNode.Lat, currFromNode.Lon,
 								currToNode.Lat, currToNode.Lon)
+
+							fmt.Fprintf(&sb, "fromNodeID, toNodeID: %v, %v\n", currState.EdgeFromNodeID, currState.EdgeToNodeID)
 						}
 					}
 
@@ -611,6 +612,7 @@ func (hmm *HMMMapMatching) updateAllHMMStates(gps []datastructure.StateObservati
 			if state.GetType() == datastructure.VirtualNode {
 				virtualOutgouingEdge := queryGraph.GetNodeFirstOutEdges(state.ProjectionID)[0]
 				virtualIncomingEdge := queryGraph.GetNodeFirstInEdges(state.ProjectionID)[0]
+
 				state.SetIncomingVirtualEdge(virtualIncomingEdge)
 				state.SetOutgoingVirtualEdge(virtualOutgouingEdge)
 
@@ -619,6 +621,10 @@ func (hmm *HMMMapMatching) updateAllHMMStates(gps []datastructure.StateObservati
 				newState.SetIncomingVirtualEdge(virtualOutgouingEdge)
 				newState.SetOutgoingVirtualEdge(virtualIncomingEdge)
 				newState.StateID = nextStateID
+
+				temp := newState.EdgeFromNodeID
+				newState.EdgeFromNodeID = newState.EdgeToNodeID
+				newState.EdgeToNodeID = temp
 				nextStateID++
 
 				gps[i].State = append(gps[i].State, &newState)
