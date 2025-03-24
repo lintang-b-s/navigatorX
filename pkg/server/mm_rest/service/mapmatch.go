@@ -147,7 +147,7 @@ func (uc *MapMatchingService) FilterEdges(edges []datastructure.OSMObject, pLat,
 
 		pointsInBetween := uc.ch.GetEdgeExtraInfo(int(edgeID)).PointsInBetween
 
-		pos := geo.PointPositionBetweenLinePoints(pLat, pLon, pointsInBetween)
+		pos := geo.PointPositionBetweenLinePoints(pLat, pLon, pointsInBetween)-1
 
 		fromPoint := geo.NewCoordinate(pointsInBetween[pos].Lat, pointsInBetween[pos].Lon)
 		toPoint := geo.NewCoordinate(pointsInBetween[pos+1].Lat, pointsInBetween[pos+1].Lon)

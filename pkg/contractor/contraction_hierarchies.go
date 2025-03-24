@@ -74,21 +74,30 @@ func NewContractedGraphFromOtherGraph(otherGraph *ContractedGraph) *ContractedGr
 	qFirstOutEdges := make([][]int32, len(nodeOutEdges))
 	copy(qFirstOutEdges, nodeOutEdges)
 
+	for i := range nodeOutEdges {
+		qFirstOutEdges[i] = make([]int32, len(nodeOutEdges[i]))
+		copy(qFirstOutEdges[i], nodeOutEdges[i])
+	}
+
 	nodeInEdges := otherGraph.GetFirstInEdges()
 	qFirstInEdges := make([][]int32, len(nodeInEdges))
 	copy(qFirstInEdges, nodeInEdges)
+
+	for i := range nodeInEdges {
+		qFirstInEdges[i] = make([]int32, len(nodeInEdges[i]))
+		copy(qFirstInEdges[i], nodeInEdges[i]) // Deep copy
+	}
+
+	edgeInfo := make([]datastructure.EdgeExtraInfo, len(otherGraph.EdgeInfo))
+	copy(edgeInfo, otherGraph.EdgeInfo)
+
 	return &ContractedGraph{
-		Metadata:               otherGraph.Metadata,
-		Ready:                  otherGraph.Ready,
 		ContractedOutEdges:     qOutEdges,
 		ContractedInEdges:      qInEdges,
 		ContractedNodes:        qNodes,
 		ContractedFirstOutEdge: qFirstOutEdges,
 		ContractedFirstInEdge:  qFirstInEdges,
-		EdgeInfo:               otherGraph.EdgeInfo,
-
-		StreetDirection: otherGraph.StreetDirection,
-		TagStringIDMap:  otherGraph.TagStringIDMap,
+		EdgeInfo:               edgeInfo,
 	}
 }
 
@@ -448,7 +457,7 @@ func (ch *ContractedGraph) UpdatePrioritiesOfRemainingNodes(nq *MinHeap[int32]) 
 		nq.Insert(PriorityQueueNode[int32]{Item: int32(nodeID), Rank: priority})
 
 		if (nodeID+1)%10000 == 0 {
-			log.Printf("updating priority of node: %d...", nodeID+1)
+			log.Printf("update node priority : %d...", nodeID+1)
 		}
 	}
 }

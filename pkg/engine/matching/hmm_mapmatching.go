@@ -90,7 +90,7 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 
 			pointsInBetween := hmm.ch.GetEdgeExtraInfo(int(gps[i].State[j].EdgeID)).PointsInBetween
 			pos := geo.PointPositionBetweenLinePoints(gps[i].Observation.Lat,
-				gps[i].Observation.Lon, pointsInBetween)
+				gps[i].Observation.Lon, pointsInBetween) - 1
 
 			from := pointsInBetween[pos]
 			to := pointsInBetween[pos+1]
@@ -163,29 +163,6 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 			viterbi.StartWithInitialStateProbabilities(int(gps[i].Observation.ID), states, emissionProbMatrix)
 
 			processedObsCount++
-		} else if startNewViterbi {
-			emissionProbMatrix = make(map[int]float64)
-			states = make([]int, 0)
-
-			for j := 0; j < len(prevObservation.State); j++ {
-
-				projectionLoc := prevObservation.State[j].ProjectionLoc
-
-				distance := geo.CalculateHaversineDistance(projectionLoc[0], projectionLoc[1],
-					prevObservation.Observation.Lat, prevObservation.Observation.Lon) * 1000 // distance between gps observation point and projection point (gps point to road segment/state)
-				emissionProb := computeEmissionLogProb(distance)
-
-				emissionProbMatrix[prevObservation.State[j].StateID] = emissionProb
-
-				states = append(states, prevObservation.State[j].StateID)
-			}
-
-			viterbi.StartWithInitialStateProbabilities(int(prevObservation.Observation.ID), states, emissionProbMatrix)
-
-			processedObsCount++
-			startNewViterbi = false
-			// harus masih pakai prevObservation sebelumnya
-			continue
 		} else if !startNewViterbi {
 			// calculate linear distance between prev observation and current observation
 			linearDistance := geo.CalculateHaversineDistance(prevObservation.Observation.Lat, prevObservation.Observation.Lon,
@@ -216,6 +193,7 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 						transition := Transition{From: prevState.StateID, To: currentState.StateID}
 
 						transitionProbMatrix[transition] = transitionProb
+						continue
 					}
 
 					// if state is virtual node, then only consider the virtual edge
@@ -410,8 +388,6 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 func (hmm *HMMMapMatching) buildQueryGraph(gps []datastructure.StateObservationPair) *contractor.ContractedGraph {
 	// create query graph from ch graph
 
-	// create query graph from ch graph
-
 	queryGraph := contractor.NewContractedGraphFromOtherGraph(hmm.ch.(*contractor.ContractedGraph))
 
 	hmm.splitEdges(gps, queryGraph)
@@ -454,7 +430,7 @@ func (hmm *HMMMapMatching) splitEdges(gps []datastructure.StateObservationPair, 
 
 		edge := queryGraph.GetOutEdge(edgeID)
 
-		edgePointsInBetween := hmm.ch.GetEdgeExtraInfo(int(edgeID)).PointsInBetween
+		edgePointsInBetween := queryGraph.GetEdgeExtraInfo(int(edgeID)).PointsInBetween
 
 		fromNode := queryGraph.GetNode(edge.FromNodeID)
 		toNode := queryGraph.GetNode(edge.ToNodeID)
@@ -491,6 +467,9 @@ func (hmm *HMMMapMatching) splitEdges(gps []datastructure.StateObservationPair, 
 
 		// for every snap projection point, add virtual edge <prevNodeID, newProjectionNodeID>
 		for i := 0; i < len(edgeSnaps); i++ {
+			position := geo.PointPositionBetweenLinePoints(edgeSnaps[i].ProjectionLoc[0], edgeSnaps[i].ProjectionLoc[1], edgePointsInBetween)
+			snapIndexInPoints[edgeSnaps[i].StateID] = position
+
 			snap := edgeSnaps[i]
 			currSnapProjection := datastructure.NewCoordinate(snap.ProjectionLoc[0], snap.ProjectionLoc[1])
 
@@ -525,12 +504,11 @@ func (hmm *HMMMapMatching) splitEdges(gps []datastructure.StateObservationPair, 
 				prevPoint, currSnapProjection, prevPositionInLinePoints,
 				snapIndexInPoints[edgeSnaps[i].StateID])
 
-			edgePointsInBetween = hmm.ch.GetEdgeExtraInfo(int(edgeID)).PointsInBetween
+			edgePointsInBetween = queryGraph.GetEdgeExtraInfo(int(edgeID)).PointsInBetween
 
 			prevNodeID = newNodeID
 			prevPoint = currSnapProjection
 			prevPositionInLinePoints = snapIndexInPoints[edgeSnaps[i].StateID]
-			getProjectionPlaceInLinePoints(edgePointsInBetween, edgeSnaps, snapIndexInPoints)
 
 		}
 
@@ -555,7 +533,7 @@ func (hmm *HMMMapMatching) addVirtualEdge(queryGraph ContractedGraph,
 	prevPositionInLinePoints, currPositionInLinePoints int) int32 {
 	pointsInBetweenNewEdge := make([]datastructure.Coordinate, 0)
 
-	matchedEdgeExtraInfo := hmm.ch.GetEdgeExtraInfo(int(matchedEdge.EdgeID))
+	matchedEdgeExtraInfo := queryGraph.GetEdgeExtraInfo(int(matchedEdge.EdgeID))
 	matchedEdgePointsInBetween := matchedEdgeExtraInfo.PointsInBetween
 
 	// add points in between source and target of new edge
@@ -569,9 +547,7 @@ func (hmm *HMMMapMatching) addVirtualEdge(queryGraph ContractedGraph,
 	matchedEdgePointsInBetween = append(matchedEdgePointsInBetween, datastructure.NewCoordinate(currProjection.Lat, currProjection.Lon))
 	matchedEdgeExtraInfo.PointsInBetween = matchedEdgePointsInBetween
 
-	hmm.ch.SetEdgeExtraInfo(int(matchedEdge.EdgeID), matchedEdgeExtraInfo)
-
-	matchedEdgeExtraInfo = hmm.ch.GetEdgeExtraInfo(int(matchedEdge.EdgeID))
+	queryGraph.SetEdgeExtraInfo(int(matchedEdge.EdgeID), matchedEdgeExtraInfo)
 
 	// calculate edge distance
 	dist := 0.0

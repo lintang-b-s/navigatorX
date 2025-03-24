@@ -113,11 +113,11 @@ func (uc *NavigationService) ShortestPathETA(ctx context.Context, srcLat, srcLon
 }
 
 func (uc *NavigationService) SnapLocToStreetNode(lat, lon float64) (int32, error) {
-	ways, err := uc.KV.GetNearestStreetsFromPointCoord(lat, lon)
+	edges, err := uc.KV.GetNearestStreetsFromPointCoord(lat, lon)
 	if err != nil {
 		return 0, err
 	}
-	streetNodeID := uc.CH.SnapLocationToRoadNetworkNodeH3(ways, []float64{lat, lon})
+	streetNodeID := uc.CH.SnapLocationToRoadNetworkNodeH3(edges, []float64{lat, lon})
 
 	return streetNodeID, nil
 }

@@ -40,7 +40,6 @@ const (
 // IsPointBetweenLine checks if a point is between two points
 // lat,lon is the projection of query point to the line
 // lats, lons are the line points
-// return postition of the point in the line (example 1 means the point is between the first and second point)
 func PointPositionBetweenLinePoints(lat, lon float64, linePoints []datastructure.Coordinate) int {
 	minDiff := math.MaxFloat64
 	var pos int
@@ -54,7 +53,7 @@ func PointPositionBetweenLinePoints(lat, lon float64, linePoints []datastructure
 		diff := math.Abs(currQueryDist + nextQueryDist - currNextDist)
 		if diff < tolerancePointInLine && diff < minDiff {
 			minDiff = diff
-			pos = i
+			pos = i+1
 		}
 	}
 	return pos

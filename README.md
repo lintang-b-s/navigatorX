@@ -61,6 +61,18 @@ Note: Source & Destination Coordinates must be around Yogyakarta Province/Suraka
 ```
 
 
+### Map Matching
+```
+0. download example map: https://drive.google.com/file/d/1AVY-o3fVDiWFvfr56T2pKmtKzr5t_rpX/view?usp=sharing
+1. ./bin/navigatorx-preprocessing  -f washington.osm.pbf -mapmatch=true
+NOTES: If you want to use the shortest path feature, you have to re-do the preprocessing with the mapmatch=false flag.
+2. CGO_ENABLED=1  go build -o ./bin/navigatorx-mapmatch ./cmd/mapmatch
+3. ./bin/navigatorx-mapmatch
+4. open simple-web/mapmatch.html & upload data/msft-mapmatching.json
+5. wait for map matching complete
+```
+
+
 ### Traveling Salesman Problem Using Simulated Annealing or Ant-Colony Optimization
 
 What is the shortest (suboptimal) route to visit UGM, UNY, UPNV Jogja, UII Jogja, IAIN Surakarta, UNS, UMS, and ISI Surakarta campuses exactly once and return to the original campus location?

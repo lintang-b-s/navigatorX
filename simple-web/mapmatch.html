@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Map Match</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""/>
+    <style>
+      #map {
+        height: 500px;
+        width: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <div id="controls">
+      <input type="file" id="gpsJson" accept=".json" />
+      <button id="uploadButton">Upload gps data</button>
+    </div>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""></script>
+    <script src="
+https://cdn.jsdelivr.net/npm/@mapbox/polyline@1.2.1/src/polyline.min.js
+"></script>
+    
+    <script>
+      function drawPolyline(encodedPath) {
+        try {
+
+          var decodedCoords = polyline.decode(encodedPath);
+          
+          var latLngs = decodedCoords.map(coord => [coord[0], coord[1]]);
+          
+          var polylineLayer = L.polyline(latLngs, { color: 'blue' }).addTo(map);
+          
+          map.fitBounds(polylineLayer.getBounds());
+        } catch (error) {
+          console.error('Error decoding polyline:', error);
+          alert('Failed to decode polyline');
+        }
+      }
+
+      var map = L.map('map').setView([47.66755, -122.1065], 15);
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution:
+          'Map data © <a href="https://openstreetmap.org">OpenStreetMap</a> contributors',
+        maxZoom: 19
+      }).addTo(map);
+
+     
+
+      document.getElementById('uploadButton').addEventListener('click', function() {
+        var fileInput = document.getElementById('gpsJson');
+        if (fileInput.files.length === 0) {
+          alert('Please select a JSON file');
+          return;
+        }
+        var file = fileInput.files[0];
+        var reader = new FileReader();
+
+        reader.onload = function(e) {
+          try {
+            var requestData = JSON.parse(e.target.result);
+          } catch (err) {
+            console.error('Invalid JSON file:', err);
+            alert('Invalid JSON file!');
+            return;
+          }
+
+          fetch('http://localhost:5000/api/map-match/map-matching', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestData)
+          })
+            .then(response => response.json())
+            .then(apiResponse => {
+           
+              drawPolyline(apiResponse.path);
+
+            })
+            .catch(error => console.error('Error:', error));
+        };
+
+        reader.readAsText(file);
+      });
+    </script>
+  </body>
+</html>

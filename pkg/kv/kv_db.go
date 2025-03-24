@@ -12,6 +12,10 @@ import (
 	"github.com/uber/h3-go/v4"
 )
 
+var (
+	ErrEdgesNotFound = errors.New("edges not found")
+)
+
 type KVDB struct {
 	db *badger.DB
 }
@@ -24,7 +28,7 @@ func (k *KVDB) BuildH3IndexedEdges(ctx context.Context, edges []datastructure.Ed
 	log.Printf("wait until loading contracted graph complete...")
 
 	log.Printf("creating & saving h3 indexed street to key-value db...")
-	kv := make(map[string][]kvEdge)
+	kv := make(map[string][]datastructure.KVEdge)
 	for i := range edges {
 		select {
 		case <-ctx.Done():
@@ -41,9 +45,10 @@ func (k *KVDB) BuildH3IndexedEdges(ctx context.Context, edges []datastructure.Ed
 
 		h3LatLon := h3.NewLatLng(edgeLat, edgeLon)
 		cell := h3.LatLngToCell(h3LatLon, 9)
-		smallStreet := kvEdge{
-			CenterLoc:           []float64{edgeLat, edgeLon},
-			IntersectionNodesID: []int32{roadSegment.FromNodeID, roadSegment.ToNodeID},
+		smallStreet := datastructure.KVEdge{
+			CenterLoc:  [2]float64{edgeLat, edgeLon},
+			FromNodeID: roadSegment.FromNodeID,
+			ToNodeID:   roadSegment.ToNodeID,
 		}
 
 		kv[cell.String()] = append(kv[cell.String()], smallStreet)
@@ -86,7 +91,7 @@ func (k *KVDB) BuildH3IndexedEdges(ctx context.Context, edges []datastructure.Ed
 
 type batchData struct {
 	key   string
-	value []kvEdge
+	value []datastructure.KVEdge
 }
 
 func (k *KVDB) saveBatchEdges(ctx context.Context, batchData []batchData) error {
@@ -102,7 +107,7 @@ func (k *KVDB) saveBatchEdges(ctx context.Context, batchData []batchData) error 
 
 		key := []byte(data.key)
 
-		val, err := encodeWays(data.value)
+		val, err := encodeEdges(data.value)
 
 		if err != nil {
 			return err
@@ -114,10 +119,10 @@ func (k *KVDB) saveBatchEdges(ctx context.Context, batchData []batchData) error 
 	}
 
 	if err := batch.Flush(); err != nil {
-		log.Printf("error saving ways: %v", err)
+		log.Printf("error saving edges: %v", err)
 		return err
 	}
-	log.Printf("saving %d ways done", len(batchData))
+	log.Printf("saving %d edges done", len(batchData))
 	return nil
 }
 
@@ -138,9 +143,8 @@ func (k *KVDB) get(val, key []byte) ([]byte, error) {
 	return val, err
 }
 
-// GetNearestStreetsFromPointCoord buat road snaping. Untuk menentukan jalan-jalan yang paling dekat dengan titik start/end rute yang di tunjuk sama pengguna
 func (k *KVDB) GetNearestStreetsFromPointCoord(lat, lon float64) ([]datastructure.KVEdge, error) {
-	ways := []kvEdge{}
+	edges := []datastructure.KVEdge{}
 
 	home := h3.NewLatLng(lat, lon)
 	cell := h3.LatLngToCell(home, 9)
@@ -154,12 +158,15 @@ func (k *KVDB) GetNearestStreetsFromPointCoord(lat, lon float64) ([]datastructur
 		return []datastructure.KVEdge{}, err
 	}
 
-	streets, _ := loadWays(val)
+	streets, err := loadEdges(val)
+	if err != nil {
+		return []datastructure.KVEdge{}, err
+	}
 
-	ways = append(ways, streets...)
+	edges = append(edges, streets...)
 
-	cells := kRingIndexesArea(lat, lon, 1) // search cell neighbor dari homeCell yang radius nya 1km
-	if len(ways) == 0 {
+	cells := kRingIndexesArea(lat, lon, 1)
+	if len(edges) == 0 {
 		for _, currCell := range cells {
 			if currCell == cell {
 				continue
@@ -173,17 +180,16 @@ func (k *KVDB) GetNearestStreetsFromPointCoord(lat, lon float64) ([]datastructur
 				return []datastructure.KVEdge{}, err
 			}
 
-			streets, err := loadWays(val)
+			streets, err := loadEdges(val)
 			if err != nil {
 				return []datastructure.KVEdge{}, err
 			}
-			ways = append(ways, streets...)
+			edges = append(edges, streets...)
 		}
 	}
 
-	// kalau dari radius 1 km dari titik start/end rute pengguna gak ada jalan (misal di bandara, hutan, dll). maka cari jalan dari neighbor h3 cell yang lebih jauh dari titik start/end rute
 	for lev := 1; lev <= 10; lev++ {
-		if len(ways) == 0 {
+		if len(edges) == 0 {
 			cells := h3.GridDisk(cell, lev)
 			for _, currCell := range cells {
 				if currCell == cell {
@@ -196,46 +202,25 @@ func (k *KVDB) GetNearestStreetsFromPointCoord(lat, lon float64) ([]datastructur
 				if err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
 					return []datastructure.KVEdge{}, err
 				}
-				streets, err := loadWays(val)
+				streets, err := loadEdges(val)
 				if err != nil {
 					return []datastructure.KVEdge{}, err
 				}
-				ways = append(ways, streets...)
+				edges = append(edges, streets...)
 			}
 		} else {
 			break
 		}
 	}
 
-	if len(ways) == 0 {
+	if len(edges) == 0 {
 
-		return []datastructure.KVEdge{}, fmt.Errorf("tidak ada jalan di sekitar lokasi")
-	}
-	waysData := make([]datastructure.KVEdge, len(ways))
-	for i, way := range ways {
-		nodeInBetweenLats := []float64{}
-		nodeInBetweenLons := []float64{}
-		for _, node := range way.PointsInBetween {
-			nodeInBetweenLats = append(nodeInBetweenLats, node.Lat)
-			nodeInBetweenLons = append(nodeInBetweenLons, node.Lon)
-		}
-		coords := datastructure.NewCoordinates(nodeInBetweenLats, nodeInBetweenLons)
-		waysData[i] = datastructure.KVEdge{
-			CenterLoc:           way.CenterLoc,
-			IntersectionNodesID: way.IntersectionNodesID,
-			PointsInBetween:     coords,
-			WayID:               way.WayID,
-		}
+		return []datastructure.KVEdge{}, ErrEdgesNotFound
 	}
 
-	return waysData, nil
+	return edges, nil
 }
 
-/*
-*
-
-	search cell neighbor dari cell dari lat,lon  yang radius nya = searchRadiusKm
-*/
 func kRingIndexesArea(lat, lon, searchRadiusKm float64) []h3.Cell {
 	home := h3.NewLatLng(lat, lon)
 	origin := h3.LatLngToCell(home, 9)

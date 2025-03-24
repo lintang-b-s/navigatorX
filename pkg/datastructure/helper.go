@@ -1,8 +1,6 @@
 package datastructure
 
 import (
-	"lintang/navigatorx/pkg/concurrent"
-
 	"github.com/twpayne/go-polyline"
 )
 
@@ -105,31 +103,10 @@ func NewMathMatchOsmWay(id int, points []Coordinate, nodeIDs []int32, from, to i
 	}
 }
 
-// not used
 type KVEdge struct {
-	CenterLoc           []float64 // [lat, lon]
-	IntersectionNodesID []int32
-	PointsInBetween     []Coordinate
-	WayID               int32
-	ToNodeID            int32
-	FromNodeID          int32
-}
-
-func (s *KVEdge) ToConcurrentWay() concurrent.KVEdge {
-	pointsInbetweenLat := []float64{}
-	pointsInbetweenLon := []float64{}
-	for _, n := range s.PointsInBetween {
-		pointsInbetweenLat = append(pointsInbetweenLat, n.Lat)
-		pointsInbetweenLon = append(pointsInbetweenLon, n.Lon)
-	}
-	return concurrent.KVEdge{
-		CenterLoc:           s.CenterLoc,
-		IntersectionNodesID: s.IntersectionNodesID,
-		PointsInBetween:     concurrent.NewCoordinates(pointsInbetweenLat, pointsInbetweenLon),
-		WayID:               s.WayID,
-		FromNodeID:          s.FromNodeID,
-		ToNodeID:            s.ToNodeID,
-	}
+	CenterLoc  [2]float64
+	ToNodeID   int32
+	FromNodeID int32
 }
 
 func CreatePolyline(path []Coordinate) string {
