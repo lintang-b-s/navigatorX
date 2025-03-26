@@ -363,9 +363,8 @@ func (aco *Heuristics) TravelingSalesmanProblemAntColonyOptimization(cities []in
 	spMap := make(map[int32]map[int32]datastructure.SPSingleResultResult)
 
 	workers.Start(aco.route.CallBidirectionalDijkstra)
-	go func() {
-		workers.Wait()
-	}()
+
+	workers.Wait()
 
 	for i := 0; i < len(spPair); i++ {
 		spMap[spPair[i][0]] = make(map[int32]datastructure.SPSingleResultResult)

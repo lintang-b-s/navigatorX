@@ -35,8 +35,10 @@ func (wp *WorkerPool[JobI, G]) Start(jobFunc JobFunc[JobI, G]) {
 }
 
 func (wp *WorkerPool[JobI, G]) Wait() {
-	wp.wg.Wait()
-	close(wp.results)
+	go func() {
+		wp.wg.Wait()
+		close(wp.results)
+	}()
 }
 
 func (wp *WorkerPool[JobI, G]) AddJob(job JobI) {

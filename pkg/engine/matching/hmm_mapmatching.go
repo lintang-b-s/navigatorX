@@ -2,6 +2,7 @@ package matching
 
 import (
 	"fmt"
+	"lintang/navigatorx/pkg/concurrent"
 	"lintang/navigatorx/pkg/contractor"
 	"lintang/navigatorx/pkg/datastructure"
 	"lintang/navigatorx/pkg/engine/routingalgorithm"
@@ -69,6 +70,101 @@ func computeEmissionLogProb(obsStateDist float64) float64 {
 	return math.Log(1.0/(math.Sqrt(2*math.Pi)*sigmaZ)) + (-0.5 * math.Pow(obsStateDist/sigmaZ, 2))
 }
 
+type transitionWithProb struct {
+	transition     Transition
+	transitionProb float64
+	path           []datastructure.Coordinate
+}
+
+func newTransitionWithProb(prevState, currState int, transitionProb float64,
+	path []datastructure.Coordinate) transitionWithProb {
+	return transitionWithProb{
+		transition:     NewTransition(prevState, currState),
+		transitionProb: transitionProb,
+		path:           path,
+	}
+}
+
+func (hmm *HMMMapMatching) calculateTransitionProb(param concurrent.CalculateTransitionProbParam) transitionWithProb {
+
+	i, j, k, linearDistance := param.I, param.J, param.K, param.LinearDistance
+	routeAlgo, maxTransitionDist := param.RouteAlgo, param.MaxTransitionDist
+
+	// for every state between 2 adjacent gps observation, calculate the route length
+
+	prevState := param.PrevObservation.State[j]
+	currentState := param.Gps[i].State[k]
+
+	if prevState.EdgeToNodeID == currentState.EdgeFromNodeID {
+		projectionDist := geo.CalculateHaversineDistance(prevState.ProjectionLoc[0], prevState.ProjectionLoc[1],
+			currentState.ProjectionLoc[0], currentState.ProjectionLoc[1]) * 1000
+
+		transitionProb := computeTransitionLogProb(projectionDist,
+			linearDistance)
+
+		return newTransitionWithProb(prevState.StateID, currentState.StateID, transitionProb,
+			[]datastructure.Coordinate{datastructure.NewCoordinate(prevState.ProjectionLoc[0], prevState.ProjectionLoc[1])})
+
+	}
+
+	// if state is virtual node, then only consider the virtual edge
+	// if not, consider all edges of the state graph node
+	sourceEdgeFilter := func(edge datastructure.EdgeCH) bool {
+		return true
+	}
+
+	targetEdgeFilter := func(edge datastructure.EdgeCH) bool {
+		return true
+	}
+
+	if prevState.GetType() == datastructure.VirtualNode {
+		prevStatef := prevState
+		sourceEdgeFilter = func(edge datastructure.EdgeCH) bool {
+			return edge.EdgeID == prevStatef.OutgoingVirtualEdgeID
+		}
+	}
+
+	if currentState.GetType() == datastructure.VirtualNode {
+		currentStatef := currentState
+		targetEdgeFilter = func(edge datastructure.EdgeCH) bool {
+			return edge.EdgeID == currentStatef.IncomingVirtualEdgeID
+		}
+	}
+
+	// calculate route shortest path distance between prev state and current state
+	path, _, _, routeDist := routeAlgo.ShortestPathBiDijkstra(prevState.ProjectionID, currentState.ProjectionID, sourceEdgeFilter,
+		targetEdgeFilter)
+	// shortest path harus dari antara 2 projectionPoint.
+
+	//
+	routeDist *= 1000
+
+	if routeDist != -1000 && math.Abs(routeDist-linearDistance) < maxTransitionDist {
+
+		// not found a path from previous state edge to current state edge
+		// better give very small transition probability
+
+		transitionProb := computeTransitionLogProb(routeDist,
+			linearDistance)
+
+		return newTransitionWithProb(prevState.StateID, currentState.StateID, transitionProb, path)
+
+	} else if prevState.EdgeID == currentState.EdgeID {
+
+		projectionDist := geo.CalculateHaversineDistance(prevState.ProjectionLoc[0], prevState.ProjectionLoc[1],
+			currentState.ProjectionLoc[0], currentState.ProjectionLoc[1]) * 1000
+
+		transitionProb := computeTransitionLogProb(projectionDist,
+			linearDistance)
+
+		return newTransitionWithProb(prevState.StateID, currentState.StateID, transitionProb,
+			[]datastructure.Coordinate{datastructure.NewCoordinate(prevState.ProjectionLoc[0], prevState.ProjectionLoc[1])})
+
+	}
+
+	return newTransitionWithProb(prevState.StateID, currentState.StateID, math.Inf(-1), nil)
+}
+
 func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, nextStateID int) ([]datastructure.Coordinate, []datastructure.EdgeCH, []datastructure.Coordinate) {
 
 	stateDataMap := make(map[int]*datastructure.State)
@@ -77,9 +173,6 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 	viterbiResetCount := 0
 
 	statesPath := make([]int, 0)
-	routePath := make(map[int]map[int][]datastructure.Coordinate)
-
-	statePairCount := 0
 
 	prevObservation := gps[0]
 
@@ -127,7 +220,6 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 	}
 
 	processedObsCount := 0
-	startNewViterbi := true
 
 	queryGraph := hmm.buildQueryGraph(gps)
 
@@ -163,186 +255,44 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 			viterbi.StartWithInitialStateProbabilities(int(gps[i].Observation.ID), states, emissionProbMatrix)
 
 			processedObsCount++
-		} else if !startNewViterbi {
+		} else {
 			// calculate linear distance between prev observation and current observation
 			linearDistance := geo.CalculateHaversineDistance(prevObservation.Observation.Lat, prevObservation.Observation.Lon,
 				gps[i].Observation.Lat, gps[i].Observation.Lon) * 1000
 
+			workers := concurrent.NewWorkerPool[concurrent.CalculateTransitionProbParam, transitionWithProb](10,
+				len(gps[i].State)*len(prevObservation.State))
+
 			for j := 0; j < len(prevObservation.State); j++ {
-
 				for k := 0; k < len(gps[i].State); k++ {
-
-					// if u-turn is detected, then skip this state pair
 					if prevObservation.State[j].EdgeFromNodeID == gps[i].State[k].EdgeToNodeID &&
 						prevObservation.State[j].EdgeToNodeID == gps[i].State[k].EdgeFromNodeID {
+						// if u-turn is detected, then skip this state pair
 						continue
 					}
 
-					// for every state between 2 adjacent gps observation, calculate the route length
-
-					prevState := prevObservation.State[j]
-					currentState := gps[i].State[k]
-
-					if prevState.EdgeToNodeID == currentState.EdgeFromNodeID {
-						projectionDist := geo.CalculateHaversineDistance(prevState.ProjectionLoc[0], prevState.ProjectionLoc[1],
-							currentState.ProjectionLoc[0], currentState.ProjectionLoc[1]) * 1000
-
-						transitionProb := computeTransitionLogProb(projectionDist,
-							linearDistance)
-
-						transition := Transition{From: prevState.StateID, To: currentState.StateID}
-
-						transitionProbMatrix[transition] = transitionProb
-						continue
-					}
-
-					// if state is virtual node, then only consider the virtual edge
-					// if not, consider all edges of the state graph node
-					sourceEdgeFilter := func(edge datastructure.EdgeCH) bool {
-						return true
-					}
-
-					targetEdgeFilter := func(edge datastructure.EdgeCH) bool {
-						return true
-					}
-
-					if prevState.GetType() == datastructure.VirtualNode {
-						prevStatef := prevState
-						sourceEdgeFilter = func(edge datastructure.EdgeCH) bool {
-							return edge.EdgeID == prevStatef.OutgoingVirtualEdgeID
-						}
-					}
-
-					if currentState.GetType() == datastructure.VirtualNode {
-						currentStatef := currentState
-						targetEdgeFilter = func(edge datastructure.EdgeCH) bool {
-							return edge.EdgeID == currentStatef.IncomingVirtualEdgeID
-						}
-					}
-
-					// calculate route shortest path distance between prev state and current state
-					path, _, _, routeDist := routeAlgo.ShortestPathBiDijkstra(prevState.ProjectionID, currentState.ProjectionID, sourceEdgeFilter,
-						targetEdgeFilter)
-					// shortest path harus dari antara 2 projectionPoint.
-
-					//
-					routeDist *= 1000
-
-					if routeDist != -1000 && math.Abs(routeDist-linearDistance) < maxTransitionDist {
-
-						statePairCount++
-						// not found a path from previous state edge to current state edge
-						// better give very small transition probability
-
-						transitionProb := computeTransitionLogProb(routeDist,
-							linearDistance)
-
-						transition := Transition{From: prevState.StateID, To: currentState.StateID}
-
-						transitionProbMatrix[transition] = transitionProb
-
-						if _, ok := routePath[prevState.StateID]; !ok {
-							routePath[prevState.StateID] = make(map[int][]datastructure.Coordinate)
-						}
-						routePath[prevState.StateID][currentState.StateID] = path
-
-					} else if prevState.EdgeID == currentState.EdgeID {
-
-						projectionDist := geo.CalculateHaversineDistance(prevState.ProjectionLoc[0], prevState.ProjectionLoc[1],
-							currentState.ProjectionLoc[0], currentState.ProjectionLoc[1]) * 1000
-
-						transitionProb := computeTransitionLogProb(projectionDist,
-							linearDistance)
-
-						transition := Transition{From: prevState.StateID, To: currentState.StateID}
-
-						transitionProbMatrix[transition] = transitionProb
-
-					}
+					workers.AddJob(concurrent.NewCalculateTransitionProbParam(prevObservation, gps, i, j, k, len(gps[i].State)*len(prevObservation.State),
+						linearDistance, maxTransitionDist, routeAlgo))
 				}
+			}
+
+			workers.Close()
+			workers.Start(hmm.calculateTransitionProb)
+
+			workers.Wait()
+
+			for transitionItem := range workers.CollectResults() {
+				if transitionItem.transitionProb == math.Inf(-1) {
+					continue
+				}
+				transitionProbMatrix[transitionItem.transition] = transitionItem.transitionProb
 			}
 
 			err := viterbi.NextStep(int(gps[i].Observation.ID), states, emissionProbMatrix, transitionProbMatrix, nil)
 			if err != nil {
-
-				log.Printf("broken viterbi at observation: %v", i)
-
-				hist := viterbi.messageHistory
-				var sb strings.Builder
-				sb.WriteString("Message history with log probabilities\n\n")
-
-				for j, message := range hist {
-
-					fmt.Fprintf(&sb, "Time step %d\n", j)
-
-					for state, value := range message {
-						fmt.Fprintf(&sb, "stateID %v: %f  lat, lon: %v, %v\n", state, value,
-							stateDataMap[state].ProjectionLoc[0], stateDataMap[state].ProjectionLoc[1])
-					}
-
-					if j == len(hist)-1 {
-
-						fmt.Fprintf(&sb, "\n PrevObservation: \n")
-						fmt.Fprintf(&sb, "prevObs lat, lon: %v, %v\n", prevObservation.Observation.Lat, prevObservation.Observation.Lon)
-						for _, prevState := range prevObservation.State {
-							fmt.Fprintf(&sb, "Observed stateID %v: lat, lon: %v, %v, stateEdgeID: %v, \n", prevState.StateID, prevState.ProjectionLoc[0], prevState.ProjectionLoc[1],
-								prevState.EdgeID)
-							prevFromNode := hmm.ch.GetNode(prevState.EdgeFromNodeID)
-							prevToNode := hmm.ch.GetNode(prevState.EdgeToNodeID)
-							fmt.Fprintf(&sb, "edgeFromLat, edgeFromLat: %v, %v, edgeToLat, edgeToLat: %v, %v\n", prevFromNode.Lat, prevFromNode.Lon,
-								prevToNode.Lat, prevToNode.Lon)
-
-							fmt.Fprintf(&sb, "fromNodeID, toNodeID: %v, %v\n", prevState.EdgeFromNodeID, prevState.EdgeToNodeID)
-						}
-
-						fmt.Fprintf(&sb, "\n currObs: %v\n", gps[i].Observation.ID)
-						fmt.Fprintf(&sb, "\n currObs lat, lon: %v, %v\n", gps[i].Observation.Lat, gps[i].Observation.Lon)
-						for _, currState := range gps[i].State {
-							currFromNode := hmm.ch.GetNode(currState.EdgeFromNodeID)
-							currToNode := hmm.ch.GetNode(currState.EdgeToNodeID)
-							fmt.Fprintf(&sb, "Observed stateID %v: lat, lon: %v, %v, stateEdgeID: %v\n", currState.StateID, currState.ProjectionLoc[0], currState.ProjectionLoc[1],
-								currState.EdgeID)
-
-							fmt.Fprintf(&sb, "edgeFromLat, edgeFromLat: %v, %v, edgeToLat, edgeToLat: %v, %v\n", currFromNode.Lat, currFromNode.Lon,
-								currToNode.Lat, currToNode.Lon)
-
-							fmt.Fprintf(&sb, "fromNodeID, toNodeID: %v, %v\n", currState.EdgeFromNodeID, currState.EdgeToNodeID)
-						}
-					}
-
-					fmt.Fprintf(&sb, "\ntransitionProbMatrix:\n")
-					for transition, prob := range transitionProbMatrix {
-						fmt.Fprintf(&sb, "From %v to %v: %v\n", transition.From, transition.To, prob)
-					}
-
-					fmt.Fprintf(&sb, "\n")
-				}
-
-				//write sb string to file
-				f, err := os.Create(fmt.Sprintf("output/message_history_%v.txt", i))
-
-				if err != nil {
-					log.Println(err)
-				}
-
-				_, err = f.WriteString(sb.String())
-				if err != nil {
-					log.Println(err)
-				}
-
-				viterbiResetCount++
-				path := viterbi.ComputeMostLikelySequence()
-				if len(path) > 1 {
-					for j := 0; j < len(path)-1; j++ {
-						p := path[j]
-						statesPath = append(statesPath, p.State)
-						obs := gps[p.Observation]
-						observationPath = append(observationPath, datastructure.NewCoordinate(obs.Observation.Lat, obs.Observation.Lon))
-					}
-				}
-
+				hmm.handleHMMBreak(gps, i, viterbi, stateDataMap, transitionProbMatrix, prevObservation, routeAlgo,
+					&statesPath, &observationPath, &viterbiResetCount)
 				break
-
 			} else {
 				processedObsCount++
 			}
@@ -350,8 +300,6 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 		}
 
 		prevObservation = gps[i]
-
-		startNewViterbi = false
 
 		if (processedObsCount+1)%(int(0.05*float64(len(gps)))) == 0 {
 			log.Printf("Processed %v out of %v observations", processedObsCount+1, len(gps))
@@ -380,7 +328,6 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 
 	log.Printf("Viterbi reset count %v", viterbiResetCount)
 	log.Printf("Processed %v out of %v observations", processedObsCount, len(gps))
-	log.Printf("Found %v state pairs", statePairCount)
 
 	return solutions, solutionEdges, observationPath
 }
@@ -615,4 +562,87 @@ func getProjectionPlaceInLinePoints(linePoints []datastructure.Coordinate, edgeS
 		position := geo.PointPositionBetweenLinePoints(edgeSnaps[i].ProjectionLoc[0], edgeSnaps[i].ProjectionLoc[1], linePoints)
 		snappedIndexInPoints[edgeSnaps[i].StateID] = position
 	}
+}
+
+// for debugging purpose, It's too difficult to debug using only vscode/IDE debugger considering the number of transitions.
+func (hmm *HMMMapMatching) handleHMMBreak(gps []datastructure.StateObservationPair, i int, viterbi *ViterbiAlgorithm,
+	stateDataMap map[int]*datastructure.State, transitionProbMatrix map[Transition]float64,
+	prevObservation datastructure.StateObservationPair, routeAlgo RouteAlgorithm,
+	statesPath *[]int, observationPath *[]datastructure.Coordinate, viterbiResetCount *int) {
+	log.Printf("broken viterbi at observation: %v", i)
+
+	hist := viterbi.messageHistory
+	var sb strings.Builder
+	sb.WriteString("Message history with log probabilities\n\n")
+
+	for j, message := range hist {
+
+		fmt.Fprintf(&sb, "Time step %d\n", j)
+
+		for state, value := range message {
+			fmt.Fprintf(&sb, "stateID %v: %f  lat, lon: %v, %v\n", state, value,
+				stateDataMap[state].ProjectionLoc[0], stateDataMap[state].ProjectionLoc[1])
+		}
+
+		if j == len(hist)-1 {
+
+			fmt.Fprintf(&sb, "\n PrevObservation: \n")
+			fmt.Fprintf(&sb, "prevObs lat, lon: %v, %v\n", prevObservation.Observation.Lat, prevObservation.Observation.Lon)
+			for _, prevState := range prevObservation.State {
+				fmt.Fprintf(&sb, "Observed stateID %v: lat, lon: %v, %v, stateEdgeID: %v, \n", prevState.StateID, prevState.ProjectionLoc[0], prevState.ProjectionLoc[1],
+					prevState.EdgeID)
+				prevFromNode := hmm.ch.GetNode(prevState.EdgeFromNodeID)
+				prevToNode := hmm.ch.GetNode(prevState.EdgeToNodeID)
+				fmt.Fprintf(&sb, "edgeFromLat, edgeFromLat: %v, %v, edgeToLat, edgeToLat: %v, %v\n", prevFromNode.Lat, prevFromNode.Lon,
+					prevToNode.Lat, prevToNode.Lon)
+
+				fmt.Fprintf(&sb, "fromNodeID, toNodeID: %v, %v\n", prevState.EdgeFromNodeID, prevState.EdgeToNodeID)
+			}
+
+			fmt.Fprintf(&sb, "\n currObs: %v\n", gps[i].Observation.ID)
+			fmt.Fprintf(&sb, "\n currObs lat, lon: %v, %v\n", gps[i].Observation.Lat, gps[i].Observation.Lon)
+			for _, currState := range gps[i].State {
+				currFromNode := hmm.ch.GetNode(currState.EdgeFromNodeID)
+				currToNode := hmm.ch.GetNode(currState.EdgeToNodeID)
+				fmt.Fprintf(&sb, "Observed stateID %v: lat, lon: %v, %v, stateEdgeID: %v\n", currState.StateID, currState.ProjectionLoc[0], currState.ProjectionLoc[1],
+					currState.EdgeID)
+
+				fmt.Fprintf(&sb, "edgeFromLat, edgeFromLat: %v, %v, edgeToLat, edgeToLat: %v, %v\n", currFromNode.Lat, currFromNode.Lon,
+					currToNode.Lat, currToNode.Lon)
+
+				fmt.Fprintf(&sb, "fromNodeID, toNodeID: %v, %v\n", currState.EdgeFromNodeID, currState.EdgeToNodeID)
+			}
+		}
+
+		fmt.Fprintf(&sb, "\ntransitionProbMatrix:\n")
+		for transition, prob := range transitionProbMatrix {
+			fmt.Fprintf(&sb, "From %v to %v: %v\n", transition.From, transition.To, prob)
+		}
+
+		fmt.Fprintf(&sb, "\n")
+	}
+
+	//write sb string to file
+	f, err := os.Create(fmt.Sprintf("output/message_history_%v.txt", i))
+
+	if err != nil {
+		log.Println(err)
+	}
+
+	_, err = f.WriteString(sb.String())
+	if err != nil {
+		log.Println(err)
+	}
+
+	*viterbiResetCount++
+	path := viterbi.ComputeMostLikelySequence()
+	if len(path) > 1 {
+		for j := 0; j < len(path)-1; j++ {
+			p := path[j]
+			*statesPath = append(*statesPath, p.State)
+			obs := gps[p.Observation]
+			*observationPath = append(*observationPath, datastructure.NewCoordinate(obs.Observation.Lat, obs.Observation.Lon))
+		}
+	}
+
 }

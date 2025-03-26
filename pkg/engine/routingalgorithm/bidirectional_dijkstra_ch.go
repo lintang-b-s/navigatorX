@@ -32,6 +32,8 @@ func NewRouteAlgorithm(ch ContractedGraph) *RouteAlgorithm {
 	return &RouteAlgorithm{ch: ch}
 }
 
+// https://www.cs.princeton.edu/courses/archive/spr06/cos423/Handouts/GH05.pdf
+
 func (rt *RouteAlgorithm) ShortestPathBiDijkstraCH(from, to int32) ([]datastructure.Coordinate, []datastructure.EdgeCH, float64, float64) {
 	if from == to {
 		return []datastructure.Coordinate{}, []datastructure.EdgeCH{}, 0, 0
@@ -49,6 +51,9 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraCH(from, to int32) ([]datastruct
 
 	forwQ.Insert(fromNode)
 	backQ.Insert(toNode)
+
+	visitedF := make(map[int32]struct{})
+	visitedB := make(map[int32]struct{})
 
 	estimate := math.MaxFloat64
 
@@ -97,8 +102,20 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraCH(from, to int32) ([]datastruct
 				break
 			}
 			if turnF {
+				_, okb := visitedB[node.Item]
+				if okb {
+					// The algorithm
+					// terminates when the search in one directing selects a
+					// vertex that has been scanned in the other direction.
+					break
+				}
 
 				for _, arc := range rt.ch.GetNodeFirstOutEdges(node.Item) {
+
+					if _, ok := visitedF[node.Item]; ok {
+						continue
+					}
+
 					edge := rt.ch.GetOutEdge(arc)
 					toNID := edge.ToNodeID
 					cost := edge.Weight
@@ -136,8 +153,22 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraCH(from, to int32) ([]datastruct
 					}
 				}
 
+				visitedF[node.Item] = struct{}{}
+
 			} else {
+				_, okf := visitedF[node.Item]
+				if okf {
+					// The algorithm
+					// terminates when the search in one directing selects a
+					// vertex that has been scanned in the other direction.
+					break
+				}
+
 				for _, arc := range rt.ch.GetNodeFirstInEdges(node.Item) {
+
+					if _, ok := visitedB[node.Item]; ok {
+						continue
+					}
 
 					edge := rt.ch.GetInEdge(arc)
 					toNID := edge.ToNodeID
@@ -174,6 +205,8 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraCH(from, to int32) ([]datastruct
 						}
 					}
 				}
+
+				visitedB[node.Item] = struct{}{}
 
 			}
 

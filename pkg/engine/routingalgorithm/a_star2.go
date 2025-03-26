@@ -7,6 +7,8 @@ import (
 	"lintang/navigatorx/pkg/util"
 )
 
+// https://www.cs.princeton.edu/courses/archive/spr06/cos423/Handouts/GH05.pdf
+
 func (rt *RouteAlgorithm) ShortestPathAStar(from, to int32) ([]datastructure.Coordinate, []datastructure.EdgeCH, float64, float64) {
 	if from == to {
 		return []datastructure.Coordinate{}, []datastructure.EdgeCH{}, 0, 0
@@ -28,6 +30,8 @@ func (rt *RouteAlgorithm) ShortestPathAStar(from, to int32) ([]datastructure.Coo
 	cameFrom := make(map[int32]cameFromPair)
 
 	cameFrom[from] = cameFromPair{datastructure.EdgeCH{}, -1}
+
+	visited := make(map[int32]struct{})
 
 	for {
 		if pq.Size() == 0 {
@@ -61,6 +65,11 @@ func (rt *RouteAlgorithm) ShortestPathAStar(from, to int32) ([]datastructure.Coo
 		}
 
 		for _, edgeID := range rt.ch.GetNodeFirstOutEdges(current.Item) {
+
+			if _, ok := visited[rt.ch.GetOutEdge(edgeID).ToNodeID]; ok {
+				continue
+			}
+
 			edge := rt.ch.GetOutEdge(edgeID)
 			newCost := costSoFar[current.Item] + edge.Weight
 
@@ -88,6 +97,8 @@ func (rt *RouteAlgorithm) ShortestPathAStar(from, to int32) ([]datastructure.Coo
 				cameFrom[edge.ToNodeID] = cameFromPair{edge, current.Item}
 			}
 		}
+
+		visited[current.Item] = struct{}{}
 	}
 }
 

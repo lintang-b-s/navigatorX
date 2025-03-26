@@ -30,9 +30,7 @@ func (rt *RouteAlgorithm) ShortestPathManyToManyBiDijkstraWorkers(from []int32, 
 
 	workers.Start(rt.CallBidirectionalDijkstra)
 
-	go func() {
-		workers.Wait()
-	}()
+	workers.Wait()
 
 	for i := 0; i < len(spPair); i++ {
 		spMap[spPair[i][0]] = make(map[int32]datastructure.SPSingleResultResult)
@@ -58,9 +56,7 @@ func (rt *RouteAlgorithm) CreateDistMatrix(spPair [][]int32) map[int32]map[int32
 
 	workers.Start(rt.CallBidirectionalDijkstra)
 
-	go func() {
-		workers.Wait()
-	}()
+	workers.Wait()
 
 	for i := 0; i < len(spPair); i++ {
 		spMap[spPair[i][0]] = make(map[int32]datastructure.SPSingleResultResult)

@@ -7,8 +7,10 @@ import (
 )
 
 const (
-	maxVisitedNodes = 25  // prevState->nextState should be less than 25 node visit. idk
+	maxVisitedNodes = 100 // prevState->nextState should be less than 100 node visit. idk
 )
+
+// https://www.cs.princeton.edu/courses/archive/spr06/cos423/Handouts/GH05.pdf
 
 func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32, fromEdgeFilter, toEdgeFilter func(edge datastructure.EdgeCH) bool) ([]datastructure.Coordinate, []datastructure.EdgeCH,
 	float64, float64) {
@@ -38,6 +40,9 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32, fromEdgeFilter,
 
 	cameFromb := make(map[int32]cameFromPair)
 	cameFromb[to] = cameFromPair{datastructure.EdgeCH{}, -1}
+
+	visitedF := make(map[int32]struct{})
+	visitedB := make(map[int32]struct{})
 
 	frontFinished := false
 	backFinished := false
@@ -76,9 +81,22 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32, fromEdgeFilter,
 			if node.Rank >= estimate {
 				break
 			}
+
 			if turnF {
+				_, okb := visitedB[node.Item]
+				if okb {
+					// The algorithm
+					// terminates when the search in one directing selects a
+					// vertex that has been scanned in the other direction.
+					break
+				}
 
 				for _, arc := range rt.ch.GetNodeFirstOutEdges(node.Item) {
+
+					if _, ok := visitedF[node.Item]; ok {
+						continue
+					}
+
 					edge := rt.ch.GetOutEdge(arc)
 					if !fromEdgeFilter(edge) {
 						// if the source node is virtual node,  must start the search from outgoing virtual edge of source node.
@@ -114,7 +132,9 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32, fromEdgeFilter,
 					if ok {
 						pathDistance := newCost + db[toNID]
 						if pathDistance < estimate {
-							// jika toNID visited di backward search & d(s,toNID) + d(t,toNID) < cost best candidate path, maka update best candidate path
+							// If µ > ds(v) + `(v, w) + dt(w),
+							//we have found a shorter path than those seen before, so
+							// we update µ and its path accordingly.
 							estimate = pathDistance
 							bestCommonVertex = edge.ToNodeID
 
@@ -123,8 +143,23 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32, fromEdgeFilter,
 
 				}
 
+				visitedF[node.Item] = struct{}{}
+
 			} else {
+				_, okf := visitedF[node.Item]
+				if okf {
+					// The algorithm
+					// terminates when the search in one directing selects a
+					// vertex that has been scanned in the other direction.
+					break
+				}
+
 				for _, arc := range rt.ch.GetNodeFirstInEdges(node.Item) {
+
+					if _, ok := visitedB[node.Item]; ok {
+						continue
+					}
+
 					edge := rt.ch.GetInEdge(arc)
 
 					if !toEdgeFilter(edge) {
@@ -161,6 +196,9 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32, fromEdgeFilter,
 					if ok {
 						pathDistance := newCost + df[toNID]
 						if pathDistance < estimate {
+							// If µ > ds(v) + `(v, w) + dt(w),
+							//we have found a shorter path than those seen before, so
+							// we update µ and its path accordingly
 							estimate = pathDistance
 							bestCommonVertex = edge.ToNodeID
 
@@ -168,6 +206,8 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32, fromEdgeFilter,
 
 					}
 				}
+
+				visitedB[node.Item] = struct{}{}
 
 			}
 

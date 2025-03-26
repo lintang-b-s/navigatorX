@@ -136,20 +136,6 @@ func (v *ViterbiAlgorithm) NextStep(
 	return nil
 }
 
-// NextStepWithoutDescriptors is a convenience wrapper for NextStep without transition descriptors
-func (v *ViterbiAlgorithm) NextStepWithoutDescriptors(
-	observation int,
-	candidates []int,
-	emissionLogProbabilities map[int]float64,
-	transitionLogProbabilities map[Transition]float64) error {
-
-	return v.NextStep(
-		observation,
-		candidates,
-		emissionLogProbabilities,
-		transitionLogProbabilities,
-		make(map[Transition]int))
-}
 
 // ComputeMostLikelySequence returns the most likely sequence of states for all time steps
 func (v *ViterbiAlgorithm) ComputeMostLikelySequence() []SequenceState {
