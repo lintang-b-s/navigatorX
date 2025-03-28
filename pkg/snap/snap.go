@@ -115,7 +115,7 @@ func (rs *RoadSnapper) BuildRoadSnapper(ch *contractor.ContractedGraph) {
 		}
 
 		if (idx+1)%10000 == 0 {
-			log.Printf("insert osm way id %d to r-tree...", idx+1)
+			log.Printf("inserting edge id %d to r-tree...", idx+1)
 		}
 
 		rs.insertEdgeToRtree(edge, ch)

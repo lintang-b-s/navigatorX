@@ -54,7 +54,7 @@ func main() {
 	flag.Parse()
 	if *cpuprofile != "" {
 		// https://go.dev/blog/pprof
-		// ./bin/osm-search-indexer -f "jabodetabek_big.osm.pbf" -cpuprofile=osmsearchcpu.prof -memprofile=osmsearchmem.mprof
+		// ./bin/navigatorx-engine -cpuprofile=navigatorxcpu.prof -memprofile=navigatorxmem.mprof
 		f, err := os.Create(*cpuprofile)
 		if err != nil {
 			log.Fatal(err)

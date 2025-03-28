@@ -28,7 +28,11 @@ type ContractedGraph interface {
 	GetRoadClassFromID(roadClass int) string
 	GetRoadClassLinkFromID(roadClassLink int) string
 
-	GetEdgeExtraInfo(edgeID int) datastructure.EdgeExtraInfo
+	GetEdgePointsInBetween(edgeID int32) []datastructure.Coordinate
+	GetStreetName(edgeID int32) int
+	GetRoadClass(edgeID int32) int
+	GetRoadClassLink(edgeID int32) int
+	GetLanes(edgeID int32) int
 	IsRoundabout(edgeID int32) bool
 }
 

@@ -28,12 +28,12 @@ semua edge bidirectional
 */
 func NewGraph() *contractor.ContractedGraph {
 	chGraph := contractor.NewContractedGraph()
-	nodeP := datastructure.NewCHNode(0, 0, 0, 0, false)
-	nodeV := datastructure.NewCHNode(1, 1, 0, 1, false)
-	nodeQ := datastructure.NewCHNode(2, 2, 0, 2, false)
-	nodeW := datastructure.NewCHNode(3, 3, 0, 3, false)
-	nodeR := datastructure.NewCHNode(4, 4, 0, 4, false)
-	nodeF := datastructure.NewCHNode(5, 5, 0, 5, false)
+	nodeP := datastructure.NewCHNode(0, 0, 0, 0)
+	nodeV := datastructure.NewCHNode(1, 1, 0, 1)
+	nodeQ := datastructure.NewCHNode(2, 2, 0, 2)
+	nodeW := datastructure.NewCHNode(3, 3, 0, 3)
+	nodeR := datastructure.NewCHNode(4, 4, 0, 4)
+	nodeF := datastructure.NewCHNode(5, 5, 0, 5)
 
 	edgePv := datastructure.NewEdgeCH(0, 10, 10, nodeP.ID, nodeV.ID, 0, 0)
 
@@ -70,7 +70,7 @@ func NewGraph() *contractor.ContractedGraph {
 	streetDirections := make(map[string][2]bool)
 	nodes := []datastructure.CHNode{nodeP, nodeV, nodeQ, nodeW, nodeR, nodeF}
 	chGraph.InitCHGraph(nodes, edges, streetDirections, util.NewIdMap(),
-		edgesExtraInfo)
+		edgesExtraInfo, datastructure.NewNodeInfo())
 
 	return chGraph
 }

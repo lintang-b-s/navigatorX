@@ -29,9 +29,14 @@ type ContractedGraph interface {
 	AddEdge(newEdge datastructure.EdgeCH)
 	RemoveEdge(edgeID int32, fromNodeID int32, toNodeID int32)
 	AddNode(node datastructure.CHNode)
-	GetEdgeExtraInfo(edgeID int) datastructure.EdgeExtraInfo
 	AppendEdgeInfo(edgeInfo datastructure.EdgeExtraInfo)
-	SetEdgeExtraInfo(edgeID int, edgeInfo datastructure.EdgeExtraInfo)
+	SetPointsInBetween(edgeID int32, pointsInBetween []datastructure.Coordinate)
+	GetEdgePointsInBetween(edgeID int32) []datastructure.Coordinate
+	GetStreetName(edgeID int32) int
+	GetRoadClass(edgeID int32) int
+	GetRoadClassLink(edgeID int32) int
+	GetLanes(edgeID int32) int
+	IsRoundabout(edgeID int32) bool
 }
 
 type RouteAlgorithm interface {
@@ -141,9 +146,6 @@ func (hmm *HMMMapMatching) calculateTransitionProb(param concurrent.CalculateTra
 
 	if routeDist != -1000 && math.Abs(routeDist-linearDistance) < maxTransitionDist {
 
-		// not found a path from previous state edge to current state edge
-		// better give very small transition probability
-
 		transitionProb := computeTransitionLogProb(routeDist,
 			linearDistance)
 
@@ -181,7 +183,7 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 			fromNode := hmm.ch.GetNode(gps[i].State[j].EdgeFromNodeID)
 			toNode := hmm.ch.GetNode(gps[i].State[j].EdgeToNodeID)
 
-			pointsInBetween := hmm.ch.GetEdgeExtraInfo(int(gps[i].State[j].EdgeID)).PointsInBetween
+			pointsInBetween := hmm.ch.GetEdgePointsInBetween(gps[i].State[j].EdgeID)
 			pos := geo.PointPositionBetweenLinePoints(gps[i].Observation.Lat,
 				gps[i].Observation.Lon, pointsInBetween) - 1
 
@@ -377,7 +379,7 @@ func (hmm *HMMMapMatching) splitEdges(gps []datastructure.StateObservationPair, 
 
 		edge := queryGraph.GetOutEdge(edgeID)
 
-		edgePointsInBetween := queryGraph.GetEdgeExtraInfo(int(edgeID)).PointsInBetween
+		edgePointsInBetween := queryGraph.GetEdgePointsInBetween(edgeID)
 
 		fromNode := queryGraph.GetNode(edge.FromNodeID)
 		toNode := queryGraph.GetNode(edge.ToNodeID)
@@ -437,7 +439,6 @@ func (hmm *HMMMapMatching) splitEdges(gps []datastructure.StateObservationPair, 
 					currSnapProjection.Lon,
 					-1,
 					newNodeID,
-					false,
 				)
 				edgeSnaps[i].ProjectionID = newNodeID
 
@@ -451,7 +452,7 @@ func (hmm *HMMMapMatching) splitEdges(gps []datastructure.StateObservationPair, 
 				prevPoint, currSnapProjection, prevPositionInLinePoints,
 				snapIndexInPoints[edgeSnaps[i].StateID])
 
-			edgePointsInBetween = queryGraph.GetEdgeExtraInfo(int(edgeID)).PointsInBetween
+			edgePointsInBetween = queryGraph.GetEdgePointsInBetween(edgeID)
 
 			prevNodeID = newNodeID
 			prevPoint = currSnapProjection
@@ -480,8 +481,7 @@ func (hmm *HMMMapMatching) addVirtualEdge(queryGraph ContractedGraph,
 	prevPositionInLinePoints, currPositionInLinePoints int) int32 {
 	pointsInBetweenNewEdge := make([]datastructure.Coordinate, 0)
 
-	matchedEdgeExtraInfo := queryGraph.GetEdgeExtraInfo(int(matchedEdge.EdgeID))
-	matchedEdgePointsInBetween := matchedEdgeExtraInfo.PointsInBetween
+	matchedEdgePointsInBetween := queryGraph.GetEdgePointsInBetween(matchedEdge.EdgeID)
 
 	// add points in between source and target of new edge
 	pointsInBetweenNewEdge = append(pointsInBetweenNewEdge, datastructure.NewCoordinate(prevProjection.Lat, prevProjection.Lon))
@@ -492,9 +492,8 @@ func (hmm *HMMMapMatching) addVirtualEdge(queryGraph ContractedGraph,
 	pointsInBetweenNewEdge = append(pointsInBetweenNewEdge, datastructure.NewCoordinate(currProjection.Lat, currProjection.Lon))
 
 	matchedEdgePointsInBetween = append(matchedEdgePointsInBetween, datastructure.NewCoordinate(currProjection.Lat, currProjection.Lon))
-	matchedEdgeExtraInfo.PointsInBetween = matchedEdgePointsInBetween
 
-	queryGraph.SetEdgeExtraInfo(int(matchedEdge.EdgeID), matchedEdgeExtraInfo)
+	queryGraph.SetPointsInBetween(matchedEdge.EdgeID, matchedEdgePointsInBetween)
 
 	// calculate edge distance
 	dist := 0.0
@@ -514,12 +513,12 @@ func (hmm *HMMMapMatching) addVirtualEdge(queryGraph ContractedGraph,
 	queryGraph.AddEdge(newEdge)
 
 	queryGraph.AppendEdgeInfo(datastructure.NewEdgeExtraInfo(
-		matchedEdgeExtraInfo.StreetName,
-		matchedEdgeExtraInfo.RoadClass,
-		matchedEdgeExtraInfo.Lanes,
-		matchedEdgeExtraInfo.RoadClassLink,
+		queryGraph.GetStreetName(matchedEdge.EdgeID),
+		queryGraph.GetRoadClass(matchedEdge.EdgeID),
+		queryGraph.GetLanes(matchedEdge.EdgeID),
+		queryGraph.GetRoadClassLink(matchedEdge.EdgeID),
 		pointsInBetweenNewEdge,
-		matchedEdgeExtraInfo.Roundabout,
+		queryGraph.IsRoundabout(matchedEdge.EdgeID), false,
 	))
 
 	return newEdgeID
@@ -564,7 +563,7 @@ func getProjectionPlaceInLinePoints(linePoints []datastructure.Coordinate, edgeS
 	}
 }
 
-// for debugging purpose, It's too difficult to debug using only vscode/IDE debugger considering the number of transitions.
+// for debugging purpose, In this case It's too difficult to debug using only vscode/IDE debugger considering the number of transitions.
 func (hmm *HMMMapMatching) handleHMMBreak(gps []datastructure.StateObservationPair, i int, viterbi *ViterbiAlgorithm,
 	stateDataMap map[int]*datastructure.State, transitionProbMatrix map[Transition]float64,
 	prevObservation datastructure.StateObservationPair, routeAlgo RouteAlgorithm,

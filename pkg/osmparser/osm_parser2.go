@@ -85,13 +85,33 @@ var (
 		"trailhead":              struct{}{},
 	}
 
-	reversed = map[string]struct{}{
-		"no":         {},
-		"restricted": {},
+	// https://wiki.openstreetmap.org/wiki/OSM_tags_for_routing/Telenav
+	acceptedHighway = map[string]struct{}{
+		"motorway":         struct{}{},
+		"motorway_link":    struct{}{},
+		"trunk":            struct{}{},
+		"trunk_link":       struct{}{},
+		"primary":          struct{}{},
+		"primary_link":     struct{}{},
+		"secondary":        struct{}{},
+		"secondary_link":   struct{}{},
+		"residential":      struct{}{},
+		"residential_link": struct{}{},
+		"service":          struct{}{},
+		"tertiary":         struct{}{},
+		"tertiary_link":    struct{}{},
+		"road":             struct{}{},
+		"track":            struct{}{},
+		"unclassified":     struct{}{},
+		"undefined":        struct{}{},
+		"unknown":          struct{}{},
+		"living_street":    struct{}{},
+		"private":          struct{}{},
 	}
 )
 
 func (p *OsmParser) Parse(mapFile string) ([]datastructure.CHNode, []datastructure.EdgeCH, map[string][2]bool, []datastructure.EdgeExtraInfo,
+	*datastructure.NodeInfo,
 ) {
 
 	f, err := os.Open(mapFile)
@@ -246,18 +266,21 @@ func (p *OsmParser) Parse(mapFile string) ([]datastructure.CHNode, []datastructu
 
 	processedNodes := make([]datastructure.CHNode, len(p.nodeIDMap)+1)
 
+	nodeInfo := datastructure.NewNodeInfo()
+
 	for nodeID, nodeIDX := range p.nodeIDMap {
 		coord := p.acceptedNodeMap[nodeID]
 		if p.nodeTag[int64(nodeID)][p.tagStringIdMap.GetID(TRAFFIC_LIGHT)] == 1 {
-			processedNodes[nodeIDX] = datastructure.NewCHNode(coord.lat, coord.lon, 0, nodeIDX, true)
+			processedNodes[nodeIDX] = datastructure.NewCHNode(coord.lat, coord.lon, 0, nodeIDX)
+			nodeInfo.SetTrafficLight(nodeIDX)
 		} else {
-			processedNodes[nodeIDX] = datastructure.NewCHNode(coord.lat, coord.lon, 0, nodeIDX, false)
+			processedNodes[nodeIDX] = datastructure.NewCHNode(coord.lat, coord.lon, 0, nodeIDX)
 		}
 	}
 
 	log.Printf("total edges: %d", len(edges))
 
-	return processedNodes, edges, streetDirection, edgesExtraInfo
+	return processedNodes, edges, streetDirection, edgesExtraInfo, nodeInfo
 }
 
 type wayExtraInfo struct {
@@ -376,11 +399,6 @@ func (p *OsmParser) processWay(way *osm.Way, edges *[]datastructure.EdgeCH,
 		speed = 35.0
 	}
 
-	firstNode := int64(-1)
-	lastNode := int64(-1)
-	lastNodeCoord := datastructure.NewCoordinate(0, 0)
-	pointsInBetween := make([]datastructure.Coordinate, 0, len(way.Nodes))
-
 	junctionNodes := make([]int32, 0, len(way.Nodes))
 
 	waySegment := []node{}
@@ -399,42 +417,14 @@ func (p *OsmParser) processWay(way *osm.Way, edges *[]datastructure.EdgeCH,
 			}
 			waySegment = append(waySegment, nodeData)
 
-			if firstNode == -1 {
-				firstNode = nodeData.id
-			}
-
-			lastNode = nodeData.id
-			lastNodeCoord = datastructure.NewCoordinate(nodeCoord.lat, nodeCoord.lon)
-
 			junctionNodes = append(junctionNodes, p.nodeIDMap[nodeData.id])
 		} else {
 			waySegment = append(waySegment, nodeData)
 		}
 
-		if firstNode != -1 {
-			pointsInBetween = append(pointsInBetween, datastructure.NewCoordinate(nodeCoord.lat, nodeCoord.lon))
-		}
 	}
 	if len(waySegment) > 1 {
 		p.processSegment(waySegment, tempMap, speed, edges, edgesExtraInfo, wayExtraInfoData, edgeSet)
-	}
-
-	if firstNode == lastNode && len(pointsInBetween) == 0 {
-		// this osm way is not a roundabout & only have one node
-		return nil
-	}
-
-	for i := len(pointsInBetween) - 1; i >= 0; i-- {
-		currPoint := pointsInBetween[i]
-		if currPoint.Lat == lastNodeCoord.Lat && currPoint.Lon == lastNodeCoord.Lon {
-			break
-		}
-		pointsInBetween = append(pointsInBetween[:i], pointsInBetween[:i+1]...)
-	}
-
-	mapMatchWayDist := 0.0
-	for i := 1; i < len(pointsInBetween); i++ {
-		mapMatchWayDist += geo.CalculateHaversineDistance(pointsInBetween[i-1].Lat, pointsInBetween[i-1].Lon, pointsInBetween[i].Lat, pointsInBetween[i].Lon)
 	}
 
 	return nil
@@ -534,6 +524,10 @@ func (p *OsmParser) addEdge(segment []node, tempMap map[string]string, speed flo
 		lanes = 2 // assume
 	}
 
+	if from == to {
+		return
+	}
+
 	if wayExtraInfoData.oneWay {
 		if wayExtraInfoData.forward {
 			if _, ok := edgeSet[p.nodeIDMap[from.id]]; !ok {
@@ -549,7 +543,7 @@ func (p *OsmParser) addEdge(segment []node, tempMap map[string]string, speed flo
 				p.tagStringIdMap.GetID(tempMap[ROAD_CLASS]),
 				lanes,
 				p.tagStringIdMap.GetID(tempMap[ROAD_CLASS_LINK]),
-				edgePoints, isRoundabout,
+				edgePoints, isRoundabout, false,
 			),
 			)
 
@@ -579,7 +573,7 @@ func (p *OsmParser) addEdge(segment []node, tempMap map[string]string, speed flo
 				p.tagStringIdMap.GetID(tempMap[ROAD_CLASS]),
 				lanes,
 				p.tagStringIdMap.GetID(tempMap[ROAD_CLASS_LINK]),
-				edgePoints, isRoundabout),
+				edgePoints, isRoundabout, false),
 			)
 
 			*edges = append(*edges, datastructure.EdgeCH{
@@ -606,7 +600,7 @@ func (p *OsmParser) addEdge(segment []node, tempMap map[string]string, speed flo
 			p.tagStringIdMap.GetID(tempMap[ROAD_CLASS]),
 			lanes,
 			p.tagStringIdMap.GetID(tempMap[ROAD_CLASS_LINK]),
-			edgePoints, isRoundabout),
+			edgePoints, isRoundabout, false),
 		)
 
 		*edges = append(*edges, datastructure.EdgeCH{
@@ -615,7 +609,7 @@ func (p *OsmParser) addEdge(segment []node, tempMap map[string]string, speed flo
 			Dist:       distanceInMeter, // meter
 			ToNodeID:   p.nodeIDMap[to.id],
 			FromNodeID: p.nodeIDMap[from.id],
-	})
+		})
 
 		// reversed edge
 		if _, ok := edgeSet[p.nodeIDMap[to.id]]; !ok {
@@ -628,7 +622,7 @@ func (p *OsmParser) addEdge(segment []node, tempMap map[string]string, speed flo
 			p.tagStringIdMap.GetID(tempMap[ROAD_CLASS]),
 			lanes,
 			p.tagStringIdMap.GetID(tempMap[ROAD_CLASS_LINK]),
-			edgePoints, isRoundabout),
+			edgePoints, isRoundabout, false),
 		)
 
 		*edges = append(*edges, datastructure.EdgeCH{
@@ -694,8 +688,6 @@ func acceptOsmWay(way *osm.Way) bool {
 		if _, ok := skipHighway[highway]; !ok {
 			return true
 		}
-	} else if way.Tags.Find("route") == "road" {
-		return true
 	} else if junction != "" {
 		return true
 	}

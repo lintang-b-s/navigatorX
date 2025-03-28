@@ -21,7 +21,11 @@ type ContractedGraph interface {
 	GetInEdge(edgeID int32) datastructure.EdgeCH
 	GetNumNodes() int
 	IsShortcut(edgeID int32) bool
-	GetEdgeExtraInfo(edgeID int) datastructure.EdgeExtraInfo
+	GetEdgePointsInBetween(edgeID int32) []datastructure.Coordinate
+	IsTrafficLight(nodeID int32) bool
+
+	GetNodeOutEdgesCsr(nodeID int32) ([]int32, []datastructure.EdgeCH)
+	GetNodeInEdgesCsr(nodeID int32) ([]int32, []datastructure.EdgeCH)
 }
 
 type RouteAlgorithm struct {
@@ -32,7 +36,6 @@ func NewRouteAlgorithm(ch ContractedGraph) *RouteAlgorithm {
 	return &RouteAlgorithm{ch: ch}
 }
 
-// https://www.cs.princeton.edu/courses/archive/spr06/cos423/Handouts/GH05.pdf
 
 func (rt *RouteAlgorithm) ShortestPathBiDijkstraCH(from, to int32) ([]datastructure.Coordinate, []datastructure.EdgeCH, float64, float64) {
 	if from == to {
@@ -102,14 +105,7 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraCH(from, to int32) ([]datastruct
 				break
 			}
 			if turnF {
-				_, okb := visitedB[node.Item]
-				if okb {
-					// The algorithm
-					// terminates when the search in one directing selects a
-					// vertex that has been scanned in the other direction.
-					break
-				}
-
+				
 				for _, arc := range rt.ch.GetNodeFirstOutEdges(node.Item) {
 
 					if _, ok := visitedF[node.Item]; ok {
@@ -156,13 +152,7 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraCH(from, to int32) ([]datastruct
 				visitedF[node.Item] = struct{}{}
 
 			} else {
-				_, okf := visitedF[node.Item]
-				if okf {
-					// The algorithm
-					// terminates when the search in one directing selects a
-					// vertex that has been scanned in the other direction.
-					break
-				}
+				
 
 				for _, arc := range rt.ch.GetNodeFirstInEdges(node.Item) {
 
@@ -248,7 +238,7 @@ func (rt *RouteAlgorithm) createPath(commonVertex int32, from, to int32,
 	eta := 0.0
 	dist := 0.0
 	v := commonVertex
-	if rt.ch.GetNode(v).TrafficLight {
+	if rt.ch.IsTrafficLight(v) {
 		eta += 3.0
 	}
 	ok := true
@@ -260,7 +250,7 @@ func (rt *RouteAlgorithm) createPath(commonVertex int32, from, to int32,
 			rt.unpackBackward(cameFromf[v].Edge, &fPath, &fedgePath, &eta, &dist)
 		} else {
 
-			if cameFromf[v].NodeID != -1 && rt.ch.GetNode(cameFromf[v].NodeID).TrafficLight {
+			if cameFromf[v].NodeID != -1 && rt.ch.IsTrafficLight(cameFromf[v].NodeID) {
 				eta += 3.0
 			}
 			eta += cameFromf[v].Edge.Weight
@@ -269,7 +259,7 @@ func (rt *RouteAlgorithm) createPath(commonVertex int32, from, to int32,
 			pointsInBetween := make([]datastructure.Coordinate, 0)
 			if cameFromf[v].Edge.Weight != 0 {
 				fedgePath = append(fedgePath, cameFromf[v].Edge)
-				pointsInBetween = rt.ch.GetEdgeExtraInfo(int(cameFromf[v].Edge.EdgeID)).PointsInBetween
+				pointsInBetween = rt.ch.GetEdgePointsInBetween(cameFromf[v].Edge.EdgeID)
 
 				pointsInBetween = util.ReverseG(pointsInBetween)
 			}
@@ -297,7 +287,7 @@ func (rt *RouteAlgorithm) createPath(commonVertex int32, from, to int32,
 
 		} else {
 
-			if cameFromb[v].NodeID != -1 && rt.ch.GetNode(cameFromb[v].NodeID).TrafficLight {
+			if cameFromb[v].NodeID != -1 && rt.ch.IsTrafficLight(cameFromb[v].NodeID) {
 				eta += 3.0
 			}
 			eta += cameFromb[v].Edge.Weight
@@ -306,7 +296,7 @@ func (rt *RouteAlgorithm) createPath(commonVertex int32, from, to int32,
 			pointsInBetween := make([]datastructure.Coordinate, 0)
 			if cameFromb[v].Edge.Weight != 0 {
 				bEdgePath = append(bEdgePath, cameFromb[v].Edge)
-				pointsInBetween = rt.ch.GetEdgeExtraInfo(int(cameFromb[v].Edge.EdgeID)).PointsInBetween
+				pointsInBetween = rt.ch.GetEdgePointsInBetween(cameFromb[v].Edge.EdgeID)
 			}
 
 			nodeV := rt.ch.GetNode(v)
@@ -351,20 +341,20 @@ func (rt *RouteAlgorithm) unpackBackward(edge datastructure.EdgeCH, path *[]data
 	isShortcut := rt.ch.IsShortcut(edge.EdgeID)
 
 	if !isShortcut {
-		if rt.ch.GetNode(edge.ToNodeID).TrafficLight {
+		if rt.ch.IsTrafficLight(edge.FromNodeID) {
 			*eta += 3.0
 		}
 		*eta += edge.Weight
 		*dist += edge.Dist
 
-		pointsInBetween := rt.ch.GetEdgeExtraInfo(int(edge.EdgeID)).PointsInBetween
+		pointsInBetween := rt.ch.GetEdgePointsInBetween(edge.EdgeID)
 
 		pointsInBetween = util.ReverseG(pointsInBetween)
 
-		toNode := rt.ch.GetNode(edge.ToNodeID)
+		fromNode := rt.ch.GetNode(edge.FromNodeID)
 
-		*path = append(*path, datastructure.NewCoordinate(toNode.Lat, toNode.Lon))
 		*path = append(*path, pointsInBetween...)
+		*path = append(*path, datastructure.NewCoordinate(fromNode.Lat, fromNode.Lon))
 
 		*ePath = append(*ePath, edge)
 	} else {
@@ -379,13 +369,13 @@ func (rt *RouteAlgorithm) unpackForward(edge datastructure.EdgeCH, path *[]datas
 	isShortcut := rt.ch.IsShortcut(edge.EdgeID)
 
 	if !isShortcut {
-		if rt.ch.GetNode(edge.ToNodeID).TrafficLight {
+		if rt.ch.IsTrafficLight(edge.ToNodeID) {
 			*eta += 3.0
 		}
 		*eta += edge.Weight
 		*dist += edge.Dist
 
-		pointsInBetween := rt.ch.GetEdgeExtraInfo(int(edge.EdgeID)).PointsInBetween
+		pointsInBetween := rt.ch.GetEdgePointsInBetween(edge.EdgeID)
 		toNode := rt.ch.GetNode(edge.ToNodeID)
 
 		*path = append(*path, datastructure.NewCoordinate(toNode.Lat, toNode.Lon))

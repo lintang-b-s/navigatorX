@@ -18,7 +18,11 @@ type ContractedGraph interface {
 	GetRoadClassLinkFromID(roadClassLink int) string
 	IsRoundabout(edgeID int32) bool
 
-	GetEdgeExtraInfo(edgeID int) datastructure.EdgeExtraInfo
+	GetEdgePointsInBetween(edgeID int32) []datastructure.Coordinate
+	GetStreetName(edgeID int32) int
+	GetRoadClass(edgeID int32) int
+	GetRoadClassLink(edgeID int32) int
+	GetLanes(edgeID int32) int
 }
 
 type InstructionsFromEdges struct {
@@ -117,8 +121,25 @@ func (ife *InstructionsFromEdges) AddInstructionFromEdge(edge datastructure.Edge
 		prevNodeData = ife.ContractedGraph.GetNode(ife.PrevNode)
 	}
 
-	prevEdgeExtraInfo := ife.ContractedGraph.GetEdgeExtraInfo(int(ife.PrevEdge.EdgeID))
-	edgeExtraInfo := ife.ContractedGraph.GetEdgeExtraInfo(int(edge.EdgeID))
+	prevEdgeExtraInfo := datastructure.NewEdgeExtraInfo(
+		ife.ContractedGraph.GetStreetName(ife.PrevEdge.EdgeID),
+		ife.ContractedGraph.GetRoadClass(ife.PrevEdge.EdgeID),
+		ife.ContractedGraph.GetLanes(ife.PrevEdge.EdgeID),
+		ife.ContractedGraph.GetRoadClassLink(ife.PrevEdge.EdgeID),
+		ife.ContractedGraph.GetEdgePointsInBetween(ife.PrevEdge.EdgeID),
+		ife.ContractedGraph.IsRoundabout(ife.PrevEdge.EdgeID),
+		false,
+	)
+
+	edgeExtraInfo := datastructure.NewEdgeExtraInfo(
+		ife.ContractedGraph.GetStreetName(edge.EdgeID),
+		ife.ContractedGraph.GetRoadClass(edge.EdgeID),
+		ife.ContractedGraph.GetLanes(edge.EdgeID),
+		ife.ContractedGraph.GetRoadClassLink(edge.EdgeID),
+		ife.ContractedGraph.GetEdgePointsInBetween(edge.EdgeID),
+		ife.ContractedGraph.IsRoundabout(edge.EdgeID),
+		false,
+	)
 
 	name := ife.ContractedGraph.GetStreetNameFromID(edgeExtraInfo.StreetName)
 
@@ -272,7 +293,15 @@ func (ife *InstructionsFromEdges) Finish() {
 
 	baseNodeData := ife.ContractedGraph.GetNode(ife.PrevEdge.FromNodeID)
 
-	prevEdgeExtraInfo := ife.ContractedGraph.GetEdgeExtraInfo(int(ife.PrevEdge.EdgeID))
+	prevEdgeExtraInfo := datastructure.NewEdgeExtraInfo(
+		ife.ContractedGraph.GetStreetName(ife.PrevEdge.EdgeID),
+		ife.ContractedGraph.GetRoadClass(ife.PrevEdge.EdgeID),
+		ife.ContractedGraph.GetLanes(ife.PrevEdge.EdgeID),
+		ife.ContractedGraph.GetRoadClassLink(ife.PrevEdge.EdgeID),
+		ife.ContractedGraph.GetEdgePointsInBetween(ife.PrevEdge.EdgeID),
+		ife.ContractedGraph.IsRoundabout(ife.PrevEdge.EdgeID),
+		false,
+	)
 
 	node := ife.ContractedGraph.GetNode(ife.PrevEdge.ToNodeID)
 	point := datastructure.NewCoordinate(node.Lat, node.Lon)
@@ -320,8 +349,25 @@ func (ife *InstructionsFromEdges) GetTurnSign(edge datastructure.EdgeCH, baseNod
 		return IGNORE
 	}
 
-	prevEdgeExtraInfo := ife.ContractedGraph.GetEdgeExtraInfo(int(ife.PrevEdge.EdgeID))
-	edgeExtraInfo := ife.ContractedGraph.GetEdgeExtraInfo(int(edge.EdgeID))
+	prevEdgeExtraInfo := datastructure.NewEdgeExtraInfo(
+		ife.ContractedGraph.GetStreetName(ife.PrevEdge.EdgeID),
+		ife.ContractedGraph.GetRoadClass(ife.PrevEdge.EdgeID),
+		ife.ContractedGraph.GetLanes(ife.PrevEdge.EdgeID),
+		ife.ContractedGraph.GetRoadClassLink(ife.PrevEdge.EdgeID),
+		ife.ContractedGraph.GetEdgePointsInBetween(ife.PrevEdge.EdgeID),
+		ife.ContractedGraph.IsRoundabout(ife.PrevEdge.EdgeID),
+		false,
+	)
+	edgeExtraInfo := datastructure.NewEdgeExtraInfo(
+		ife.ContractedGraph.GetStreetName(edge.EdgeID),
+		ife.ContractedGraph.GetRoadClass(edge.EdgeID),
+		ife.ContractedGraph.GetLanes(edge.EdgeID),
+		ife.ContractedGraph.GetRoadClassLink(edge.EdgeID),
+		ife.ContractedGraph.GetEdgePointsInBetween(edge.EdgeID),
+		ife.ContractedGraph.IsRoundabout(edge.EdgeID),
+		false,
+	)
+
 	prevEdgeStreetName := ife.ContractedGraph.GetStreetNameFromID(prevEdgeExtraInfo.StreetName)
 	if math.Abs(float64(sign)) > 1 {
 		if (isSameName(name, prevEdgeStreetName)) ||
@@ -337,7 +383,16 @@ func (ife *InstructionsFromEdges) GetTurnSign(edge datastructure.EdgeCH, baseNod
 
 	// get edge lain dari baseNode yang arahnya continue
 	otherContinueEdge := ife.getOtherEdgeContinueDirection(baseNodeData.Lat, baseNodeData.Lon, ife.PrevOrientation, alternativeTurns) //
-	otherContinueEdgeExtraInfo := ife.ContractedGraph.GetEdgeExtraInfo(int(otherContinueEdge.EdgeID))
+
+	otherContinueEdgeExtraInfo := datastructure.NewEdgeExtraInfo(
+		ife.ContractedGraph.GetStreetName(otherContinueEdge.EdgeID),
+		ife.ContractedGraph.GetRoadClass(otherContinueEdge.EdgeID),
+		ife.ContractedGraph.GetLanes(otherContinueEdge.EdgeID),
+		ife.ContractedGraph.GetRoadClassLink(otherContinueEdge.EdgeID),
+		ife.ContractedGraph.GetEdgePointsInBetween(otherContinueEdge.EdgeID),
+		ife.ContractedGraph.IsRoundabout(otherContinueEdge.EdgeID),
+		false,
+	)
 
 	prevCurrEdgeOrientationDiff := calculateOrientationDelta(baseNodeData.Lat, baseNodeData.Lon, lat, lon, ife.PrevOrientation) // bearing difference antara prevNode->baseNode->edge.ToNodeID/adjNode
 	if otherContinueEdge.Weight != 0 {

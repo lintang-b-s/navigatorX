@@ -44,7 +44,7 @@ func main() {
 	flag.Parse()
 	if *cpuprofile != "" {
 		// https://go.dev/blog/pprof
-		// ./bin/osm-search-indexer -f "jabodetabek_big.osm.pbf" -cpuprofile=osmsearchcpu.prof -memprofile=osmsearchmem.mprof
+		// ./bin/navigatorx-preprocessing -cpuprofile=navigatorxcpu.prof -memprofile=navigatorxmem.mprof
 		f, err := os.Create(*cpuprofile)
 		if err != nil {
 			log.Fatal(err)
@@ -58,7 +58,7 @@ func main() {
 	log.Printf("reading osm file %s", *mapFile)
 	osmParser := osmparser.NewOSMParserV2()
 	processedNodes, processedEdges, streetDirection,
-		edgesExtraInfo := osmParser.Parse(*mapFile)
+		edgesExtraInfo, nodeInfo := osmParser.Parse(*mapFile)
 
 	ch := contractor.NewContractedGraph()
 
@@ -85,7 +85,7 @@ func main() {
 	}()
 
 	ch.InitCHGraph(processedNodes, processedEdges, streetDirection, osmParser.GetTagStringIdMap(),
-		edgesExtraInfo)
+		edgesExtraInfo, nodeInfo)
 
 	if !*mapmatch {
 		ch.Contraction()

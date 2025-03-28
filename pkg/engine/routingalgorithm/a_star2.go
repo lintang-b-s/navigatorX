@@ -47,7 +47,7 @@ func (rt *RouteAlgorithm) ShortestPathAStar(from, to int32) ([]datastructure.Coo
 			currNode := rt.ch.GetNode(current.Item)
 			for cameFrom[currNode.ID].NodeID != -1 {
 
-				if currNode.TrafficLight {
+				if rt.ch.IsTrafficLight(currNode.ID) {
 					etaTraffic += 3.0
 				}
 

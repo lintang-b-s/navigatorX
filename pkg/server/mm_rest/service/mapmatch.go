@@ -43,8 +43,7 @@ type ContractedGraph interface {
 	GetStreetNameFromID(streetName int) string
 	GetRoadClassFromID(roadClass int) string
 	GetRoadClassLinkFromID(roadClassLink int) string
-
-	GetEdgeExtraInfo(edgeID int) datastructure.EdgeExtraInfo
+	GetEdgePointsInBetween(edgeID int32) []datastructure.Coordinate
 }
 
 type MapMatchingService struct {
@@ -98,7 +97,7 @@ func (uc *MapMatchingService) MapMatch(ctx context.Context, gps []datastructure.
 				stateID++
 			}
 
-			chNodeGPS := datastructure.NewCHNode(gpsPoint.Lat, gpsPoint.Lon, 0, int32(obsID), false)
+			chNodeGPS := datastructure.NewCHNode(gpsPoint.Lat, gpsPoint.Lon, 0, int32(obsID))
 			obsID++
 			hmmPair = append(hmmPair, datastructure.StateObservationPair{
 				Observation: chNodeGPS,
@@ -145,7 +144,7 @@ func (uc *MapMatchingService) FilterEdges(edges []datastructure.OSMObject, pLat,
 
 		edge := uc.ch.GetOutEdge(edgeID)
 
-		pointsInBetween := uc.ch.GetEdgeExtraInfo(int(edgeID)).PointsInBetween
+		pointsInBetween := uc.ch.GetEdgePointsInBetween(edgeID)
 
 		pos := geo.PointPositionBetweenLinePoints(pLat, pLon, pointsInBetween)-1
 
@@ -197,7 +196,7 @@ func (uc *MapMatchingService) NearestRoadSegments(ctx context.Context, lat, lon 
 
 		gpsLoc := geo.NewCoordinate(lat, lon)
 
-		pointsInBetween := uc.ch.GetEdgeExtraInfo(int(edgeID)).PointsInBetween
+		pointsInBetween := uc.ch.GetEdgePointsInBetween(edgeID)
 		fromNodeLoc := geo.NewCoordinate(pointsInBetween[0].Lat, pointsInBetween[0].Lon)
 		toNodeLoc := geo.NewCoordinate(pointsInBetween[len(pointsInBetween)-1].Lat, pointsInBetween[len(pointsInBetween)-1].Lon)
 		projection := geo.ProjectPointToLineCoord(fromNodeLoc, toNodeLoc, gpsLoc)
