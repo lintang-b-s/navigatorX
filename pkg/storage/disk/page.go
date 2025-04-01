@@ -4,24 +4,29 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
+	"io"
 
+	"github.com/klauspost/compress/zstd"
 	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
+	"github.com/lintang-b-s/navigatorx/pkg/storage"
 	"github.com/lintang-b-s/navigatorx/pkg/util"
 )
 
 // Page . menyimpan data satu block page di dalam memori buffer (also disimpan di disk). (berukuran blockSize)
 type Page struct {
-	bb *bytes.Buffer
+	bb           *bytes.Buffer
+	decompressed bool
 }
 
 func NewPage(blockSize int) *Page {
 
 	bb := bytes.NewBuffer(make([]byte, blockSize))
-	return &Page{bb}
+	return &Page{bb, false}
 }
 
 func NewPageFromByteSlice(b []byte) *Page {
-	return &Page{bytes.NewBuffer(b)}
+	return &Page{bytes.NewBuffer(b), false}
 }
 
 func (p *Page) GetInt(offset int32) int32 {
@@ -43,8 +48,10 @@ func (p *Page) GetBytes(offset int32) []byte {
 
 // PutBytes. set byte array ke byte array page di posisi = offset.
 func (p *Page) PutBytes(offset int32, b []byte) (int, error) {
-	if offset+int32(len(b)) > int32(len(p.bb.Bytes())) {
-		return 0, errors.New("put bytes out of bound")
+	if offset+int32(len(b)+4) > int32(p.bb.Len()) {
+		padding := make([]byte, offset+int32(len(b)+4)-int32(p.bb.Len()))
+		p.bb.Grow(int(offset) + len(b) + 4)
+		p.bb.Write(padding)
 	}
 	p.PutInt(offset, int32(len(b)))
 	copy(p.bb.Bytes()[offset+4:], b)
@@ -63,6 +70,44 @@ func (p *Page) PutString(offset int32, s string) {
 
 func (p *Page) Contents() []byte {
 	return p.bb.Bytes()
+}
+
+func (p *Page) Compress() error {
+	inputBuf := bytes.NewBuffer(p.Contents())
+	p.bb.Reset()
+	encoder, err := zstd.NewWriter(p.bb, zstd.WithEncoderLevel(zstd.SpeedBestCompression))
+	if err != nil {
+		return fmt.Errorf("failed to create zstd encoder: %w", err)
+	}
+
+	_, err = io.Copy(encoder, inputBuf)
+	if err != nil {
+		encoder.Close()
+		return err
+	}
+	return encoder.Close()
+}
+
+func (p *Page) Decompress() error {
+	compressedSize := int32(binary.LittleEndian.Uint32(p.bb.Bytes()[:4]))
+	in := bytes.NewBuffer(p.Contents()[4 : compressedSize+4])
+	d, err := zstd.NewReader(in)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+
+	// Copy content...
+	bufOut := bytes.NewBuffer(make([]byte, 0, storage.MAX_PAGE_SIZE*2))
+
+	_, err = io.Copy(bufOut, d)
+	if err != nil {
+		return err
+	}
+
+	p.bb.Reset()
+	p.bb.Write(bufOut.Bytes())
+	return nil
 }
 
 // graph related operation
@@ -91,7 +136,7 @@ func (p *Page) Contents() []byte {
 */
 
 func (pg *Page) WriteBlock(csrN, csrNRev []int, csrF, csrFRev []datastructure.EdgeCH,
-	nodeIDs []int32, isTrafficLight []bool) (int, error) {
+	nodeIDs []int32, isTrafficLight []bool, compressed bool) (int, error) {
 
 	// write to page
 
@@ -106,10 +151,7 @@ func (pg *Page) WriteBlock(csrN, csrNRev []int, csrF, csrFRev []datastructure.Ed
 	// nodeNOffset
 	offset := int32(8)
 
-	var (
-		i int32 = 0
-	)
-	for ; i < nodesCount; i++ {
+	for i := int32(0); i < nodesCount; i++ {
 
 		pg.PutInt(offset, util.BitPackIntBool(nodeIDs[i], isTrafficLight[i], 31)) // nodeID & isTrafficLight flag
 		offset += 4
@@ -150,8 +192,28 @@ func (pg *Page) WriteBlock(csrN, csrNRev []int, csrF, csrFRev []datastructure.Ed
 			return 0, err
 		}
 	}
+	offset += int32(len(csrFRev) * 40)
 
-	return int(offset) + 40*len(csrFRev), nil
+	if compressed {
+		err := pg.Compress()
+		if err != nil {
+			return 0, err
+		}
+		// add compressed buf size in header
+
+		compressedSize := int32(pg.bb.Len())
+		buf := make([]byte, 4)
+		binary.LittleEndian.PutUint32(buf, uint32(compressedSize))
+		buf = append(buf, pg.bb.Bytes()...)
+		pg.bb.Reset()
+		pg.bb.Write(buf)
+
+		if pg.bb.Len() > storage.MAX_PAGE_SIZE {
+			panic(errors.New("page size exceed limit")) //  still dont know how to handle this
+		}
+	}
+
+	return int(offset), nil
 }
 
 func (pg *Page) IsNodeTrafficLight(nodeID int32) bool {
@@ -176,8 +238,15 @@ func (pg *Page) IsNodeTrafficLight(nodeID int32) bool {
 }
 
 // GetNodeOutEdgesCsr. return out edges for nodeID in format ([]toNodeIDs, []EdgeCH)
-func (pg *Page) GetNodeOutEdgesCsr(nodeID int32) []datastructure.EdgeCH {
+func (pg *Page) GetNodeOutEdgesCsr(nodeID int32, compressed bool) ([]datastructure.EdgeCH, error) {
 	// in this step. from F[N[a]] to F[N[a+1]-1] inclusive (or  F[ [ N[a], N[a+1] ) ] ) contains the out edges for node a
+	if compressed && !pg.decompressed {
+		err := pg.Decompress()
+		pg.decompressed = true
+		if err != nil {
+			return []datastructure.EdgeCH{}, err
+		}
+	}
 
 	startNOffset := int32(8)
 	nodesCount := pg.GetInt(0)
@@ -208,15 +277,23 @@ func (pg *Page) GetNodeOutEdgesCsr(nodeID int32) []datastructure.EdgeCH {
 
 	for i := nodeN; i < nextNodeN; i++ {
 		edgesBuf := pg.GetBytes(headerLength + csrNLength + i*40)
+
 		edge := datastructure.DeserializeEdgeCH(edgesBuf)
 		edges = append(edges, edge)
 	}
 
-	return edges
+	return edges, nil
 }
 
-func (pg *Page) GetNodeInEdgesCsr(nodeID int32) []datastructure.EdgeCH {
+func (pg *Page) GetNodeInEdgesCsr(nodeID int32, compressed bool) ([]datastructure.EdgeCH, error) {
 	// in this step. from FRev[NRev[a]] to FRev[NRev[a+1]-1] inclusive (or  FRev[ [ NRev[a], NRev[a+1] ) ] ) contains the in edges for node a
+	if compressed && !pg.decompressed {
+		err := pg.Decompress()
+		pg.decompressed = true
+		if err != nil {
+			return []datastructure.EdgeCH{}, err
+		}
+	}
 
 	startNOffset := int32(8)
 	nodesCount := pg.GetInt(0)
@@ -249,11 +326,12 @@ func (pg *Page) GetNodeInEdgesCsr(nodeID int32) []datastructure.EdgeCH {
 
 	for i := nodeN; i < nextNodeN; i++ {
 		edgesBuf := pg.GetBytes(headerLength + forwardLength + i*40)
+
 		edge := datastructure.DeserializeEdgeCH(edgesBuf)
 		edges = append(edges, edge)
 	}
 
-	return edges
+	return edges, nil
 }
 
 /*
@@ -305,7 +383,7 @@ edgeinfo page structure:
 	edgeInfoBuf store all edgeInfo in this page
 */
 func (pg *Page) WriteEdgeInfoBlock(edgeInfo []datastructure.EdgeExtraInfo, edgeRevInfo []datastructure.EdgeExtraInfo,
-	edges []datastructure.EdgeCH, revEdges []datastructure.EdgeCH) (int, error) {
+	edges []datastructure.EdgeCH, revEdges []datastructure.EdgeCH, compressed bool) (int, error) {
 
 	offset := int32(4)
 
@@ -390,13 +468,40 @@ func (pg *Page) WriteEdgeInfoBlock(edgeInfo []datastructure.EdgeExtraInfo, edgeR
 		offset += int32(byteSliceSize)
 	}
 
+	if compressed {
+		err := pg.Compress()
+		if err != nil {
+			return 0, err
+		}
+
+		compressedSize := int32(pg.bb.Len())
+		buf := make([]byte, 4)
+		binary.LittleEndian.PutUint32(buf, uint32(compressedSize))
+		buf = append(buf, pg.bb.Bytes()...)
+		pg.bb.Reset()
+		pg.bb.Write(buf)
+
+		if pg.bb.Len() > storage.MAX_PAGE_SIZE {
+			panic(errors.New("page size exceed limit")) //  still dont know how to handle this
+		}
+	}
+
 	return int(offset), nil
 }
 
-func (pg *Page) GetEdgeInfo(fromNodeID, toNodeID int32, reverse bool) (datastructure.EdgeExtraInfo, error) {
+func (pg *Page) GetEdgeInfo(fromNodeID, toNodeID int32, reverse bool, compressed bool) (datastructure.EdgeExtraInfo, error) {
 	if fromNodeID == toNodeID {
 		return datastructure.EdgeExtraInfo{}, nil
 	}
+
+	if compressed && !pg.decompressed {
+		err := pg.Decompress()
+		pg.decompressed = true
+		if err != nil {
+			return datastructure.EdgeExtraInfo{}, err
+		}
+	}
+
 	edgesCount := pg.GetInt(0)
 
 	var (
@@ -411,7 +516,7 @@ func (pg *Page) GetEdgeInfo(fromNodeID, toNodeID int32, reverse bool) (datastruc
 		eToNodeID := pg.GetInt(offset)
 		offset += 4
 
-		if eFromNodeID == fromNodeID && eToNodeID == toNodeID  {
+		if eFromNodeID == fromNodeID && eToNodeID == toNodeID {
 			edgeIDOffset = i
 			break
 		}

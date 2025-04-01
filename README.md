@@ -15,7 +15,7 @@ Note: or you can also use another openstreetmap file with the osm.pbf format (ht
 4. CGO_ENABLED=1  go build -o ./bin/navigatorx-preprocessing ./cmd/preprocessing
 5. ./bin/navigatorx-preprocessing
 Note: to replace the openstreetmap file, see the instructions below
-(Minimum RAM 2.0 GB for the above openstreetmap data)
+(Minimum RAM 2.0 GB for the  openstreetmap data above)
 5.  wait for preprocessing contraction hierarchies to complete (about 3 minutes)
 Note: if error "resource temporary unavailable" -> just delete navigatorXDB directory and restart the steps above
 ```
@@ -27,7 +27,7 @@ Make sure you have done the preprocessing stage above!
 ```
 1. CGO_ENABLED=1  go build -o ./bin/navigatorx-engine ./cmd/engine
 2. ./bin/navigatorx-engine
-(Minimum free RAM 1 GB for the above data)
+(Minimum free RAM 1 GB for the  data above)
 ```
 
 

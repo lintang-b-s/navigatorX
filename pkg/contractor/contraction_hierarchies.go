@@ -50,6 +50,7 @@ type ContractedGraph struct {
 	bufferPoolManager BufferPoolManager
 	diskManager       *disk.DiskManager
 	logManager        *logStorage.LogManager
+	CompressedBlock   map[int]bool
 
 	// edge extra info
 	MapEdgeInfo datastructure.MapEdgeInfo
@@ -82,6 +83,7 @@ func NewContractedGraph() *ContractedGraph {
 		bufferPoolManager:  bufferPoolManager,
 		diskManager:        dm,
 		logManager:         lm,
+		CompressedBlock:    make(map[int]bool),
 	}
 }
 
@@ -424,38 +426,11 @@ func (ch *ContractedGraph) addOrUpdateShortcut(fromNodeID, toNodeID int32, nodeI
 		}
 	}
 
-	// gak ngaruh
-	// for _, outID := range ch.ContractedFirstOutEdge[fromNodeID] {
-	// 	edge := ch.ContractedOutEdges[outID]
-	// 	isShortcut := ch.IsShortcut(edge.FromNodeID, edge.ToNodeID, false)
-	// 	if edge.ToNodeID != toNodeID || !isShortcut {
-	// 		continue
-	// 	}
-	// 	exists = true
-	// 	if weight < edge.Weight {
-	// 		edge.Weight = weight
-	// 	}
-	// }
-
-	// for _, inID := range ch.ContractedFirstInEdge[toNodeID] {
-	// 	edge := ch.ContractedInEdges[inID]
-	// 	isShortcut := ch.IsShortcut(edge.FromNodeID, edge.ToNodeID, false)
-	// 	if edge.ToNodeID != fromNodeID || !isShortcut {
-	// 		continue
-	// 	}
-	// 	exists = true
-	// 	if weight < edge.Weight {
-	// 		edge.Weight = weight
-	// 	}
-	// }
-
 	if !exists {
 		ch.addShortcut(fromNodeID, toNodeID, nodeID, weight, removedEdgeOne, removedEdgeTwo)
 		ch.Metadata.ShortcutsCount++
 	}
 }
-
-// udah coba preprocess pakaai logic commit lama hasil bidijkstranya salah.
 
 func (ch *ContractedGraph) addShortcut(fromNodeID, toNodeID, contractedNodeID int32, weight float64, removedEdgeOne, removedEdgeTwo *datastructure.EdgeCH,
 ) {
@@ -483,17 +458,6 @@ func (ch *ContractedGraph) addShortcut(fromNodeID, toNodeID, contractedNodeID in
 			break
 		}
 	}
-
-	// for _, outID := range ch.ContractedFirstOutEdge[fromNodeID] {
-	// 	edge := ch.ContractedOutEdges[outID]
-	// 	if edge.ToNodeID == toNodeID && edge.Weight > weight {
-	// 		ch.ContractedOutEdges[outID].Weight = weight
-	// 		ch.ContractedOutEdges[outID].Dist = dist
-	// 		ch.ContractedOutEdges[outID].ViaNodeID = contractedNodeID
-	// 		dup = true
-	// 		break
-	// 	}
-	// }
 
 	if !dup {
 
@@ -526,19 +490,6 @@ func (ch *ContractedGraph) addShortcut(fromNodeID, toNodeID, contractedNodeID in
 			break
 		}
 	}
-
-	// for _, inID := range ch.ContractedFirstInEdge[toNodeID] {
-	// 	edge := ch.ContractedInEdges[inID]
-	// 	if edge.ToNodeID == fromNodeID && edge.Weight > weight {
-	// 		ch.ContractedInEdges[inID].Weight = weight
-	// 		ch.ContractedInEdges[inID].Dist = dist
-	// 		ch.ContractedInEdges[inID].ViaNodeID = contractedNodeID
-
-	// 		dup = true
-	// 		break
-	// 	}
-
-	// }
 
 	// incoming edge
 	if !dup {
@@ -877,19 +828,26 @@ func (ch *ContractedGraph) GroupNodeByProximityAndSaveToDisk() error {
 		copyNodeBlocks = append(copyNodeBlocks, nodeID)
 
 		currBlockSize, _, _, edgeInfoSize := ch.GetBlockSize(copyNodeBlocks)
+
 		currBlockSize += initialHeaderSize
 
 		if currBlockSize <= storage.MAX_PAGE_SIZE && edgeInfoSize <= storage.MAX_PAGE_SIZE {
 			nodeBlocks[blockID] = append(nodeBlocks[blockID], nodeID)
 		} else {
 
-			nodeBlockSize, _, _, _ := ch.GetNodeBufferSize(nodeID)
+			nodeBlockSize, _, _, nodeEdgeInfoSize := ch.GetNodeBufferSize(nodeID)
 			blockSizeMap[blockID] = currBlockSize - nodeBlockSize
 
 			// add nodeID to new block
 			blockID += 2 // block+1 for node edges extra info
 
 			nodeBlocks[blockID] = append(nodeBlocks[blockID], nodeID)
+
+			blockSizeMap[blockID] = nodeBlockSize
+			if nodeBlockSize > storage.MAX_PAGE_SIZE || nodeEdgeInfoSize > storage.MAX_PAGE_SIZE {
+				// handle when a block with only one node have size > 16kb
+				ch.CompressedBlock[blockID] = true
+			}
 		}
 
 		ch.NodeIDBlockIDMap[nodeID] = blockID
@@ -926,14 +884,20 @@ func (ch *ContractedGraph) GroupNodeByProximityAndSaveToDisk() error {
 		newBlockID := disk.NewBlockID(storage.GRAPH_FILE_NAME, blockID)
 
 		_, err := blockPage.WriteBlock(csrN, csrNRev, csrF, csrFRev,
-			nodeIDs, isTrafficLight)
+			nodeIDs, isTrafficLight, ch.CompressedBlock[blockID])
+		if err != nil {
+			return err
+		}
 
 		nodeEdgesblockPage := disk.NewPage(storage.MAX_PAGE_SIZE)
 
 		nodeEdgesBlockID := disk.NewBlockID(storage.GRAPH_FILE_NAME, blockID+1)
 
 		_, err = nodeEdgesblockPage.WriteEdgeInfoBlock(csrExtraInfo, csrRevExtraInfo,
-			csrF, csrFRev)
+			csrF, csrFRev, ch.CompressedBlock[blockID])
+		if err != nil {
+			return err
+		}
 
 		err = ch.diskManager.Write(newBlockID, blockPage)
 
@@ -964,45 +928,46 @@ func (ch *ContractedGraph) GetBlockSize(nodeIDs []int32) (int, int, int, int) {
 
 	for _, nodeID := range nodeIDs {
 		currSize, nodeOutEdges, nodeInEdges, currEdgeSize := ch.GetNodeBufferSize(nodeID)
+
 		size += currSize
 		outEdgesLen += nodeOutEdges
 		inEdgesLen += nodeInEdges
 		edgeInfoSize += currEdgeSize
 	}
 	size += 8
+
 	return size, outEdgesLen, inEdgesLen, edgeInfoSize
 }
 
 func (ch *ContractedGraph) GetNodeBufferSize(nodeID int32) (int, int, int, int) {
-	bufSize := 4 * 2 // offset for csrN and csrNRev
-	bufSize += 4 * 3 //csrN and csrNRev, and nodeIDs
+	bufSize := 4 * 2 // nodeIDs , (csrN,CsrNRev)
 
 	bufSize += 40 * len(ch.GetNodeFirstOutEdges(nodeID))
 	bufSize += 40 * len(ch.GetNodeFirstInEdges(nodeID))
 
 	edgeInfoSize := 0
 
-	type EdgeWithDirection struct {
+	type edgeWithDirection struct {
 		edge    datastructure.EdgeCH
 		reverse bool
 	}
 
-	uniqueEdge := make(map[int32]map[int32]EdgeWithDirection)
+	uniqueEdge := make(map[int32]map[int32]edgeWithDirection)
 
 	for _, edgeID := range ch.GetNodeFirstOutEdges(nodeID) {
 		fromNodeID, toNodeID := ch.GetOutEdge(edgeID).FromNodeID, ch.GetOutEdge(edgeID).ToNodeID
 		if _, ok := uniqueEdge[fromNodeID]; !ok {
-			uniqueEdge[fromNodeID] = make(map[int32]EdgeWithDirection)
+			uniqueEdge[fromNodeID] = make(map[int32]edgeWithDirection)
 		}
-		uniqueEdge[fromNodeID][toNodeID] = EdgeWithDirection{ch.GetOutEdge(edgeID), false}
+		uniqueEdge[fromNodeID][toNodeID] = edgeWithDirection{ch.GetOutEdge(edgeID), false}
 	}
 
 	for _, edgeID := range ch.GetNodeFirstInEdges(nodeID) {
 		fromNodeID, toNodeID := ch.GetInEdge(edgeID).FromNodeID, ch.GetInEdge(edgeID).ToNodeID
 		if _, ok := uniqueEdge[fromNodeID]; !ok {
-			uniqueEdge[fromNodeID] = make(map[int32]EdgeWithDirection)
+			uniqueEdge[fromNodeID] = make(map[int32]edgeWithDirection)
 		}
-		uniqueEdge[fromNodeID][toNodeID] = EdgeWithDirection{ch.GetInEdge(edgeID), true}
+		uniqueEdge[fromNodeID][toNodeID] = edgeWithDirection{ch.GetInEdge(edgeID), true}
 	}
 
 	for _, toMap := range uniqueEdge {
@@ -1110,7 +1075,8 @@ func (ch *ContractedGraph) GetNodeOutEdgesCsr2(nodeID int32) ([]datastructure.Ed
 		return []datastructure.EdgeCH{}, err
 	}
 
-	return page.GetNodeOutEdgesCsr(nodeID), nil
+	blockID := ch.NodeIDBlockIDMap[nodeID]
+	return page.GetNodeOutEdgesCsr(nodeID, ch.CompressedBlock[blockID])
 }
 
 func (ch *ContractedGraph) GetNodeInEdgesCsr2(nodeID int32) ([]datastructure.EdgeCH, error) {
@@ -1118,7 +1084,9 @@ func (ch *ContractedGraph) GetNodeInEdgesCsr2(nodeID int32) ([]datastructure.Edg
 	if err != nil {
 		return []datastructure.EdgeCH{}, err
 	}
-	return page.GetNodeInEdgesCsr(nodeID), nil
+
+	blockID := ch.NodeIDBlockIDMap[nodeID]
+	return page.GetNodeInEdgesCsr(nodeID, ch.CompressedBlock[blockID])
 }
 
 func (ch *ContractedGraph) IsShortcutCsr(fromNodeID, toNodeID int32, reverse bool) (bool, error) {
@@ -1127,7 +1095,8 @@ func (ch *ContractedGraph) IsShortcutCsr(fromNodeID, toNodeID int32, reverse boo
 	if err != nil {
 		return false, err
 	}
-	edgeInfo, err := page.GetEdgeInfo(fromNodeID, toNodeID, reverse)
+	blockID := ch.NodeIDBlockIDMap[fromNodeID]
+	edgeInfo, err := page.GetEdgeInfo(fromNodeID, toNodeID, reverse, ch.CompressedBlock[blockID])
 
 	return edgeInfo.IsShortcut, err
 }
@@ -1137,7 +1106,8 @@ func (ch *ContractedGraph) IsRoundaboutCsr(fromNodeID, toNodeID int32) (bool, er
 	if err != nil {
 		return false, err
 	}
-	edgeInfo, err := page.GetEdgeInfo(fromNodeID, toNodeID, false)
+	blockID := ch.NodeIDBlockIDMap[fromNodeID]
+	edgeInfo, err := page.GetEdgeInfo(fromNodeID, toNodeID, false, ch.CompressedBlock[blockID])
 
 	return edgeInfo.Roundabout, err
 }
@@ -1147,7 +1117,9 @@ func (ch *ContractedGraph) GetEdgePointsInBetweenCsr(fromNodeID, toNodeID int32,
 	if err != nil {
 		return []datastructure.Coordinate{}, err
 	}
-	edgeInfo, err := page.GetEdgeInfo(fromNodeID, toNodeID, reverse)
+
+	blockID := ch.NodeIDBlockIDMap[fromNodeID]
+	edgeInfo, err := page.GetEdgeInfo(fromNodeID, toNodeID, reverse, ch.CompressedBlock[blockID])
 
 	return edgeInfo.PointsInBetween, err
 }
@@ -1157,7 +1129,9 @@ func (ch *ContractedGraph) GetStreetNameCsr(fromNodeID, toNodeID int32) (int, er
 	if err != nil {
 		return 0, err
 	}
-	edgeInfo, err := page.GetEdgeInfo(fromNodeID, toNodeID, false)
+
+	blockID := ch.NodeIDBlockIDMap[fromNodeID]
+	edgeInfo, err := page.GetEdgeInfo(fromNodeID, toNodeID, false, ch.CompressedBlock[blockID])
 
 	return edgeInfo.StreetName, err
 }
@@ -1167,7 +1141,9 @@ func (ch *ContractedGraph) GetRoadClassCsr(fromNodeID, toNodeID int32) (int, err
 	if err != nil {
 		return 0, err
 	}
-	edgeInfo, err := page.GetEdgeInfo(fromNodeID, toNodeID, false)
+
+	blockID := ch.NodeIDBlockIDMap[fromNodeID]
+	edgeInfo, err := page.GetEdgeInfo(fromNodeID, toNodeID, false, ch.CompressedBlock[blockID])
 
 	return edgeInfo.RoadClass, err
 }
@@ -1177,7 +1153,9 @@ func (ch *ContractedGraph) GetRoadClassLinkCsr(fromNodeID, toNodeID int32) (int,
 	if err != nil {
 		return 0, err
 	}
-	edgeInfo, err := page.GetEdgeInfo(fromNodeID, toNodeID, false)
+
+	blockID := ch.NodeIDBlockIDMap[fromNodeID]
+	edgeInfo, err := page.GetEdgeInfo(fromNodeID, toNodeID, false, ch.CompressedBlock[blockID])
 
 	return edgeInfo.RoadClassLink, err
 }
@@ -1187,7 +1165,9 @@ func (ch *ContractedGraph) GetLanesCsr(fromNodeID, toNodeID int32) (int, error) 
 	if err != nil {
 		return 0, err
 	}
-	edgeInfo, err := page.GetEdgeInfo(fromNodeID, toNodeID, false)
+
+	blockID := ch.NodeIDBlockIDMap[fromNodeID]
+	edgeInfo, err := page.GetEdgeInfo(fromNodeID, toNodeID, false, ch.CompressedBlock[blockID])
 
 	return edgeInfo.RoadClassLink, err
 }
