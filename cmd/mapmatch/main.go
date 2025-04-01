@@ -2,15 +2,16 @@ package main
 
 import (
 	"flag"
-	"lintang/navigatorx/pkg/contractor"
-	"lintang/navigatorx/pkg/datastructure"
-	"lintang/navigatorx/pkg/engine/matching"
-	"lintang/navigatorx/pkg/kv"
-	mmrest "lintang/navigatorx/pkg/server/mm_rest"
-	"lintang/navigatorx/pkg/server/mm_rest/service"
-	"lintang/navigatorx/pkg/snap"
 	"log"
 	"net/http"
+
+	"github.com/lintang-b-s/navigatorx/pkg/contractor"
+	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
+	"github.com/lintang-b-s/navigatorx/pkg/engine/matching"
+	"github.com/lintang-b-s/navigatorx/pkg/kv"
+	mmrest "github.com/lintang-b-s/navigatorx/pkg/server/mm_rest"
+	"github.com/lintang-b-s/navigatorx/pkg/server/mm_rest/service"
+	"github.com/lintang-b-s/navigatorx/pkg/snap"
 
 	badger "github.com/dgraph-io/badger/v4"
 	"github.com/go-chi/chi/v5"

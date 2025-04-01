@@ -377,12 +377,6 @@ func (rt *Rtree) pickNext(groupOne, groupTwo *RtreeNode, remaining []*RtreeNode)
 	return chosen
 }
 
-func assertPanic(condition bool, msg string) {
-	if !condition {
-		panic(msg)
-	}
-}
-
 /*
 LPSl.[Find extreme rectangles along all
 dimensions.] Along each dimension,

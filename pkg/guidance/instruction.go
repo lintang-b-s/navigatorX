@@ -2,9 +2,10 @@ package guidance
 
 import (
 	"fmt"
-	"lintang/navigatorx/pkg/datastructure"
 	"math"
 	"strings"
+
+	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
 )
 
 const (

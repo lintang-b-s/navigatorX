@@ -1,8 +1,9 @@
 package geo
 
 import (
-	"lintang/navigatorx/pkg/datastructure"
 	"testing"
+
+	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
 )
 
 func TestIsPointInLine(t *testing.T) {

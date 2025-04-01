@@ -4,15 +4,16 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	_ "lintang/navigatorx/docs"
-	"lintang/navigatorx/pkg/contractor"
-	"lintang/navigatorx/pkg/kv"
-	"lintang/navigatorx/pkg/osmparser"
 	"log"
 	"os"
 	"runtime/pprof"
 	"strings"
 	"sync"
+
+	_ "github.com/lintang-b-s/navigatorx/docs"
+	"github.com/lintang-b-s/navigatorx/pkg/contractor"
+	"github.com/lintang-b-s/navigatorx/pkg/kv"
+	"github.com/lintang-b-s/navigatorx/pkg/osmparser"
 
 	_ "net/http/pprof"
 
@@ -44,7 +45,7 @@ func main() {
 	flag.Parse()
 	if *cpuprofile != "" {
 		// https://go.dev/blog/pprof
-		// ./bin/osm-search-indexer -f "jabodetabek_big.osm.pbf" -cpuprofile=osmsearchcpu.prof -memprofile=osmsearchmem.mprof
+		// ./bin/navigatorx-preprocessing -cpuprofile=navigatorxcpu.prof -memprofile=navigatorxmem.mprof
 		f, err := os.Create(*cpuprofile)
 		if err != nil {
 			log.Fatal(err)
@@ -58,7 +59,7 @@ func main() {
 	log.Printf("reading osm file %s", *mapFile)
 	osmParser := osmparser.NewOSMParserV2()
 	processedNodes, processedEdges, streetDirection,
-		edgesExtraInfo := osmParser.Parse(*mapFile)
+		edgesExtraInfo, nodeInfo := osmParser.Parse(*mapFile)
 
 	ch := contractor.NewContractedGraph()
 
@@ -85,10 +86,14 @@ func main() {
 	}()
 
 	ch.InitCHGraph(processedNodes, processedEdges, streetDirection, osmParser.GetTagStringIdMap(),
-		edgesExtraInfo)
+		edgesExtraInfo, nodeInfo)
 
 	if !*mapmatch {
 		ch.Contraction()
+		err := ch.GroupNodeByProximityAndSaveToDisk()
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	log.Printf("Saving Contracted Graph to a file...")

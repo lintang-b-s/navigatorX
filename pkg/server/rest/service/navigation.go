@@ -2,9 +2,10 @@ package service
 
 import (
 	"context"
-	"lintang/navigatorx/pkg/datastructure"
-	"lintang/navigatorx/pkg/guidance"
-	"lintang/navigatorx/pkg/server"
+
+	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
+	"github.com/lintang-b-s/navigatorx/pkg/guidance"
+	"github.com/lintang-b-s/navigatorx/pkg/server"
 
 	"sync"
 )
@@ -28,12 +29,23 @@ type ContractedGraph interface {
 	GetRoadClassFromID(roadClass int) string
 	GetRoadClassLinkFromID(roadClassLink int) string
 
-	GetEdgeExtraInfo(edgeID int) datastructure.EdgeExtraInfo
-	IsRoundabout(edgeID int32) bool
+	// csr
+	IsShortcutCsr(nodeID int32, edgeID int32, reverse bool) (bool, error)
+	IsRoundaboutCsr(nodeID int32, edgeID int32) (bool, error)
+	GetEdgePointsInBetweenCsr(nodeID int32, edgeID int32, reverse bool) ([]datastructure.Coordinate, error)
+	GetStreetNameCsr(nodeID int32, edgeID int32) (int, error)
+	GetRoadClassCsr(nodeID int32, edgeID int32) (int, error)
+	GetRoadClassLinkCsr(nodeID int32, edgeID int32) (int, error)
+	GetLanesCsr(nodeID int32, edgeID int32) (int, error)
+
+	GetNodeOutEdgesCsr2(nodeID int32) ([]datastructure.EdgeCH, error)
+	GetNodeInEdgesCsr2(nodeID int32) ([]datastructure.EdgeCH, error)
 }
 
 type RoutingAlgorithm interface {
 	ShortestPathBiDijkstraCH(from, to int32) ([]datastructure.Coordinate, []datastructure.EdgeCH, float64, float64)
+
+	ShortestPathBiDijkstraCHCSR(from, to int32) ([]datastructure.Coordinate, []datastructure.EdgeCH, float64, float64, error)
 	ShortestPathManyToManyBiDijkstraWorkers(from []int32, to []int32) map[int32]map[int32]datastructure.SPSingleResultResult
 	CreateDistMatrix(spPair [][]int32) map[int32]map[int32]datastructure.SPSingleResultResult
 	ShortestPathAStar(from, to int32) ([]datastructure.Coordinate, []datastructure.EdgeCH, float64, float64)
@@ -91,7 +103,10 @@ func (uc *NavigationService) ShortestPathETA(ctx context.Context, srcLat, srcLon
 
 	found := false
 
-	pN, ePath, eta, dist := uc.routing.ShortestPathBiDijkstraCH(fromSurakartaNode, toSurakartaNode)
+	pN, ePath, eta, dist, err := uc.routing.ShortestPathBiDijkstraCHCSR(fromSurakartaNode, toSurakartaNode)
+	if err != nil {
+		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, []datastructure.EdgeCH{}, false, server.WrapErrorf(err, server.ErrInternalServerError, "internal server error")
+	}
 	p := datastructure.CreatePolyline(pN)
 	if eta != -1 {
 		found = true
@@ -187,7 +202,10 @@ func (uc *NavigationService) ShortestPathAlternativeStreetETA(ctx context.Contex
 		var dist float64
 		var isCH bool
 		var ePath []datastructure.EdgeCH
-		pN, ePath, eta, dist = uc.routing.ShortestPathBiDijkstraCH(fromSurakartaNode, alternativeStreetSurakartaNode)
+		pN, ePath, eta, dist, err = uc.routing.ShortestPathBiDijkstraCHCSR(fromSurakartaNode, alternativeStreetSurakartaNode)
+		if err != nil {
+			return
+		}
 		if eta != -1 {
 			found = true
 		}
@@ -214,7 +232,10 @@ func (uc *NavigationService) ShortestPathAlternativeStreetETA(ctx context.Contex
 		var isCH bool
 		var ePath []datastructure.EdgeCH
 
-		pN, ePath, eta, dist = uc.routing.ShortestPathBiDijkstraCH(alternativeStreetSurakartaNode, toSurakartaNode)
+		pN, ePath, eta, dist, err = uc.routing.ShortestPathBiDijkstraCHCSR(alternativeStreetSurakartaNode, toSurakartaNode)
+		if err != nil {
+			return
+		}
 		if eta != -1 {
 			found = true
 		}

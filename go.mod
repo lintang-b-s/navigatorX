@@ -1,11 +1,8 @@
-module lintang/navigatorx
+module github.com/lintang-b-s/navigatorx
 
-go 1.22.12
-
-toolchain go1.23.5
+go 1.23.5
 
 require (
-	github.com/DataDog/zstd v1.5.6
 	github.com/dgraph-io/badger/v4 v4.6.0
 	github.com/go-chi/chi/v5 v5.1.0
 	github.com/go-chi/cors v1.2.1
@@ -15,6 +12,7 @@ require (
 	github.com/go-playground/validator/v10 v10.22.0
 	github.com/golang/geo v0.0.0-20230421003525-6adc56603217
 	github.com/kelindar/binary v1.0.19
+	github.com/mmcloughlin/geohash v0.10.0
 	github.com/paulmach/osm v0.8.0
 	github.com/stretchr/testify v1.10.0
 	github.com/swaggo/swag v1.16.3
@@ -50,7 +48,7 @@ require (
 	github.com/go-openapi/spec v0.21.0 // indirect
 	github.com/go-openapi/swag v0.23.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
-	github.com/klauspost/compress v1.18.0 // indirect
+	github.com/klauspost/compress v1.18.0
 	github.com/leodido/go-urn v1.4.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/paulmach/orb v0.1.3 // indirect

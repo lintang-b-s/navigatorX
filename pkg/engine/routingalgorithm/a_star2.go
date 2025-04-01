@@ -1,10 +1,10 @@
 package routingalgorithm
 
 import (
-	"lintang/navigatorx/pkg/contractor"
-	"lintang/navigatorx/pkg/datastructure"
-	"lintang/navigatorx/pkg/geo"
-	"lintang/navigatorx/pkg/util"
+	"github.com/lintang-b-s/navigatorx/pkg/contractor"
+	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
+	"github.com/lintang-b-s/navigatorx/pkg/geo"
+	"github.com/lintang-b-s/navigatorx/pkg/util"
 )
 
 // https://www.cs.princeton.edu/courses/archive/spr06/cos423/Handouts/GH05.pdf
@@ -47,7 +47,7 @@ func (rt *RouteAlgorithm) ShortestPathAStar(from, to int32) ([]datastructure.Coo
 			currNode := rt.ch.GetNode(current.Item)
 			for cameFrom[currNode.ID].NodeID != -1 {
 
-				if currNode.TrafficLight {
+				if rt.ch.IsTrafficLight(currNode.ID) {
 					etaTraffic += 3.0
 				}
 

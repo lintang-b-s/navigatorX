@@ -17,3 +17,7 @@ navigatorx_db/
 frontend/
 
 output*
+
+*.log
+*.db
+*.index

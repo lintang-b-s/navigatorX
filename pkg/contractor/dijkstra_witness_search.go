@@ -1,15 +1,11 @@
 package contractor
 
-import (
-	"math"
-)
+import "math"
 
 /*
 dijkstraWitnessSearch
 misal kita kontraksi node v (ignoreNodeID), kita harus cari shortest path dari node u ke w yang meng ignore node v, dimana u adalah salah satu node yang terhubung ke v dan edge (u,v) \in E, dan w adalah  salah satu node yang terhubung dari v dan edge (v,w) \in E.
 search dihentikan jika current visited node costnya > acceptedWeight atau ketika sampai di node w & cost target <= acceptedWeight.
-
-time complexity: O((V+E)logV), priority queue pakai binary heap.
 */
 func (ch *ContractedGraph) dijkstraWitnessSearch(fromNodeID, targetNodeID int32, ignoreNodeID int32,
 	acceptedWeight float64, maxSettledNodes int, pMax float64, contracted []bool) float64 {
@@ -82,6 +78,4 @@ func (ch *ContractedGraph) dijkstraWitnessSearch(fromNodeID, targetNodeID int32,
 
 		settledNodes++
 	}
-
-	return math.MaxFloat64
 }

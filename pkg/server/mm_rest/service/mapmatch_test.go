@@ -3,13 +3,16 @@ package service
 import (
 	"context"
 	"fmt"
-	"lintang/navigatorx/pkg/contractor"
-	"lintang/navigatorx/pkg/datastructure"
-	"lintang/navigatorx/pkg/engine/matching"
-	"lintang/navigatorx/pkg/kv"
-	"lintang/navigatorx/pkg/snap"
-	"lintang/navigatorx/pkg/util"
+	"log"
 	"testing"
+
+	"github.com/lintang-b-s/navigatorx/pkg/contractor"
+	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
+	"github.com/lintang-b-s/navigatorx/pkg/engine/matching"
+	"github.com/lintang-b-s/navigatorx/pkg/kv"
+	"github.com/lintang-b-s/navigatorx/pkg/osmparser"
+	"github.com/lintang-b-s/navigatorx/pkg/snap"
+	"github.com/lintang-b-s/navigatorx/pkg/util"
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/stretchr/testify/assert"
@@ -94,7 +97,7 @@ func buildGraph() (*contractor.ContractedGraph, []datastructure.CHNode, []datast
 	})
 
 	ch.InitCHGraph(nodes, edgesCH, make(map[string][2]bool), util.NewIdMap(),
-		edgesExtraInfo)
+		edgesExtraInfo, datastructure.NewNodeInfo())
 
 	return ch, nodes, edgesCH
 }
@@ -174,7 +177,7 @@ func TestMapMatching(t *testing.T) {
 		{47.615458, -122.330661, 20},
 		{47.616615, -122.327904, 21},
 	}
-	//  11-> 15 ilang
+
 	expectedCoords := make([]datastructure.Coordinate, len(expectedPath))
 	for i, n := range expectedPath {
 		expectedCoords[i] = datastructure.Coordinate{Lat: n.lat, Lon: n.lon}
@@ -188,7 +191,7 @@ func TestMapMatching(t *testing.T) {
 	visitedpath := make(map[int32]struct{})
 	for _, e := range actualEdges {
 
-		ePointsInBetween := graph.GetEdgeExtraInfo(int(e.EdgeID)).PointsInBetween
+		ePointsInBetween := graph.GetEdgePointsInBetween(e.FromNodeID, e.ToNodeID, false)
 
 		visitedpath[e.FromNodeID] = struct{}{}
 		actualPath = append(actualPath, simplenode{lat: ePointsInBetween[0].Lat,
@@ -213,74 +216,28 @@ func removeDuplicate(edges []simplenode) []simplenode {
 	return result
 }
 
-// func Test_GetNearestRoadSegments(t *testing.T) {
-// 	osmParser := osmparser.NewOSMParserV2()
-// 	processedNodes, processedEdges, streetDirection,
-// 		edgesExtraInfo := osmParser.Parse("wa-microsoft.osm.pbf")
+func Test_IsReverse(t *testing.T) {
+	osmParser := osmparser.NewOSMParserV2()
+	processedNodes, processedEdges, streetDirection,
+		edgesExtraInfo, nodeInfo := osmParser.Parse("wa-microsoft.osm.pbf")
 
-// 	ch := contractor.NewContractedGraph()
+	ch := contractor.NewContractedGraph()
 
-// 	ch.InitCHGraph(processedNodes, processedEdges, streetDirection, osmParser.GetTagStringIdMap(),
-// 		edgesExtraInfo)
+	ch.InitCHGraph(processedNodes, processedEdges, streetDirection, osmParser.GetTagStringIdMap(),
+		edgesExtraInfo, nodeInfo)
 
-// 	rtree := datastructure.NewRtree(25, 50, 2)
-// 	roadSnapper := snap.NewRoadSnapper(rtree)
+	ch.Contraction()
 
-// 	mmWays := make([]datastructure.MapMatchOsmWay, 0)
-// 	for _, e := range ch.GetOutEdges() {
-// 		ePointsInBetween := ch.GetEdgeExtraInfo(int(e.EdgeID)).PointsInBetween
-// 		way := datastructure.MapMatchOsmWay{
-// 			ID:               int(e.EdgeID),
-// 			PointsInBetween:  ePointsInBetween,
-// 			NodeIDsInBetween: []int32{e.FromNodeID, e.ToNodeID},
-// 			FromNodeID:       e.FromNodeID,
-// 			ToNodeID:         e.ToNodeID,
-// 			Speed:            40.0,
-// 			Dist:             e.Dist,
-// 		}
-// 		mmWays = append(mmWays, way)
-// 	}
+	for _, edgeID := range ch.GetOutEdges() {
+		outEdge := ch.GetOutEdge(edgeID.EdgeID)
+		inEdge := ch.GetInEdge(edgeID.EdgeID)
 
-// 	roadSnapper.BuildRoadSnapper(ch)
+		if outEdge.FromNodeID != inEdge.ToNodeID &&
+			outEdge.ToNodeID != inEdge.FromNodeID {
+			log.Printf("FAIL: edgeID: %d, outEdge: %v, inEdge: %v\n", edgeID.EdgeID, outEdge, inEdge)
+			t.Errorf("edgeID: %d, outEdge: %v, inEdge: %v\n", edgeID.EdgeID, outEdge, inEdge)
+		}
+	}
 
-// 	db, err := badger.Open(badger.DefaultOptions("./navigatorx_db"))
-// 	if err != nil {
-// 		log.Fatal(err)
-// 	}
-
-// 	kvDB := kv.NewKVDB(db)
-// 	defer kvDB.Close()
-
-// 	mapMatching := matching.NewHMMMapMatching(ch, kvDB)
-
-// 	mmSvc := NewMapMatchingService(mapMatching, roadSnapper, kvDB, ch)
-
-// 	queryLat, queryLon := 47.66716667, -122.1162833
-// 	states := mmSvc.NearestRoadSegmentsForMapMatching(queryLat, queryLon, 0)
-
-// 	for _, state := range states {
-// 		fmt.Printf("state: %v\n", state)
-// 	}
-
-// 	file, err := os.Create("debug_states_objdist_200m_myrtree.txt")
-// 	if err != nil {
-// 		log.Fatal(err)
-// 	}
-// 	defer file.Close()
-
-// 	for _, state := range states {
-// 		edgeID := state.EdgeID
-// 		fromNode := ch.GetNode(state.EdgeFromNodeID)
-// 		toNode := ch.GetNode(state.EdgeToNodeID)
-
-// 		fromLat, fromLon := fromNode.Lat, fromNode.Lon
-// 		toLat, toLon := toNode.Lat, toNode.Lon
-
-// 		_, err = file.WriteString(fmt.Sprintf("edgeID: %d. fromLat, fromLon: %f, %f toLat, toLon: %f, %f\n",
-// 			edgeID, fromLat, fromLon, toLat, toLon))
-// 		if err != nil {
-// 			t.Error(err)
-// 		}
-// 	}
-// 	t.Logf("total states: %d\n", len(states))
-// }
+	log.Printf("success")
+}

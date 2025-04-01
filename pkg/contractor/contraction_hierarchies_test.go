@@ -1,9 +1,11 @@
 package contractor
 
 import (
-	"lintang/navigatorx/pkg/datastructure"
-	"lintang/navigatorx/pkg/util"
 	"testing"
+
+	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
+	"github.com/lintang-b-s/navigatorx/pkg/osmparser"
+	"github.com/lintang-b-s/navigatorx/pkg/util"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -40,42 +42,49 @@ setelah di kontraksi:
 */
 func NewGraph() *ContractedGraph {
 	chGraph := NewContractedGraph()
-	nodeP := datastructure.NewCHNode(1, 1, 0, 0, true)
-	nodeV := datastructure.NewCHNode(1, 1, 0, 1, true)
-	nodeQ := datastructure.NewCHNode(1, 1, 0, 2, true)
-	nodeW := datastructure.NewCHNode(1, 1, 0, 3, true)
-	nodeR := datastructure.NewCHNode(1, 1, 0, 4, true)
+	nodeP := datastructure.NewCHNode(1, 1, 0, 0)
+	nodeV := datastructure.NewCHNode(1, 1, 0, 1)
+	nodeQ := datastructure.NewCHNode(1, 1, 0, 2)
+	nodeW := datastructure.NewCHNode(1, 1, 0, 3)
+	nodeR := datastructure.NewCHNode(1, 1, 0, 4)
 
-	edgePv := datastructure.NewEdgeCH(0, 10, 0, nodeP.ID, nodeV.ID, 0, 0)
+	edgePv := datastructure.NewEdgeCHPlain(0, 10, 0, nodeP.ID, nodeV.ID)
 
-	edgeVp := datastructure.NewEdgeCH(1, 10, 0, nodeV.ID, nodeP.ID, 0, 0)
+	edgeVp := datastructure.NewEdgeCHPlain(1, 10, 0, nodeV.ID, nodeP.ID)
 
-	edgeVr := datastructure.NewEdgeCH(2, 3, 0, nodeV.ID, nodeR.ID, 0, 0)
+	edgeVr := datastructure.NewEdgeCHPlain(2, 3, 0, nodeV.ID, nodeR.ID)
 
-	edgeRv := datastructure.NewEdgeCH(3, 3, 0, nodeR.ID, nodeV.ID, 0, 0)
+	edgeRv := datastructure.NewEdgeCHPlain(3, 3, 0, nodeR.ID, nodeV.ID)
 
-	edgeVq := datastructure.NewEdgeCH(4, 6, 0, nodeV.ID, nodeQ.ID, 0, 0)
+	edgeVq := datastructure.NewEdgeCHPlain(4, 6, 0, nodeV.ID, nodeQ.ID)
 
-	edgeQv := datastructure.NewEdgeCH(5, 6, 0, nodeQ.ID, nodeV.ID, 0, 0)
+	edgeQv := datastructure.NewEdgeCHPlain(5, 6, 0, nodeQ.ID, nodeV.ID)
 
-	edgeQw := datastructure.NewEdgeCH(6, 5, 0, nodeQ.ID, nodeW.ID, 0, 0)
+	edgeQw := datastructure.NewEdgeCHPlain(6, 5, 0, nodeQ.ID, nodeW.ID)
 
-	edgeWq := datastructure.NewEdgeCH(7, 5, 0, nodeW.ID, nodeQ.ID, 0, 0)
+	edgeWq := datastructure.NewEdgeCHPlain(7, 5, 0, nodeW.ID, nodeQ.ID)
 
-	edgeWr := datastructure.NewEdgeCH(8, 5, 0, nodeW.ID, nodeR.ID, 0, 0)
+	edgeWr := datastructure.NewEdgeCHPlain(8, 5, 0, nodeW.ID, nodeR.ID)
 
-	edgeRw := datastructure.NewEdgeCH(9, 5, 0, nodeR.ID, nodeW.ID, 0, 0)
+	edgeRw := datastructure.NewEdgeCHPlain(9, 5, 0, nodeR.ID, nodeW.ID)
 
 	edges := []datastructure.EdgeCH{edgePv, edgeVp, edgeVr, edgeRv, edgeVq, edgeQv, edgeQw, edgeWq, edgeWr, edgeRw}
+
+	edgesExtraInfo := make([]datastructure.EdgeExtraInfo, 0)
+
+	for _ = range edges {
+		edgesExtraInfo = append(edgesExtraInfo, datastructure.EdgeExtraInfo{})
+	}
+
 	streetDirections := make(map[string][2]bool)
 	nodes := []datastructure.CHNode{nodeP, nodeV, nodeQ, nodeW, nodeR}
 	chGraph.InitCHGraph(nodes, edges, streetDirections, util.NewIdMap(),
-		make([]datastructure.EdgeExtraInfo, 0))
+		edgesExtraInfo, datastructure.NewNodeInfo())
 
 	return chGraph
 }
 
-func TestContractOneNode(t *testing.T) {
+func TestContractNode(t *testing.T) {
 	chGraph := NewGraph()
 
 	t.Run("contract node  v", func(t *testing.T) {
@@ -91,11 +100,11 @@ func TestContractOneNode(t *testing.T) {
 		// check node P
 		nodePEdges := chGraph.GetNodeFirstOutEdges(0)
 		pShortcutCount := 0
-		shortcutPQ := datastructure.NewEdgeCH(0, 16, 0, 2, 0, 0, 0)
-		shortcutPR := datastructure.NewEdgeCH(0, 13, 0, 4, 0, 0, 0)
+		shortcutPQ := datastructure.NewEdgeCHPlain(0, 16, 0, 2, 0)
+		shortcutPR := datastructure.NewEdgeCHPlain(0, 13, 0, 4, 0)
 		for _, edgeID := range nodePEdges {
 			edge := chGraph.GetOutEdge(edgeID)
-			isShortcut := chGraph.IsShortcut(edgeID)
+			isShortcut := chGraph.IsShortcut(edge.FromNodeID, edge.ToNodeID, false)
 			if isShortcut {
 				pShortcutCount++
 			}
@@ -111,11 +120,12 @@ func TestContractOneNode(t *testing.T) {
 		// check node Q
 		nodeQEdges := chGraph.GetNodeFirstOutEdges(2)
 		qShortcutCount := 0
-		shortcutQP := datastructure.NewEdgeCH(0, 16, 0, 0, 2, 0, 0)
-		shortcutQR := datastructure.NewEdgeCH(0, 9, 0, 4, 2, 0, 0)
+		shortcutQP := datastructure.NewEdgeCHPlain(0, 16, 0, 0, 2)
+		shortcutQR := datastructure.NewEdgeCHPlain(0, 9, 0, 4, 2)
 		for _, edgeID := range nodeQEdges {
 			edge := chGraph.GetOutEdge(edgeID)
-			isShortcut := chGraph.IsShortcut(edgeID)
+
+			isShortcut := chGraph.IsShortcut(edge.FromNodeID, edge.ToNodeID, false)
 
 			if isShortcut {
 				qShortcutCount++
@@ -132,11 +142,11 @@ func TestContractOneNode(t *testing.T) {
 		// check node R
 		nodeREdges := chGraph.GetNodeFirstOutEdges(4)
 		rShortcutCount := 0
-		shortcutRP := datastructure.NewEdgeCH(0, 13, 0, 0, 4, 0, 0)
-		shortcutRQ := datastructure.NewEdgeCH(0, 9, 0, 2, 4, 0, 0)
+		shortcutRP := datastructure.NewEdgeCHPlain(0, 13, 0, 0, 4)
+		shortcutRQ := datastructure.NewEdgeCHPlain(0, 9, 0, 2, 4)
 		for _, edgeID := range nodeREdges {
 			edge := chGraph.GetOutEdge(edgeID)
-			isShortcut := chGraph.IsShortcut(edgeID)
+			isShortcut := chGraph.IsShortcut(edge.FromNodeID, edge.ToNodeID, false)
 
 			if isShortcut {
 				rShortcutCount++
@@ -150,4 +160,64 @@ func TestContractOneNode(t *testing.T) {
 		}
 		assert.Equal(t, 2, rShortcutCount)
 	})
+
+}
+
+func TestContractNodeFromFile(t *testing.T) {
+	osmParser := osmparser.NewOSMParserV2()
+	processedNodes, processedEdges, streetDirection,
+		edgesExtraInfo, nodeInfo := osmParser.Parse("wa-microsoft.osm.pbf")
+
+	chGraph := NewContractedGraph()
+
+	chGraph.InitCHGraph(processedNodes, processedEdges, streetDirection, osmParser.GetTagStringIdMap(),
+		edgesExtraInfo, nodeInfo)
+
+}
+
+func NewGraph2() *ContractedGraph {
+	chGraph := NewContractedGraph()
+	nodeP := datastructure.NewCHNode(1, 1, 0, 0)
+	nodeV := datastructure.NewCHNode(1, 1, 0, 1)
+	nodeQ := datastructure.NewCHNode(1, 1, 0, 2)
+	nodeW := datastructure.NewCHNode(1, 1, 0, 3)
+	nodeR := datastructure.NewCHNode(1, 1, 0, 4)
+	nodeT := datastructure.NewCHNode(1, 1, 0, 5)
+
+	edgePv := datastructure.NewEdgeCHPlain(0, 10, 0, nodeP.ID, nodeV.ID)
+
+	edgeVp := datastructure.NewEdgeCHPlain(1, 10, 0, nodeV.ID, nodeP.ID)
+
+	edgeVr := datastructure.NewEdgeCHPlain(2, 3, 0, nodeV.ID, nodeR.ID)
+
+	edgeRv := datastructure.NewEdgeCHPlain(3, 3, 0, nodeR.ID, nodeV.ID)
+
+	edgeVq := datastructure.NewEdgeCHPlain(4, 6, 0, nodeV.ID, nodeQ.ID)
+
+	edgeQv := datastructure.NewEdgeCHPlain(5, 6, 0, nodeQ.ID, nodeV.ID)
+
+	edgeQw := datastructure.NewEdgeCHPlain(6, 5, 0, nodeQ.ID, nodeW.ID)
+
+	edgeWq := datastructure.NewEdgeCHPlain(7, 5, 0, nodeW.ID, nodeQ.ID)
+
+	edgeWr := datastructure.NewEdgeCHPlain(8, 5, 0, nodeW.ID, nodeR.ID)
+
+	edgeRw := datastructure.NewEdgeCHPlain(9, 5, 0, nodeR.ID, nodeW.ID)
+
+	edgeTw := datastructure.NewEdgeCHPlain(10, 5, 0, nodeW.ID, nodeT.ID)
+
+	edges := []datastructure.EdgeCH{edgePv, edgeVp, edgeVr, edgeRv, edgeVq, edgeQv, edgeQw, edgeWq, edgeWr, edgeRw, edgeTw}
+
+	edgesExtraInfo := make([]datastructure.EdgeExtraInfo, 0)
+
+	for _ = range edges {
+		edgesExtraInfo = append(edgesExtraInfo, datastructure.EdgeExtraInfo{})
+	}
+
+	streetDirections := make(map[string][2]bool)
+	nodes := []datastructure.CHNode{nodeP, nodeV, nodeQ, nodeW, nodeR, nodeT}
+	chGraph.InitCHGraph(nodes, edges, streetDirections, util.NewIdMap(),
+		edgesExtraInfo, datastructure.NewNodeInfo())
+
+	return chGraph
 }

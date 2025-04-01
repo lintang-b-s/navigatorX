@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"lintang/navigatorx/pkg/datastructure"
 	"net/http"
+
+	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/render"

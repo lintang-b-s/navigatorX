@@ -1,9 +1,10 @@
 package contractor
 
 import (
-	"lintang/navigatorx/pkg/datastructure"
-	"lintang/navigatorx/pkg/geo"
 	"sort"
+
+	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
+	"github.com/lintang-b-s/navigatorx/pkg/geo"
 )
 
 func (ch *ContractedGraph) SnapLocationToRoadNetworkNodeH3(edges []datastructure.KVEdge, wantToSnap []float64) int32 {
