@@ -3,15 +3,16 @@ package service
 import (
 	"context"
 	"fmt"
-	"lintang/navigatorx/pkg/contractor"
-	"lintang/navigatorx/pkg/datastructure"
-	"lintang/navigatorx/pkg/engine/matching"
-	"lintang/navigatorx/pkg/kv"
-	"lintang/navigatorx/pkg/osmparser"
-	"lintang/navigatorx/pkg/snap"
-	"lintang/navigatorx/pkg/util"
 	"log"
 	"testing"
+
+	"github.com/lintang-b-s/navigatorx/pkg/contractor"
+	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
+	"github.com/lintang-b-s/navigatorx/pkg/engine/matching"
+	"github.com/lintang-b-s/navigatorx/pkg/kv"
+	"github.com/lintang-b-s/navigatorx/pkg/osmparser"
+	"github.com/lintang-b-s/navigatorx/pkg/snap"
+	"github.com/lintang-b-s/navigatorx/pkg/util"
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/stretchr/testify/assert"
@@ -190,7 +191,7 @@ func TestMapMatching(t *testing.T) {
 	visitedpath := make(map[int32]struct{})
 	for _, e := range actualEdges {
 
-		ePointsInBetween := graph.GetEdgePointsInBetween(e.EdgeID)
+		ePointsInBetween := graph.GetEdgePointsInBetween(e.FromNodeID, e.ToNodeID, false)
 
 		visitedpath[e.FromNodeID] = struct{}{}
 		actualPath = append(actualPath, simplenode{lat: ePointsInBetween[0].Lat,

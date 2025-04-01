@@ -119,3 +119,36 @@ func CreatePolyline(path []Coordinate) string {
 	s = string(polyline.EncodeCoords(coords))
 	return s
 }
+
+func createPolylineByteSlice(path []Coordinate) []byte {
+	coords := make([][]float64, 0)
+	for _, p := range path {
+		pT := p
+		coords = append(coords, []float64{pT.Lat, pT.Lon})
+	}
+	return polyline.EncodeCoords(coords)
+}
+
+func decodePolylineByteSlice(encoded []byte) ([]Coordinate, error) {
+	coordinates, _, err := polyline.DecodeCoords(encoded)
+	if err != nil {
+		return []Coordinate{}, err
+	}
+	coords := make([]Coordinate, 0)
+	for _, c := range coordinates {
+		coords = append(coords, Coordinate{Lat: c[0], Lon: c[1]})
+	}
+	return coords, nil
+}
+
+func decodePolyline(path string) ([]Coordinate, error) {
+	coords, _, err := polyline.DecodeCoords([]byte(path))
+	if err != nil {
+		return []Coordinate{}, err
+	}
+	coordinates := make([]Coordinate, 0)
+	for _, c := range coords {
+		coordinates = append(coordinates, Coordinate{Lat: c[0], Lon: c[1]})
+	}
+	return coordinates, nil
+}

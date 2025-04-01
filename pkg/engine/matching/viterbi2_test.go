@@ -2,8 +2,9 @@ package matching_test
 
 import (
 	"errors"
-	"lintang/navigatorx/pkg/engine/matching"
 	"testing"
+
+	"github.com/lintang-b-s/navigatorx/pkg/engine/matching"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -73,7 +74,7 @@ func TestViterbiAlgo2(t *testing.T) {
 			}
 
 			if viterbi.IsBroken() {
-				panic(errors.New("viterbi is broken"))
+				t.Error(errors.New("viterbi is broken"))
 			}
 
 			prevTimeStep = obs

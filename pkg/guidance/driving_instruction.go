@@ -2,13 +2,15 @@ package guidance
 
 import (
 	"errors"
-	"lintang/navigatorx/pkg/datastructure"
+	"log"
 	"math"
+
+	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
 )
 
 type ContractedGraph interface {
-	GetNodeFirstOutEdges(nodeID int32) []int32
-	GetNodeFirstInEdges(nodeID int32) []int32
+	GetNodeOutEdgesCsr2(nodeID int32) ([]datastructure.EdgeCH, error)
+	GetNodeInEdgesCsr2(nodeID int32) ([]datastructure.EdgeCH, error)
 	GetNode(nodeID int32) datastructure.CHNode
 	GetOutEdge(edgeID int32) datastructure.EdgeCH
 	GetInEdge(edgeID int32) datastructure.EdgeCH
@@ -16,13 +18,14 @@ type ContractedGraph interface {
 	GetStreetNameFromID(streetName int) string
 	GetRoadClassFromID(roadClass int) string
 	GetRoadClassLinkFromID(roadClassLink int) string
-	IsRoundabout(edgeID int32) bool
 
-	GetEdgePointsInBetween(edgeID int32) []datastructure.Coordinate
-	GetStreetName(edgeID int32) int
-	GetRoadClass(edgeID int32) int
-	GetRoadClassLink(edgeID int32) int
-	GetLanes(edgeID int32) int
+	IsShortcutCsr(nodeID int32, edgeID int32, reverse bool) (bool, error)
+	IsRoundaboutCsr(nodeID int32, edgeID int32) (bool, error)
+	GetEdgePointsInBetweenCsr(nodeID int32, edgeID int32, reverse bool) ([]datastructure.Coordinate, error)
+	GetStreetNameCsr(nodeID int32, edgeID int32) (int, error)
+	GetRoadClassCsr(nodeID int32, edgeID int32) (int, error)
+	GetRoadClassLinkCsr(nodeID int32, edgeID int32) (int, error)
+	GetLanesCsr(nodeID int32, edgeID int32) (int, error)
 }
 
 type InstructionsFromEdges struct {
@@ -101,7 +104,7 @@ func (ife *InstructionsFromEdges) GetDrivingInstructions(path []datastructure.Ed
 	return drivingInstructions, nil
 }
 
-func (ife *InstructionsFromEdges) AddInstructionFromEdge(edge datastructure.EdgeCH) {
+func (ife *InstructionsFromEdges) AddInstructionFromEdge(edge datastructure.EdgeCH) error {
 	adjNode := edge.ToNodeID
 	baseNode := edge.FromNodeID
 
@@ -112,8 +115,10 @@ func (ife *InstructionsFromEdges) AddInstructionFromEdge(edge datastructure.Edge
 	adjLon := adjNodeData.Lon
 	var latitude, longitude float64
 
-	isRoundabout := ife.ContractedGraph.IsRoundabout(edge.EdgeID)
-
+	isRoundabout, err := ife.ContractedGraph.IsRoundaboutCsr(edge.FromNodeID, edge.ToNodeID)
+	if err != nil {
+		return err
+	}
 	latitude = adjLat
 	longitude = adjLon
 	var prevNodeData datastructure.CHNode
@@ -121,25 +126,15 @@ func (ife *InstructionsFromEdges) AddInstructionFromEdge(edge datastructure.Edge
 		prevNodeData = ife.ContractedGraph.GetNode(ife.PrevNode)
 	}
 
-	prevEdgeExtraInfo := datastructure.NewEdgeExtraInfo(
-		ife.ContractedGraph.GetStreetName(ife.PrevEdge.EdgeID),
-		ife.ContractedGraph.GetRoadClass(ife.PrevEdge.EdgeID),
-		ife.ContractedGraph.GetLanes(ife.PrevEdge.EdgeID),
-		ife.ContractedGraph.GetRoadClassLink(ife.PrevEdge.EdgeID),
-		ife.ContractedGraph.GetEdgePointsInBetween(ife.PrevEdge.EdgeID),
-		ife.ContractedGraph.IsRoundabout(ife.PrevEdge.EdgeID),
-		false,
-	)
+	prevEdgeExtraInfo, err := ife.GetEdgeInfo(ife.PrevEdge.FromNodeID, ife.PrevEdge.ToNodeID)
+	if err != nil {
+		return err
+	}
 
-	edgeExtraInfo := datastructure.NewEdgeExtraInfo(
-		ife.ContractedGraph.GetStreetName(edge.EdgeID),
-		ife.ContractedGraph.GetRoadClass(edge.EdgeID),
-		ife.ContractedGraph.GetLanes(edge.EdgeID),
-		ife.ContractedGraph.GetRoadClassLink(edge.EdgeID),
-		ife.ContractedGraph.GetEdgePointsInBetween(edge.EdgeID),
-		ife.ContractedGraph.IsRoundabout(edge.EdgeID),
-		false,
-	)
+	edgeExtraInfo, err := ife.GetEdgeInfo(edge.FromNodeID, edge.ToNodeID)
+	if err != nil {
+		return err
+	}
 
 	name := ife.ContractedGraph.GetStreetNameFromID(edgeExtraInfo.StreetName)
 
@@ -166,11 +161,18 @@ func (ife *InstructionsFromEdges) AddInstructionFromEdge(edge datastructure.Edge
 			ife.doublePrevOrientation = ife.PrevOrientation
 			if ife.PrevInstruction != nil {
 
-				outEdges := ife.ContractedGraph.GetNodeFirstOutEdges(baseNode)
-				for _, eID := range outEdges {
+				outEdges, err := ife.ContractedGraph.GetNodeOutEdgesCsr2(baseNode)
+				if err != nil {
+					return err
+				}
+				for _, e := range outEdges {
 					// add jumlah exit Point dari bundaran
-					e := ife.ContractedGraph.GetOutEdge(eID)
-					eIsRoundabout := ife.ContractedGraph.IsRoundabout(e.EdgeID)
+					eIsRoundabout, err := ife.ContractedGraph.IsRoundaboutCsr(e.FromNodeID, e.ToNodeID)
+
+					if err != nil {
+						return err
+					}
+
 					if (e.ToNodeID != ife.PrevNode) && !eIsRoundabout {
 						roundaboutInstruction.ExitNumber++
 						break
@@ -190,10 +192,15 @@ func (ife *InstructionsFromEdges) AddInstructionFromEdge(edge datastructure.Edge
 			ife.Ways = append(ife.Ways, ife.PrevInstruction)
 		}
 
-		outgoingEdges := ife.ContractedGraph.GetNodeFirstOutEdges(adjNode)
-		for _, eID := range outgoingEdges {
-			e := ife.ContractedGraph.GetOutEdge(eID)
-			eIsRoundabout := ife.ContractedGraph.IsRoundabout(e.EdgeID)
+		outgoingEdges, err := ife.ContractedGraph.GetNodeInEdgesCsr2(adjNode)
+		if err != nil {
+			return err
+		}
+		for _, e := range outgoingEdges {
+			eIsRoundabout, err := ife.ContractedGraph.IsRoundaboutCsr(e.FromNodeID, e.ToNodeID)
+			if err != nil {
+				return err
+			}
 			if !eIsRoundabout {
 				// add jumlah exit Point dari bundaran
 				roundaboutInstruction := ife.PrevInstruction
@@ -211,7 +218,10 @@ func (ife *InstructionsFromEdges) AddInstructionFromEdge(edge datastructure.Edge
 		ife.DoublePrevStreetName = ife.ContractedGraph.GetStreetNameFromID(prevEdgeExtraInfo.StreetName)
 
 	} else {
-		sign := ife.GetTurnSign(edge, baseNode, ife.PrevNode, adjNode, name)
+		sign, err := ife.GetTurnSign(edge, baseNode, ife.PrevNode, adjNode, name)
+		if err != nil {
+			return err
+		}
 		if sign != IGNORE {
 			isUTurn, uTurnType := ife.CheckUTurn(sign, name, edge) // check apakah U-TURN, kalau iya, prevInstruction sebelumnya (sign == RIGHTTURN) ganti ke U-Turn
 			if isUTurn {
@@ -242,6 +252,44 @@ func (ife *InstructionsFromEdges) AddInstructionFromEdge(edge datastructure.Edge
 	ife.PrevInRoundabout = isRoundabout
 	ife.PrevNode = baseNode
 	ife.PrevEdge = edge
+
+	return nil
+}
+
+func (ife *InstructionsFromEdges) GetEdgeInfo(fromNodeID, toNodeID int32) (datastructure.EdgeExtraInfo, error) {
+	streetNamePrevEdge, err := ife.ContractedGraph.GetStreetNameCsr(fromNodeID, toNodeID)
+	if err != nil {
+		return datastructure.EdgeExtraInfo{}, err
+	}
+	roadClassPrevEdge, err := ife.ContractedGraph.GetRoadClassCsr(fromNodeID, toNodeID)
+	if err != nil {
+		return datastructure.EdgeExtraInfo{}, err
+	}
+	lanesPrevEdge, err := ife.ContractedGraph.GetLanesCsr(fromNodeID, toNodeID)
+	if err != nil {
+		return datastructure.EdgeExtraInfo{}, err
+	}
+	roadClassLinkPrevEdge, err := ife.ContractedGraph.GetRoadClassLinkCsr(fromNodeID, toNodeID)
+	if err != nil {
+		return datastructure.EdgeExtraInfo{}, err
+	}
+	pointsInBetweenPrevEdge, err := ife.ContractedGraph.GetEdgePointsInBetweenCsr(fromNodeID, toNodeID, false)
+	if err != nil {
+		return datastructure.EdgeExtraInfo{}, err
+	}
+	isRoundaboutPrevEdge, err := ife.ContractedGraph.IsRoundaboutCsr(fromNodeID, toNodeID)
+	if err != nil {
+		return datastructure.EdgeExtraInfo{}, err
+	}
+	return datastructure.NewEdgeExtraInfo(
+		streetNamePrevEdge,
+		roadClassPrevEdge,
+		lanesPrevEdge,
+		roadClassLinkPrevEdge,
+		pointsInBetweenPrevEdge,
+		isRoundaboutPrevEdge,
+		false,
+	), nil
 }
 
 /*
@@ -287,21 +335,16 @@ func (ife *InstructionsFromEdges) CheckUTurn(sign int, name string, edge datastr
 /*
 Finish. tambah final instruction.
 */
-func (ife *InstructionsFromEdges) Finish() {
+func (ife *InstructionsFromEdges) Finish() error {
 
 	doublePrevNode := ife.ContractedGraph.GetNode(ife.DoublePrevNode)
 
 	baseNodeData := ife.ContractedGraph.GetNode(ife.PrevEdge.FromNodeID)
 
-	prevEdgeExtraInfo := datastructure.NewEdgeExtraInfo(
-		ife.ContractedGraph.GetStreetName(ife.PrevEdge.EdgeID),
-		ife.ContractedGraph.GetRoadClass(ife.PrevEdge.EdgeID),
-		ife.ContractedGraph.GetLanes(ife.PrevEdge.EdgeID),
-		ife.ContractedGraph.GetRoadClassLink(ife.PrevEdge.EdgeID),
-		ife.ContractedGraph.GetEdgePointsInBetween(ife.PrevEdge.EdgeID),
-		ife.ContractedGraph.IsRoundabout(ife.PrevEdge.EdgeID),
-		false,
-	)
+	prevEdgeExtraInfo, err := ife.GetEdgeInfo(ife.PrevEdge.FromNodeID, ife.PrevEdge.ToNodeID)
+	if err != nil {
+		return err
+	}
 
 	node := ife.ContractedGraph.GetNode(ife.PrevEdge.ToNodeID)
 	point := datastructure.NewCoordinate(node.Lat, node.Lon)
@@ -309,6 +352,8 @@ func (ife *InstructionsFromEdges) Finish() {
 	finishInstruction.ExtraInfo["heading"] = BearingTo(doublePrevNode.Lat, doublePrevNode.Lon, baseNodeData.Lat, baseNodeData.Lon)
 	newIns := NewInstruction(finishInstruction.Sign, finishInstruction.Name, finishInstruction.Point, false)
 	ife.Ways = append(ife.Ways, &newIns)
+
+	return nil
 }
 
 /*
@@ -323,7 +368,7 @@ prevNode----prevEdge----BaseNode
 						AdjNode
 
 */ // nolint: gofmt
-func (ife *InstructionsFromEdges) GetTurnSign(edge datastructure.EdgeCH, baseNode, prevNode, adjNode int32, name string) int {
+func (ife *InstructionsFromEdges) GetTurnSign(edge datastructure.EdgeCH, baseNode, prevNode, adjNode int32, name string) (int, error) {
 	baseNodeData := ife.ContractedGraph.GetNode(edge.FromNodeID)
 	point := ife.ContractedGraph.GetNode(edge.ToNodeID)
 	lat := point.Lat
@@ -336,63 +381,57 @@ func (ife *InstructionsFromEdges) GetTurnSign(edge datastructure.EdgeCH, baseNod
 	ife.PrevOrientation = calcOrientation(prevNodeData.Lat, prevNodeData.Lon, baseNodeData.Lat, baseNodeData.Lon)
 	sign := getTurnDirection(baseNodeData.Lat, baseNodeData.Lon, lat, lon, ife.PrevOrientation)
 
-	alternativeTurnsCount, alternativeTurns := ife.GetAlternativeTurns(baseNode, adjNode, prevNode)
-
-	isStreetSplit := ife.isStreetSplit(edge, ife.PrevEdge)
-	isStreetMerged := ife.isStreetMerged(edge, ife.PrevEdge)
+	alternativeTurnsCount, alternativeTurns, err := ife.GetAlternativeTurns(baseNode, adjNode, prevNode)
+	if err != nil {
+		return 0, err
+	}
+	isStreetSplit, err := ife.isStreetSplit(edge, ife.PrevEdge)
+	if err != nil {
+		return 0, err
+	}
+	isStreetMerged, err := ife.isStreetMerged(edge, ife.PrevEdge)
+	if err != nil {
+		return 0, err
+	}
 
 	if alternativeTurnsCount == 1 {
 		if math.Abs(float64(sign)) > 1 && !(isStreetMerged || isStreetSplit) {
 
-			return sign
+			return sign, nil
 		}
-		return IGNORE
+		return IGNORE, nil
 	}
 
-	prevEdgeExtraInfo := datastructure.NewEdgeExtraInfo(
-		ife.ContractedGraph.GetStreetName(ife.PrevEdge.EdgeID),
-		ife.ContractedGraph.GetRoadClass(ife.PrevEdge.EdgeID),
-		ife.ContractedGraph.GetLanes(ife.PrevEdge.EdgeID),
-		ife.ContractedGraph.GetRoadClassLink(ife.PrevEdge.EdgeID),
-		ife.ContractedGraph.GetEdgePointsInBetween(ife.PrevEdge.EdgeID),
-		ife.ContractedGraph.IsRoundabout(ife.PrevEdge.EdgeID),
-		false,
-	)
-	edgeExtraInfo := datastructure.NewEdgeExtraInfo(
-		ife.ContractedGraph.GetStreetName(edge.EdgeID),
-		ife.ContractedGraph.GetRoadClass(edge.EdgeID),
-		ife.ContractedGraph.GetLanes(edge.EdgeID),
-		ife.ContractedGraph.GetRoadClassLink(edge.EdgeID),
-		ife.ContractedGraph.GetEdgePointsInBetween(edge.EdgeID),
-		ife.ContractedGraph.IsRoundabout(edge.EdgeID),
-		false,
-	)
+	prevEdgeExtraInfo, err := ife.GetEdgeInfo(ife.PrevEdge.FromNodeID, ife.PrevEdge.ToNodeID)
+	if err != nil {
+		log.Printf("Error getting edge info: %v", err)
+		return IGNORE, nil
+	}
+
+	edgeExtraInfo, err := ife.GetEdgeInfo(edge.FromNodeID, edge.ToNodeID)
 
 	prevEdgeStreetName := ife.ContractedGraph.GetStreetNameFromID(prevEdgeExtraInfo.StreetName)
 	if math.Abs(float64(sign)) > 1 {
 		if (isSameName(name, prevEdgeStreetName)) ||
 			isStreetMerged || isStreetSplit {
-			return IGNORE
+			return IGNORE, nil
 		}
-		return sign
+		return sign, nil
 	}
 
 	if ife.PrevEdge.Weight == 0 {
-		return sign
+		return sign, nil
 	}
 
 	// get edge lain dari baseNode yang arahnya continue
 	otherContinueEdge := ife.getOtherEdgeContinueDirection(baseNodeData.Lat, baseNodeData.Lon, ife.PrevOrientation, alternativeTurns) //
 
-	otherContinueEdgeExtraInfo := datastructure.NewEdgeExtraInfo(
-		ife.ContractedGraph.GetStreetName(otherContinueEdge.EdgeID),
-		ife.ContractedGraph.GetRoadClass(otherContinueEdge.EdgeID),
-		ife.ContractedGraph.GetLanes(otherContinueEdge.EdgeID),
-		ife.ContractedGraph.GetRoadClassLink(otherContinueEdge.EdgeID),
-		ife.ContractedGraph.GetEdgePointsInBetween(otherContinueEdge.EdgeID),
-		ife.ContractedGraph.IsRoundabout(otherContinueEdge.EdgeID),
-		false,
-	)
+	otherContinueEdgeExtraInfo, err := ife.GetEdgeInfo(otherContinueEdge.FromNodeID, otherContinueEdge.ToNodeID)
+
+	if err != nil {
+		log.Printf("Error getting edge info: %v", err)
+		return IGNORE, nil
+	}
 
 	prevCurrEdgeOrientationDiff := calculateOrientationDelta(baseNodeData.Lat, baseNodeData.Lon, lat, lon, ife.PrevOrientation) // bearing difference antara prevNode->baseNode->edge.ToNodeID/adjNode
 	if otherContinueEdge.Weight != 0 {
@@ -413,7 +452,7 @@ func (ife *InstructionsFromEdges) GetTurnSign(edge datastructure.EdgeCH, baseNod
 			if isMajorRoad(roadClass) {
 				if (roadClass == prevRoadClass && link == prevLink) && (otherRoadClass != prevRoadClass || otherLink != prevLink) {
 					// current road class == major road class && prevRoadClass sama dg current edge roadClass
-					return IGNORE
+					return IGNORE, nil
 				}
 			}
 
@@ -421,12 +460,12 @@ func (ife *InstructionsFromEdges) GetTurnSign(edge datastructure.EdgeCH, baseNod
 
 			if math.Abs(prevCurrEdgeOrientationDiff)*(180/math.Pi) < 6 && math.Abs(prevOtherEdgeOrientation)*(180/math.Pi) > 8.6 && isSameName(name, prevEdgeStreetName) {
 				// bearing difference antara prevEdge dan currentEDge < 6° (CONTINUE Direction), Edge otherContinueEdge > 8.6 (TURN SLIGHT or more direction). Nama prevEdge street == current Street
-				return CONTINUE_ON_STREET
+				return CONTINUE_ON_STREET, nil
 			}
 
 			if roadClass == "residential" || prevRoadClass == "residential" || (roadClass == "unclassified" && prevRoadClass == "unclassified") {
 				// skip roadclass residential untuk mengurangi instructions.
-				return IGNORE
+				return IGNORE, nil
 			}
 
 			/*
@@ -437,19 +476,21 @@ func (ife *InstructionsFromEdges) GetTurnSign(edge datastructure.EdgeCH, baseNod
 						-----otherContinueEdge---
 			*/ // nolint: gofmt
 			if prevCurrEdgeOrientationDiff > prevOtherEdgeOrientation {
-				return KEEP_RIGHT
+				return KEEP_RIGHT, nil
 			} else {
-				return KEEP_LEFT
+				return KEEP_LEFT, nil
 			}
 		}
 	}
 
-	if !(isStreetMerged || isStreetSplit) &&
-		(math.Abs(prevCurrEdgeOrientationDiff)*(180/math.Pi) > 34 || ife.isLeavingCurrentStreet(prevEdgeStreetName, name, ife.PrevEdge, edge, alternativeTurns)) {
-		return sign
+	if ok, err := ife.isLeavingCurrentStreet(prevEdgeStreetName, name, ife.PrevEdge, edge, alternativeTurns); !(isStreetMerged || isStreetSplit) &&
+		(math.Abs(prevCurrEdgeOrientationDiff)*(180/math.Pi) > 34 || ok) {
+		return sign, err
+	} else if err != nil {
+		return IGNORE, err
 	}
 
-	return IGNORE
+	return IGNORE, nil
 }
 
 func isMajorRoad(roadClass string) bool {

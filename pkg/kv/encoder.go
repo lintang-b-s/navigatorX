@@ -1,7 +1,7 @@
 package kv
 
 import (
-	"lintang/navigatorx/pkg/datastructure"
+	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
 
 	"github.com/kelindar/binary"
 )

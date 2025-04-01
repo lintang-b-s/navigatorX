@@ -3,9 +3,10 @@ package matching
 import (
 	"errors"
 	"fmt"
-	"lintang/navigatorx/pkg/util"
 	"math"
 	"strings"
+
+	"github.com/lintang-b-s/navigatorx/pkg/util"
 )
 
 type Transition struct {
@@ -78,7 +79,6 @@ func (v *ViterbiAlgorithm) StartWithInitialStateProbabilities(
 	return v.initializeStateProbabilities(observation, initialStates, initialLogProbabilities)
 }
 
-
 func (v *ViterbiAlgorithm) StartWithInitialObservation(
 	observation int,
 	candidates []int,
@@ -86,7 +86,6 @@ func (v *ViterbiAlgorithm) StartWithInitialObservation(
 
 	return v.initializeStateProbabilities(observation, candidates, emissionLogProbabilities)
 }
-
 
 func (v *ViterbiAlgorithm) NextStep(
 	observation int,
@@ -136,11 +135,10 @@ func (v *ViterbiAlgorithm) NextStep(
 	return nil
 }
 
-
 // ComputeMostLikelySequence returns the most likely sequence of states for all time steps
 func (v *ViterbiAlgorithm) ComputeMostLikelySequence() []SequenceState {
 	if v.message == nil {
-		
+
 		return []SequenceState{}
 	} else {
 		return v.retrieveMostLikelySequence()

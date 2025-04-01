@@ -1,6 +1,6 @@
 package concurrent
 
-import "lintang/navigatorx/pkg/datastructure"
+import "github.com/lintang-b-s/navigatorx/pkg/datastructure"
 
 type KVEdge struct {
 	CenterLoc           []float64 // [lat, lon]

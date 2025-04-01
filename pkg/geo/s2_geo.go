@@ -1,9 +1,10 @@
 package geo
 
 import (
-	"lintang/navigatorx/pkg/datastructure"
-	"lintang/navigatorx/pkg/util"
 	"math"
+
+	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
+	"github.com/lintang-b-s/navigatorx/pkg/util"
 
 	"github.com/golang/geo/s2"
 )
@@ -53,7 +54,7 @@ func PointPositionBetweenLinePoints(lat, lon float64, linePoints []datastructure
 		diff := math.Abs(currQueryDist + nextQueryDist - currNextDist)
 		if diff < tolerancePointInLine && diff < minDiff {
 			minDiff = diff
-			pos = i+1
+			pos = i + 1
 		}
 	}
 	return pos

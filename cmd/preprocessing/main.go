@@ -4,15 +4,16 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	_ "lintang/navigatorx/docs"
-	"lintang/navigatorx/pkg/contractor"
-	"lintang/navigatorx/pkg/kv"
-	"lintang/navigatorx/pkg/osmparser"
 	"log"
 	"os"
 	"runtime/pprof"
 	"strings"
 	"sync"
+
+	_ "github.com/lintang-b-s/navigatorx/docs"
+	"github.com/lintang-b-s/navigatorx/pkg/contractor"
+	"github.com/lintang-b-s/navigatorx/pkg/kv"
+	"github.com/lintang-b-s/navigatorx/pkg/osmparser"
 
 	_ "net/http/pprof"
 
@@ -89,6 +90,10 @@ func main() {
 
 	if !*mapmatch {
 		ch.Contraction()
+		err := ch.GroupNodeByProximityAndSaveToDisk()
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	log.Printf("Saving Contracted Graph to a file...")

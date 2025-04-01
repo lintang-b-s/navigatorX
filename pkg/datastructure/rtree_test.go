@@ -2,11 +2,12 @@ package datastructure_test
 
 import (
 	"fmt"
-	"lintang/navigatorx/pkg/datastructure"
-	"lintang/navigatorx/pkg/geo"
 	"math"
 	"testing"
 	"time"
+
+	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
+	"github.com/lintang-b-s/navigatorx/pkg/geo"
 
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/exp/rand"

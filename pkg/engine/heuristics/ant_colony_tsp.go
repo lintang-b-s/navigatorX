@@ -2,11 +2,12 @@ package heuristics
 
 import (
 	"errors"
-	"lintang/navigatorx/pkg/concurrent"
-	"lintang/navigatorx/pkg/datastructure"
 	"math"
 	"sync"
 	"time"
+
+	"github.com/lintang-b-s/navigatorx/pkg/concurrent"
+	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
 
 	"golang.org/x/exp/rand"
 )

@@ -1,8 +1,8 @@
 package guidance
 
 import (
-	"lintang/navigatorx/pkg/datastructure"
-	"lintang/navigatorx/pkg/util"
+	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
+	"github.com/lintang-b-s/navigatorx/pkg/util"
 
 	"github.com/golang/geo/s2"
 )

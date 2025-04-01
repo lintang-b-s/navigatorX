@@ -2,9 +2,10 @@ package service
 
 import (
 	"context"
-	"lintang/navigatorx/pkg/datastructure"
-	"lintang/navigatorx/pkg/geo"
 	"log"
+
+	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
+	"github.com/lintang-b-s/navigatorx/pkg/geo"
 )
 
 type RouteAlgorithm interface {
@@ -43,7 +44,7 @@ type ContractedGraph interface {
 	GetStreetNameFromID(streetName int) string
 	GetRoadClassFromID(roadClass int) string
 	GetRoadClassLinkFromID(roadClassLink int) string
-	GetEdgePointsInBetween(edgeID int32) []datastructure.Coordinate
+	GetEdgePointsInBetween(fromNodeID, toNodeID int32, reverse bool) []datastructure.Coordinate
 }
 
 type MapMatchingService struct {
@@ -144,9 +145,9 @@ func (uc *MapMatchingService) FilterEdges(edges []datastructure.OSMObject, pLat,
 
 		edge := uc.ch.GetOutEdge(edgeID)
 
-		pointsInBetween := uc.ch.GetEdgePointsInBetween(edgeID)
+		pointsInBetween := uc.ch.GetEdgePointsInBetween(edge.FromNodeID, edge.ToNodeID, false)
 
-		pos := geo.PointPositionBetweenLinePoints(pLat, pLon, pointsInBetween)-1
+		pos := geo.PointPositionBetweenLinePoints(pLat, pLon, pointsInBetween) - 1
 
 		fromPoint := geo.NewCoordinate(pointsInBetween[pos].Lat, pointsInBetween[pos].Lon)
 		toPoint := geo.NewCoordinate(pointsInBetween[pos+1].Lat, pointsInBetween[pos+1].Lon)
@@ -196,7 +197,7 @@ func (uc *MapMatchingService) NearestRoadSegments(ctx context.Context, lat, lon 
 
 		gpsLoc := geo.NewCoordinate(lat, lon)
 
-		pointsInBetween := uc.ch.GetEdgePointsInBetween(edgeID)
+		pointsInBetween := uc.ch.GetEdgePointsInBetween(edge.FromNodeID, edge.ToNodeID, false)
 		fromNodeLoc := geo.NewCoordinate(pointsInBetween[0].Lat, pointsInBetween[0].Lon)
 		toNodeLoc := geo.NewCoordinate(pointsInBetween[len(pointsInBetween)-1].Lat, pointsInBetween[len(pointsInBetween)-1].Lon)
 		projection := geo.ProjectPointToLineCoord(fromNodeLoc, toNodeLoc, gpsLoc)

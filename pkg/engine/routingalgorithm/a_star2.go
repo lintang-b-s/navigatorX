@@ -1,10 +1,10 @@
 package routingalgorithm
 
 import (
-	"lintang/navigatorx/pkg/contractor"
-	"lintang/navigatorx/pkg/datastructure"
-	"lintang/navigatorx/pkg/geo"
-	"lintang/navigatorx/pkg/util"
+	"github.com/lintang-b-s/navigatorx/pkg/contractor"
+	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
+	"github.com/lintang-b-s/navigatorx/pkg/geo"
+	"github.com/lintang-b-s/navigatorx/pkg/util"
 )
 
 // https://www.cs.princeton.edu/courses/archive/spr06/cos423/Handouts/GH05.pdf

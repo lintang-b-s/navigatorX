@@ -3,13 +3,14 @@ package osmparser
 import (
 	"context"
 	"io"
-	"lintang/navigatorx/pkg/datastructure"
-	"lintang/navigatorx/pkg/geo"
-	"lintang/navigatorx/pkg/util"
 	"log"
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
+	"github.com/lintang-b-s/navigatorx/pkg/geo"
+	"github.com/lintang-b-s/navigatorx/pkg/util"
 
 	"github.com/paulmach/osm"
 	"github.com/paulmach/osm/osmpbf"
@@ -110,8 +111,8 @@ var (
 	}
 )
 
-func (p *OsmParser) Parse(mapFile string) ([]datastructure.CHNode, []datastructure.EdgeCH, map[string][2]bool, []datastructure.EdgeExtraInfo,
-	*datastructure.NodeInfo,
+func (p *OsmParser) Parse(mapFile string) ([]datastructure.CHNode, []datastructure.EdgeCH, map[string][2]bool, 
+	[]datastructure.EdgeExtraInfo,*datastructure.NodeInfo,
 ) {
 
 	f, err := os.Open(mapFile)

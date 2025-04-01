@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"lintang/navigatorx/pkg/datastructure"
-	"lintang/navigatorx/pkg/guidance"
-	"lintang/navigatorx/pkg/server"
-	"lintang/navigatorx/pkg/server/rest/service"
-	"lintang/navigatorx/pkg/util"
 	"net/http"
+
+	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
+	"github.com/lintang-b-s/navigatorx/pkg/guidance"
+	"github.com/lintang-b-s/navigatorx/pkg/server"
+	"github.com/lintang-b-s/navigatorx/pkg/server/rest/service"
+	"github.com/lintang-b-s/navigatorx/pkg/util"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/render"

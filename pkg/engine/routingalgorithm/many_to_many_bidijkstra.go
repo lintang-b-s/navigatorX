@@ -1,8 +1,8 @@
 package routingalgorithm
 
 import (
-	"lintang/navigatorx/pkg/concurrent"
-	"lintang/navigatorx/pkg/datastructure"
+	"github.com/lintang-b-s/navigatorx/pkg/concurrent"
+	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
 )
 
 func (rt *RouteAlgorithm) CallBidirectionalDijkstra(spMap []int32) datastructure.SPSingleResultResult {

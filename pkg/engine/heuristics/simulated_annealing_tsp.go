@@ -1,10 +1,11 @@
 package heuristics
 
 import (
-	"lintang/navigatorx/pkg/concurrent"
-	"lintang/navigatorx/pkg/datastructure"
-	"lintang/navigatorx/pkg/util"
 	"math"
+
+	"github.com/lintang-b-s/navigatorx/pkg/concurrent"
+	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
+	"github.com/lintang-b-s/navigatorx/pkg/util"
 
 	"math/rand/v2"
 )

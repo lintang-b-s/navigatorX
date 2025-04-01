@@ -1,9 +1,10 @@
 package routingalgorithm
 
 import (
-	"lintang/navigatorx/pkg/contractor"
-	"lintang/navigatorx/pkg/datastructure"
 	"math"
+
+	"github.com/lintang-b-s/navigatorx/pkg/contractor"
+	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
 )
 
 const (
@@ -93,11 +94,12 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32, fromEdgeFilter,
 
 				for _, arc := range rt.ch.GetNodeFirstOutEdges(node.Item) {
 
-					if _, ok := visitedF[node.Item]; ok {
+					
+					edge := rt.ch.GetOutEdge(arc)
+					if _, ok := visitedF[edge.ToNodeID]; ok {
 						continue
 					}
 
-					edge := rt.ch.GetOutEdge(arc)
 					if !fromEdgeFilter(edge) {
 						// if the source node is virtual node,  must start the search from outgoing virtual edge of source node.
 						continue
@@ -156,11 +158,12 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32, fromEdgeFilter,
 
 				for _, arc := range rt.ch.GetNodeFirstInEdges(node.Item) {
 
-					if _, ok := visitedB[node.Item]; ok {
+					
+					edge := rt.ch.GetInEdge(arc)
+					if _, ok := visitedB[edge.ToNodeID]; ok {
 						continue
 					}
 
-					edge := rt.ch.GetInEdge(arc)
 
 					if !toEdgeFilter(edge) {
 						// if the target node node is virtual node,  must start the search from incoming virtual edge of target node.

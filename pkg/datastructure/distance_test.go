@@ -1,8 +1,9 @@
 package datastructure_test
 
 import (
-	"lintang/navigatorx/pkg/geo"
 	"testing"
+
+	"github.com/lintang-b-s/navigatorx/pkg/geo"
 
 	"github.com/stretchr/testify/assert"
 )

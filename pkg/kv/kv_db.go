@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"lintang/navigatorx/pkg/datastructure"
 	"log"
 	"math"
+
+	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
 
 	"github.com/dgraph-io/badger/v4"
 	"github.com/uber/h3-go/v4"

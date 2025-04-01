@@ -1,8 +1,9 @@
 package guidance
 
 import (
-	"lintang/navigatorx/pkg/datastructure"
 	"math"
+
+	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
 )
 
 /*
@@ -21,31 +22,35 @@ GetAlternativeTurns. get jumlah belokan alternatif yang bisa dilakukan dari base
 ada 4 belokan yang bisa dilakukan dari baseNode B. belokan didapat dari  contractedGraph.GetFirstOutEdge(baseNode)
 --- / | = jalan 2 arah
 */ // nolint: gofmt
-func (ife *InstructionsFromEdges) GetAlternativeTurns(baseNode, adjNode, prevNode int32) (int, []datastructure.EdgeCH) {
+func (ife *InstructionsFromEdges) GetAlternativeTurns(baseNode, adjNode, prevNode int32) (int, []datastructure.EdgeCH, error) {
 	alternativeTurns := []datastructure.EdgeCH{}
-	edges := ife.ContractedGraph.GetNodeFirstOutEdges(baseNode)
-	for _, edgeID := range edges {
-		edge := ife.ContractedGraph.GetOutEdge(edgeID)
+	edges, err := ife.ContractedGraph.GetNodeOutEdgesCsr2(baseNode)
+	if err != nil {
+		return 0, alternativeTurns, err
+	}
+	for _, edge := range edges {
 		if edge.ToNodeID != prevNode && edge.ToNodeID != adjNode {
 			alternativeTurns = append(alternativeTurns, edge)
 		}
 	}
 
-	return 1 + len(alternativeTurns), alternativeTurns
+	return 1 + len(alternativeTurns), alternativeTurns, nil
 }
 
 func (ife *InstructionsFromEdges) isLeavingCurrentStreet(prevStreetName, currentStreetName string, prevEdge, currentEdge datastructure.EdgeCH,
-	alternativeTurns []datastructure.EdgeCH) bool {
+	alternativeTurns []datastructure.EdgeCH) (bool, error) {
 	if isSameName(currentStreetName, prevStreetName) {
 		// isSameName == false - bisa ketika nama street kosong di osm.
-		return false
+		return false, nil
 	}
 
-	if !ife.isSameRoadClassAndLink(prevEdge, currentEdge) {
+	if ok, err := ife.isSameRoadClassAndLink(prevEdge, currentEdge); !ok {
 		// leave current street jika prevStreetName  != currentStreetName && roadclass/roadclassLink prevEdge,currentEdge beda.
-		return true
+		return true, nil
+	} else if err != nil {
+		return false, err
 	}
-	return false
+	return false, nil
 }
 
 /*
@@ -82,56 +87,55 @@ func (ife *InstructionsFromEdges) getOtherEdgeContinueDirection(prevLat, prevLon
 
 examplenya di jalan solo-semarang, A.Yani : -7.5533505900708455, 110.82338424980728
 */ // nolint: gofmt
-func (ife *InstructionsFromEdges) isStreetMerged(currentEdge, prevEdge datastructure.EdgeCH) bool {
+func (ife *InstructionsFromEdges) isStreetMerged(currentEdge, prevEdge datastructure.EdgeCH) (bool, error) {
 	baseNode := currentEdge.FromNodeID
 
-	currentEdgeExtraInfo := datastructure.NewEdgeExtraInfo(
-		ife.ContractedGraph.GetStreetName(currentEdge.EdgeID),
-		ife.ContractedGraph.GetRoadClass(currentEdge.EdgeID),
-		ife.ContractedGraph.GetLanes(currentEdge.EdgeID),
-		ife.ContractedGraph.GetRoadClassLink(currentEdge.EdgeID),
-		ife.ContractedGraph.GetEdgePointsInBetween(currentEdge.EdgeID),
-		ife.ContractedGraph.IsRoundabout(currentEdge.EdgeID),
-		false,
-	)
+	currentEdgeExtraInfo, err := ife.GetEdgeInfo(currentEdge.FromNodeID, currentEdge.ToNodeID)
+	if err != nil {
+		return false, err
+	}
 
-	prevEdgeExtraInfo := datastructure.NewEdgeExtraInfo(
-		ife.ContractedGraph.GetStreetName(prevEdge.EdgeID),
-		ife.ContractedGraph.GetRoadClass(prevEdge.EdgeID),
-		ife.ContractedGraph.GetLanes(prevEdge.EdgeID),
-		ife.ContractedGraph.GetRoadClassLink(prevEdge.EdgeID),
-		ife.ContractedGraph.GetEdgePointsInBetween(prevEdge.EdgeID),
-		ife.ContractedGraph.IsRoundabout(prevEdge.EdgeID),
-		false,
-	)
+	prevEdgeExtraInfo, err := ife.GetEdgeInfo(prevEdge.FromNodeID, prevEdge.ToNodeID)
+
+	if err != nil {
+		return false, err
+	}
 
 	name := ife.ContractedGraph.GetStreetNameFromID(currentEdgeExtraInfo.StreetName)
 	roadClass := currentEdgeExtraInfo.RoadClass
 	if roadClass != prevEdgeExtraInfo.RoadClass {
-		return false
+		return false, nil
 	}
 
 	var otherEdge *datastructure.EdgeCH = nil // inEdge dari BaseNode selain PrevEdge yang mengarah ke BaseNode
-	outEdges := ife.ContractedGraph.GetNodeFirstOutEdges(baseNode)
+	outEdges, err := ife.ContractedGraph.GetNodeOutEdgesCsr2(baseNode)
+	if err != nil {
+		return false, err
+	}
 
-	for _, edgeID := range outEdges {
-		edge := ife.ContractedGraph.GetOutEdge(edgeID)
+	for _, edge := range outEdges {
 
-		edgeStreetName := ife.ContractedGraph.GetStreetName(edge.EdgeID)
-		edgeRoadClass := ife.ContractedGraph.GetRoadClass(edge.EdgeID)
+		edgeStreetName, err := ife.ContractedGraph.GetStreetNameCsr(edge.FromNodeID, edge.ToNodeID)
+		if err != nil {
+			return false, err
+		}
+		edgeRoadClass, err := ife.ContractedGraph.GetRoadClassCsr(edge.FromNodeID, edge.ToNodeID)
+		if err != nil {
+			return false, err
+		}
 		if edge.EdgeID != currentEdge.EdgeID && edge.EdgeID != prevEdge.EdgeID &&
 			edge.ToNodeID != currentEdge.ToNodeID && edge.ToNodeID != prevEdge.FromNodeID &&
 			roadClass == edgeRoadClass &&
 			isSameName(name, ife.ContractedGraph.GetStreetNameFromID(edgeStreetName)) {
 			if otherEdge != nil {
-				return false
+				return false, nil
 			}
 			otherEdge = &edge
 		}
 	}
 
 	if otherEdge == nil {
-		return false
+		return false, nil
 	}
 	currentEdgeDirection := ife.ContractedGraph.GetStreetDirection(currentEdgeExtraInfo.StreetName) // [0] forward, [1] reversed
 	if currentEdgeDirection[1] {
@@ -139,22 +143,25 @@ func (ife *InstructionsFromEdges) isStreetMerged(currentEdge, prevEdge datastruc
 		prevEdgeDirection := ife.ContractedGraph.GetStreetDirection(prevEdgeExtraInfo.StreetName)
 		if prevEdgeDirection[1] {
 			// prevEdge harus tidak punya reversed direction
-			return false
+			return false, nil
 		}
 
-		otherEdgeStreetName := ife.ContractedGraph.GetStreetName(otherEdge.EdgeID)
-		otherEdgeLanes := ife.ContractedGraph.GetLanes(otherEdge.EdgeID)
+		otherEdgeStreetName, err := ife.ContractedGraph.GetStreetNameCsr(otherEdge.FromNodeID, otherEdge.ToNodeID)
+		if err != nil {
+			return false, err
+		}
+		otherEdgeLanes, err := ife.ContractedGraph.GetLanesCsr(otherEdge.FromNodeID, otherEdge.ToNodeID)
 
 		otherEdgeDirection := ife.ContractedGraph.GetStreetDirection(otherEdgeStreetName)
 		if !otherEdgeDirection[0] || otherEdgeDirection[1] {
 			// otherEdge harus forward edge & bukan reversed edge
-			return false
+			return false, nil
 		}
 
 		laneDiff := prevEdgeExtraInfo.Lanes + otherEdgeLanes - currentEdgeExtraInfo.Lanes // setidaknya lane dari currentEdge 2. lane dari other & prev 1
-		return laneDiff <= 1
+		return laneDiff <= 1, nil
 	}
-	return false
+	return false, nil
 }
 
 /*
@@ -165,85 +172,105 @@ func (ife *InstructionsFromEdges) isStreetMerged(currentEdge, prevEdge datastruc
 							   	<--otherEdge--
 		examplenya di -7.559777239220366, 110.83649946865347
 */ // nolint: gofmt
-func (ife *InstructionsFromEdges) isStreetSplit(currentEdge, prevEdge datastructure.EdgeCH) bool {
+func (ife *InstructionsFromEdges) isStreetSplit(currentEdge, prevEdge datastructure.EdgeCH) (bool, error) {
 	baseNode := currentEdge.FromNodeID
 
-	currentEdgeExtraInfo := datastructure.NewEdgeExtraInfo(
-		ife.ContractedGraph.GetStreetName(currentEdge.EdgeID),
-		ife.ContractedGraph.GetRoadClass(currentEdge.EdgeID),
-		ife.ContractedGraph.GetRoadClassLink(currentEdge.EdgeID),
+	currentEdgeExtraInfo, err := ife.GetEdgeInfo(currentEdge.FromNodeID, currentEdge.ToNodeID)
+	if err != nil {
+		return false, err
+	}
 
-		ife.ContractedGraph.GetLanes(currentEdge.EdgeID),
-		ife.ContractedGraph.GetEdgePointsInBetween(currentEdge.EdgeID),
-		ife.ContractedGraph.IsRoundabout(currentEdge.EdgeID),
-		false,
-	)
+	prevEdgeExtraInfo, err := ife.GetEdgeInfo(prevEdge.FromNodeID, prevEdge.ToNodeID)
+	if err != nil {
 
-	prevEdgeExtraInfo := datastructure.NewEdgeExtraInfo(
-		ife.ContractedGraph.GetStreetName(prevEdge.EdgeID),
-		ife.ContractedGraph.GetRoadClass(prevEdge.EdgeID),
-		ife.ContractedGraph.GetRoadClassLink(prevEdge.EdgeID),
-		ife.ContractedGraph.GetLanes(prevEdge.EdgeID),
-		ife.ContractedGraph.GetEdgePointsInBetween(prevEdge.EdgeID),
-		ife.ContractedGraph.IsRoundabout(prevEdge.EdgeID),
-		false,
-	)
+		return false, err
+	}
 
 	name := ife.ContractedGraph.GetStreetNameFromID(currentEdgeExtraInfo.StreetName)
 	roadClass := currentEdgeExtraInfo.RoadClass
 	if !isSameName(name, ife.ContractedGraph.GetStreetNameFromID(prevEdgeExtraInfo.StreetName)) || roadClass != prevEdgeExtraInfo.RoadClass {
-		return false
+		return false, nil
 	}
 
 	var otherEdge *datastructure.EdgeCH = nil // inEdge dari BaseNode selain PrevEdge yang mengarah ke BaseNode
-	outEdges := ife.ContractedGraph.GetNodeFirstInEdges(baseNode)
+	outEdges, err := ife.ContractedGraph.GetNodeInEdgesCsr2(baseNode)
+	if err != nil {
+		return false, err
+	}
 
-	for _, edgeID := range outEdges {
-		edge := ife.ContractedGraph.GetInEdge(edgeID)
+	for _, edge := range outEdges {
 
-		edgeStreetName := ife.ContractedGraph.GetStreetName(edge.EdgeID)
-		edgeRoadClass := ife.ContractedGraph.GetRoadClass(edge.EdgeID)
+		edgeStreetName, err := ife.ContractedGraph.GetStreetNameCsr(edge.FromNodeID, edge.ToNodeID)
+		if err != nil {
+
+			return false, err
+		}
+		edgeRoadClass, err := ife.ContractedGraph.GetRoadClassCsr(edge.FromNodeID, edge.ToNodeID)
+		if err != nil {
+
+			return false, err
+		}
 
 		if edge.EdgeID != currentEdge.EdgeID && edge.EdgeID != prevEdge.EdgeID &&
 			edge.ToNodeID != currentEdge.ToNodeID && edge.ToNodeID != prevEdge.FromNodeID &&
 			roadClass == edgeRoadClass &&
 			isSameName(name, ife.ContractedGraph.GetStreetNameFromID(edgeStreetName)) {
 			if otherEdge != nil {
-				return false
+				return false, nil
 			}
 			otherEdge = &edge
 		}
 	}
 	if otherEdge == nil {
-		return false
+		return false, nil
 	}
 
-	otherEdgeStretName := ife.ContractedGraph.GetStreetName(otherEdge.EdgeID)
-	otherEdgeLanes := ife.ContractedGraph.GetLanes(otherEdge.EdgeID)
+	otherEdgeStretName, err := ife.ContractedGraph.GetStreetNameCsr(otherEdge.FromNodeID, otherEdge.ToNodeID)
+	if err != nil {
+
+		return false, err
+	}
+	otherEdgeLanes, err := ife.ContractedGraph.GetLanesCsr(otherEdge.FromNodeID, otherEdge.ToNodeID)
+	if err != nil {
+
+		return false, err
+	}
 
 	prevEdgeDirection := ife.ContractedGraph.GetStreetDirection(prevEdgeExtraInfo.StreetName) // [0] forward, [1] reversed
 	if !prevEdgeDirection[1] {
 		// jika prevEdge bukan reversed
-		return false
+		return false, nil
 	}
 	otherEdgeDirection := ife.ContractedGraph.GetStreetDirection(otherEdgeStretName)
 	if !otherEdgeDirection[1] || otherEdgeDirection[0] {
 		// jika otherEdge tidak reversed atau arahnya forward
-		return false
+		return false, nil
 	}
 
 	laneDiff := prevEdgeExtraInfo.Lanes - (otherEdgeLanes + currentEdgeExtraInfo.Lanes) // setidak nya lane dari PrevEdge 2. lane dari  otherEdge  & currentEdge cuma 1
-	return laneDiff <= 1
+	return laneDiff <= 1, nil
 }
 
-func (ife *InstructionsFromEdges) isSameRoadClassAndLink(edge1, edge2 datastructure.EdgeCH) bool {
+func (ife *InstructionsFromEdges) isSameRoadClassAndLink(edge1, edge2 datastructure.EdgeCH) (bool, error) {
 
-	edge1RoadClass := ife.ContractedGraph.GetRoadClass(edge1.EdgeID)
-	edge2RoadClass := ife.ContractedGraph.GetRoadClass(edge2.EdgeID)
-	edge1RoadClassLink := ife.ContractedGraph.GetRoadClassLink(edge1.EdgeID)
-	edge2RoadClassLink := ife.ContractedGraph.GetRoadClassLink(edge2.EdgeID)
+	edge1RoadClass, err := ife.ContractedGraph.GetRoadClassCsr(edge1.FromNodeID, edge1.ToNodeID)
+	if err != nil {
+		return false, err
+	}
+	edge2RoadClass, err := ife.ContractedGraph.GetRoadClassCsr(edge2.FromNodeID, edge2.ToNodeID)
+	if err != nil {
+		return false, err
+	}
+	edge1RoadClassLink, err := ife.ContractedGraph.GetRoadClassLinkCsr(edge1.FromNodeID, edge1.ToNodeID)
+	if err != nil {
+		return false, err
+	}
+	edge2RoadClassLink, err := ife.ContractedGraph.GetRoadClassLinkCsr(edge2.FromNodeID, edge2.ToNodeID)
+	if err != nil {
+		return false, err
+	}
 
-	return edge1RoadClass == edge2RoadClass && edge1RoadClassLink == edge2RoadClassLink
+	return edge1RoadClass == edge2RoadClass && edge1RoadClassLink == edge2RoadClassLink, nil
 }
 
 func abs(a int) int {
