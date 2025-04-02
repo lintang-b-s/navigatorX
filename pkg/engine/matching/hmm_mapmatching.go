@@ -191,13 +191,13 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 			from := pointsInBetween[pos]
 			to := pointsInBetween[pos+1]
 
-			projection := geo.ProjectPointToLineCoord(geo.NewCoordinate(
+			projection := geo.ProjectPointToLineCoord(datastructure.NewCoordinate(
 				from.Lat,
 				from.Lon,
-			), geo.NewCoordinate(
+			), datastructure.NewCoordinate(
 				to.Lat,
 				to.Lon,
-			), geo.NewCoordinate(
+			), datastructure.NewCoordinate(
 				gps[i].Observation.Lat,
 				gps[i].Observation.Lon,
 			))

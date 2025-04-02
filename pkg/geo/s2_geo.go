@@ -9,17 +9,8 @@ import (
 	"github.com/golang/geo/s2"
 )
 
-type Coordinate struct {
-	Lat float64
-	Lon float64
-}
-
-func NewCoordinate(lat, lon float64) Coordinate {
-	return Coordinate{Lat: lat, Lon: lon}
-}
-
-func ProjectPointToLineCoord(nearestStPoint Coordinate, secondNearestStPoint Coordinate,
-	snap Coordinate) Coordinate {
+func ProjectPointToLineCoord(nearestStPoint datastructure.Coordinate, secondNearestStPoint datastructure.Coordinate,
+	snap datastructure.Coordinate) datastructure.Coordinate {
 	nearestStPoint = MakeSixDigitsAfterComa2(nearestStPoint, 6)
 	secondNearestStPoint = MakeSixDigitsAfterComa2(secondNearestStPoint, 6)
 	snapLat := snap.Lat
@@ -31,7 +22,17 @@ func ProjectPointToLineCoord(nearestStPoint Coordinate, secondNearestStPoint Coo
 	snapS2 := s2.PointFromLatLng(s2.LatLngFromDegrees(snapLat, snapLon))
 	projection := s2.Project(snapS2, nearestStS2, secondNearestStS2)
 	projectLatLng := s2.LatLngFromPoint(projection)
-	return Coordinate{projectLatLng.Lat.Degrees(), projectLatLng.Lng.Degrees()}
+	return datastructure.Coordinate{projectLatLng.Lat.Degrees(), projectLatLng.Lng.Degrees()}
+}
+
+// return in meter
+func PointLinePerpendicularDistance(nearestStPoint datastructure.Coordinate, secondNearestStPoint datastructure.Coordinate,
+	snap datastructure.Coordinate) float64 {
+	projectionPoint := ProjectPointToLineCoord(nearestStPoint, secondNearestStPoint, snap)
+
+	dist := CalculateHaversineDistance(snap.Lat, snap.Lon, projectionPoint.Lat, projectionPoint.Lon)
+
+	return dist * 1000
 }
 
 const (
@@ -60,7 +61,7 @@ func PointPositionBetweenLinePoints(lat, lon float64, linePoints []datastructure
 	return pos
 }
 
-func MakeSixDigitsAfterComa2(n Coordinate, precision int) Coordinate {
+func MakeSixDigitsAfterComa2(n datastructure.Coordinate, precision int) datastructure.Coordinate {
 
 	if util.CountDecimalPlacesF64(n.Lat) != precision {
 		n.Lat = util.RoundFloat(n.Lat+0.000001, 6)

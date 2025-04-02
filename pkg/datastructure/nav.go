@@ -1,5 +1,11 @@
 package datastructure
 
+import (
+	"bytes"
+	"encoding/binary"
+	"math"
+)
+
 type Coordinate struct {
 	Lat float64 `json:"lat"`
 	Lon float64 `json:"lon"`
@@ -14,14 +20,31 @@ func NewCoordinate(lat, lon float64) Coordinate {
 	}
 }
 
-func serializeCoordinates(coords []Coordinate) []byte {
+func serializeCoordinates(coords []Coordinate) ([]byte, error) {
+	buf := bytes.NewBuffer(make([]byte, 0, 16*len(coords)))
+	for _, c := range coords {
+		cBuf := make([]byte, 16)
+		// lat
+		binary.LittleEndian.PutUint64(cBuf[0:8], math.Float64bits(c.Lat))
+		// lon
+		binary.LittleEndian.PutUint64(cBuf[8:16], math.Float64bits(c.Lon))
+		buf.Write(cBuf)
+	}
 
-	return createPolylineByteSlice(coords)
+	return buf.Bytes(), nil
 }
 
 func deserializeCoordinates(data []byte) ([]Coordinate, error) {
-	coords, err := decodePolylineByteSlice(data)
-	return coords, err
+
+	buf := bytes.NewBuffer(data)
+	coords := make([]Coordinate, 0, buf.Len()/16)
+	for buf.Len() > 0 {
+		cBuf := buf.Next(16)
+		lat := math.Float64frombits(binary.LittleEndian.Uint64(cBuf[0:8]))
+		lon := math.Float64frombits(binary.LittleEndian.Uint64(cBuf[8:16]))
+		coords = append(coords, NewCoordinate(lat, lon))
+	}
+	return coords, nil
 }
 
 func NewCoordinates(lat, lon []float64) []Coordinate {

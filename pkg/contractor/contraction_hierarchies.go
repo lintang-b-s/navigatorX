@@ -788,6 +788,7 @@ we group graph nodes based on proximity into 1 block. Insert adjacency array/com
 one block/page is 16kb in size. insert each block/page insert into file. Create buffer pool manager/cache with replacer algorithm using lru to cache hundreds/thousands of blocks into memory.
 */
 func (ch *ContractedGraph) GroupNodeByProximityAndSaveToDisk() error {
+	averageNodePerBlock := 0
 
 	// group node by its geohash
 	geohashNodeIDMap := make(map[string][]int32)
@@ -827,16 +828,23 @@ func (ch *ContractedGraph) GroupNodeByProximityAndSaveToDisk() error {
 		copy(copyNodeBlocks, nodeBlocks[blockID])
 		copyNodeBlocks = append(copyNodeBlocks, nodeID)
 
-		currBlockSize, _, _, edgeInfoSize := ch.GetBlockSize(copyNodeBlocks)
-
+		currBlockSize, _, _, edgeInfoSize, err := ch.GetBlockSize(copyNodeBlocks)
+		if err != nil {
+			return err
+		}
 		currBlockSize += initialHeaderSize
 
 		if currBlockSize <= storage.MAX_PAGE_SIZE && edgeInfoSize <= storage.MAX_PAGE_SIZE {
 			nodeBlocks[blockID] = append(nodeBlocks[blockID], nodeID)
 		} else {
 
-			nodeBlockSize, _, _, nodeEdgeInfoSize := ch.GetNodeBufferSize(nodeID)
+			nodeBlockSize, _, _, nodeEdgeInfoSize, err := ch.GetNodeBufferSize(nodeID)
+			if err != nil {
+				return err
+			}
 			blockSizeMap[blockID] = currBlockSize - nodeBlockSize
+
+			averageNodePerBlock += len(nodeBlocks[blockID])
 
 			// add nodeID to new block
 			blockID += 2 // block+1 for node edges extra info
@@ -912,10 +920,12 @@ func (ch *ContractedGraph) GroupNodeByProximityAndSaveToDisk() error {
 	}
 
 	ch.removeOldGraph()
+
+	log.Printf("average node per block: %d", averageNodePerBlock/len(blockIDs))
 	return nil
 }
 
-func (ch *ContractedGraph) GetBlockSize(nodeIDs []int32) (int, int, int, int) {
+func (ch *ContractedGraph) GetBlockSize(nodeIDs []int32) (int, int, int, int, error) {
 	size := 0
 	sort.Slice(nodeIDs, func(i, j int) bool {
 		return nodeIDs[i] < nodeIDs[j]
@@ -927,8 +937,10 @@ func (ch *ContractedGraph) GetBlockSize(nodeIDs []int32) (int, int, int, int) {
 	edgeInfoSize := 4 // edgesCount header
 
 	for _, nodeID := range nodeIDs {
-		currSize, nodeOutEdges, nodeInEdges, currEdgeSize := ch.GetNodeBufferSize(nodeID)
-
+		currSize, nodeOutEdges, nodeInEdges, currEdgeSize, err := ch.GetNodeBufferSize(nodeID)
+		if err != nil {
+			return 0, 0, 0, 0, err
+		}
 		size += currSize
 		outEdgesLen += nodeOutEdges
 		inEdgesLen += nodeInEdges
@@ -936,10 +948,10 @@ func (ch *ContractedGraph) GetBlockSize(nodeIDs []int32) (int, int, int, int) {
 	}
 	size += 8
 
-	return size, outEdgesLen, inEdgesLen, edgeInfoSize
+	return size, outEdgesLen, inEdgesLen, edgeInfoSize, nil
 }
 
-func (ch *ContractedGraph) GetNodeBufferSize(nodeID int32) (int, int, int, int) {
+func (ch *ContractedGraph) GetNodeBufferSize(nodeID int32) (int, int, int, int, error) {
 	bufSize := 4 * 2 // nodeIDs , (csrN,CsrNRev)
 
 	bufSize += 40 * len(ch.GetNodeFirstOutEdges(nodeID))
@@ -973,14 +985,16 @@ func (ch *ContractedGraph) GetNodeBufferSize(nodeID int32) (int, int, int, int) 
 	for _, toMap := range uniqueEdge {
 		for _, edgeW := range toMap {
 			edgeInfo := ch.MapEdgeInfo.GetEdgeInfo(edgeW.edge.FromNodeID, edgeW.edge.ToNodeID, edgeW.reverse)
-			currSize := edgeInfo.GetEdgeInfoSize()
-
+			currSize, err := edgeInfo.GetEdgeInfoSize()
+			if err != nil {
+				return 0, 0, 0, 0, err
+			}
 			edgeInfoSize += currSize
 			edgeInfoSize += 16 // edgeID, fromNodeID, prefixSumSize, edgeSize
 		}
 	}
 
-	return bufSize, len(ch.GetNodeFirstOutEdges(nodeID)), len(ch.GetNodeFirstInEdges(nodeID)), edgeInfoSize
+	return bufSize, len(ch.GetNodeFirstOutEdges(nodeID)), len(ch.GetNodeFirstInEdges(nodeID)), edgeInfoSize, nil
 }
 
 func (ch *ContractedGraph) BuildCompressedSparseRowFromNodes(nodes []int32, reverse bool) ([]int,
@@ -1077,6 +1091,7 @@ func (ch *ContractedGraph) UnpinPage(nodeID int32) {
 func (ch *ContractedGraph) GetNodeOutEdgesCsr2(nodeID int32) ([]datastructure.EdgeCH, error) {
 	page, err := ch.AccessPageNodeEdge(nodeID)
 	if err != nil {
+		log.Printf("error accessing page node edge: %v", err)
 		return []datastructure.EdgeCH{}, err
 	}
 	defer ch.UnpinPage(nodeID)
@@ -1088,6 +1103,7 @@ func (ch *ContractedGraph) GetNodeOutEdgesCsr2(nodeID int32) ([]datastructure.Ed
 func (ch *ContractedGraph) GetNodeInEdgesCsr2(nodeID int32) ([]datastructure.EdgeCH, error) {
 	page, err := ch.AccessPageNodeEdge(nodeID)
 	if err != nil {
+		log.Printf("error accessing page node edge: %v", err)
 		return []datastructure.EdgeCH{}, err
 	}
 	defer ch.UnpinPage(nodeID)

@@ -19,15 +19,15 @@ func (ch *ContractedGraph) SnapLocationToRoadNetworkNodeH3(edges []datastructure
 		toNodeB := ch.GetNode(b.ToNodeID)
 
 		projectionA := geo.ProjectPointToLineCoord(
-			geo.NewCoordinate(fromNodeA.Lat, fromNodeA.Lon),
-			geo.NewCoordinate(toNodeA.Lat, toNodeA.Lon),
-			geo.NewCoordinate(wantToSnap[0], wantToSnap[1]),
+			datastructure.NewCoordinate(fromNodeA.Lat, fromNodeA.Lon),
+			datastructure.NewCoordinate(toNodeA.Lat, toNodeA.Lon),
+			datastructure.NewCoordinate(wantToSnap[0], wantToSnap[1]),
 		)
 
 		projectionB := geo.ProjectPointToLineCoord(
-			geo.NewCoordinate(fromNodeB.Lat, fromNodeB.Lon),
-			geo.NewCoordinate(toNodeB.Lat, toNodeB.Lon),
-			geo.NewCoordinate(wantToSnap[0], wantToSnap[1]),
+			datastructure.NewCoordinate(fromNodeB.Lat, fromNodeB.Lon),
+			datastructure.NewCoordinate(toNodeB.Lat, toNodeB.Lon),
+			datastructure.NewCoordinate(wantToSnap[0], wantToSnap[1]),
 		)
 
 		distA := geo.CalculateHaversineDistance(wantToSnap[0], wantToSnap[1], projectionA.Lat, projectionA.Lon)

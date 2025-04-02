@@ -111,8 +111,8 @@ var (
 	}
 )
 
-func (p *OsmParser) Parse(mapFile string) ([]datastructure.CHNode, []datastructure.EdgeCH, map[string][2]bool, 
-	[]datastructure.EdgeExtraInfo,*datastructure.NodeInfo,
+func (p *OsmParser) Parse(mapFile string) ([]datastructure.CHNode, []datastructure.EdgeCH, map[string][2]bool,
+	[]datastructure.EdgeExtraInfo, *datastructure.NodeInfo,
 ) {
 
 	f, err := os.Open(mapFile)
@@ -506,6 +506,8 @@ func (p *OsmParser) addEdge(segment []node, tempMap map[string]string, speed flo
 			distance += geo.CalculateHaversineDistance(segment[i-1].coord.lat, segment[i-1].coord.lon, segment[i].coord.lat, segment[i].coord.lon)
 		}
 	}
+
+	edgePoints = geo.RamesDouglasPeucker(edgePoints) // simplify edge geometry
 
 	isRoundabout := false
 	if val, ok := tempMap["junction"]; ok {

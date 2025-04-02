@@ -160,7 +160,7 @@ edgeIInfo:
 	| Streetname | bitpackedEdgeInfoField | PointsInBetween |
 		4 byte			4 byte				dynamic
 */
-func (ex *EdgeExtraInfo) Serialize() []byte {
+func (ex *EdgeExtraInfo) Serialize() ([]byte, error) {
 
 	buf := make([]byte, 8)
 
@@ -175,11 +175,14 @@ func (ex *EdgeExtraInfo) Serialize() []byte {
 
 	binary.LittleEndian.PutUint32(buf[4:8], uint32(bitpackedEdgeInfoField))
 
-	coordBuf := serializeCoordinates(ex.PointsInBetween)
+	coordBuf, err := serializeCoordinates(ex.PointsInBetween)
+	if err != nil {
+		return nil, err
+	}
 
 	buf = append(buf, coordBuf...)
 
-	return buf
+	return buf, nil
 }
 
 func DeserializeEdgeExtraInfo(buf []byte) (EdgeExtraInfo, error) {
@@ -216,14 +219,14 @@ func (ex *MapEdgeInfo) GetEdgeInfo(fromNodeID, toNodeID int32, reverse bool) Edg
 
 }
 
-func (ex *EdgeExtraInfo) GetEdgeInfoSize() int {
+func (ex *EdgeExtraInfo) GetEdgeInfoSize() (int, error) {
 	size := 4 * 2 // 2 int32 (bitpackedField  & streetname)
 	// slice of Coordinate
-	polylineBuf := serializeCoordinates(ex.PointsInBetween)
+	polylineBuf, err := serializeCoordinates(ex.PointsInBetween)
 	polylineSize := len(polylineBuf)
 	size += polylineSize
 
-	return size
+	return size, err
 }
 
 func (ex *MapEdgeInfo) AppendEdgeInfo(from, to int32, shortcut bool) {

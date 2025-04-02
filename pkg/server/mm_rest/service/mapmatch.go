@@ -149,10 +149,10 @@ func (uc *MapMatchingService) FilterEdges(edges []datastructure.OSMObject, pLat,
 
 		pos := geo.PointPositionBetweenLinePoints(pLat, pLon, pointsInBetween) - 1
 
-		fromPoint := geo.NewCoordinate(pointsInBetween[pos].Lat, pointsInBetween[pos].Lon)
-		toPoint := geo.NewCoordinate(pointsInBetween[pos+1].Lat, pointsInBetween[pos+1].Lon)
+		fromPoint := datastructure.NewCoordinate(pointsInBetween[pos].Lat, pointsInBetween[pos].Lon)
+		toPoint := datastructure.NewCoordinate(pointsInBetween[pos+1].Lat, pointsInBetween[pos+1].Lon)
 
-		projection := geo.ProjectPointToLineCoord(fromPoint, toPoint, geo.NewCoordinate(pLat, pLon))
+		projection := geo.ProjectPointToLineCoord(fromPoint, toPoint, datastructure.NewCoordinate(pLat, pLon))
 
 		dist := geo.CalculateHaversineDistance(projection.Lat, projection.Lon, pLat, pLon) * 1000
 
@@ -195,11 +195,11 @@ func (uc *MapMatchingService) NearestRoadSegments(ctx context.Context, lat, lon 
 
 		edges = append(edges, edge)
 
-		gpsLoc := geo.NewCoordinate(lat, lon)
+		gpsLoc := datastructure.NewCoordinate(lat, lon)
 
 		pointsInBetween := uc.ch.GetEdgePointsInBetween(edge.FromNodeID, edge.ToNodeID, false)
-		fromNodeLoc := geo.NewCoordinate(pointsInBetween[0].Lat, pointsInBetween[0].Lon)
-		toNodeLoc := geo.NewCoordinate(pointsInBetween[len(pointsInBetween)-1].Lat, pointsInBetween[len(pointsInBetween)-1].Lon)
+		fromNodeLoc := datastructure.NewCoordinate(pointsInBetween[0].Lat, pointsInBetween[0].Lon)
+		toNodeLoc := datastructure.NewCoordinate(pointsInBetween[len(pointsInBetween)-1].Lat, pointsInBetween[len(pointsInBetween)-1].Lon)
 		projection := geo.ProjectPointToLineCoord(fromNodeLoc, toNodeLoc, gpsLoc)
 
 		dists = append(dists, geo.CalculateHaversineDistance(projection.Lat, projection.Lon, roadSegment.Lat, roadSegment.Lon))

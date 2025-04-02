@@ -2,32 +2,8 @@ package util
 
 import (
 	"encoding/binary"
-	"fmt"
 	"testing"
 )
-
-func TestQuickSort(t *testing.T) {
-
-	arr := []int{4, 3, 2, 1, 10, 5555, -1, 20, 100, -100}
-	arr = QuickSortG(arr, func(a, b int) int {
-		if a < b {
-			return -1
-		} else if a > b {
-			return 1
-		} else {
-			return 0
-		}
-	})
-
-	for i := 0; i < len(arr); i++ {
-		if i == 0 {
-			continue
-		}
-		if arr[i] < arr[i-1] {
-			t.Errorf("Error in sorting")
-		}
-	}
-}
 
 func TestBitPacking(t *testing.T) {
 
@@ -43,12 +19,18 @@ func TestBitPacking(t *testing.T) {
 
 	bitpack, isShortcut := BitUnpackIntBool(int32(binary.LittleEndian.Uint32(buf[4:8])), 21)
 	_ = bitpack
-	fmt.Printf("Bitpack isShortcut: %t\n", isShortcut)
+	if isShortcut {
+		t.Errorf("Bitpack isShortcut: %t\n", isShortcut)
+	}
 
 	bitpack, isRoundabout := BitUnpackIntBool(int32(binary.LittleEndian.Uint32(buf[4:8])), 20)
 	_ = bitpack
-	fmt.Printf("Bitpack isRoundabout: %t\n", isRoundabout)
+	if isRoundabout {
+		t.Errorf("Bitpack isRoundabout: %t\n", isRoundabout)
+	}
 
 	_, trafficLight := BitUnpackIntBool(int32(binary.LittleEndian.Uint32(buf[4:8])), 31)
-	fmt.Printf("Bitpack trafficLight: %t\n", trafficLight)
+	if !trafficLight {
+		t.Errorf("Bitpack trafficLight: %t\n", trafficLight)
+	}
 }

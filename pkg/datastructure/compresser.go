@@ -11,7 +11,8 @@ import (
 func CompressData(inData []byte, bbufOut *bytes.Buffer) error {
 
 	inputBuf := bytes.NewBuffer(inData)
-	encoder, err := zstd.NewWriter(bbufOut, zstd.WithEncoderLevel(zstd.SpeedBestCompression))
+	bbufOut.Reset()
+	encoder, err := zstd.NewWriter(bbufOut, zstd.WithEncoderLevel(zstd.SpeedFastest))
 	if err != nil {
 		return fmt.Errorf("failed to create zstd encoder: %w", err)
 	}
@@ -35,4 +36,5 @@ func DecompressData(inData []byte, out io.Writer) error {
 	// Copy content...
 	_, err = io.Copy(out, d)
 	return err
+
 }

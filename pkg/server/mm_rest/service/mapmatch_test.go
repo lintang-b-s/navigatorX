@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sort"
 	"testing"
 
 	"github.com/lintang-b-s/navigatorx/pkg/contractor"
@@ -92,8 +93,8 @@ func buildGraph() (*contractor.ContractedGraph, []datastructure.CHNode, []datast
 
 	ch := contractor.NewContractedGraph()
 
-	nodes = util.QuickSortG(nodes, func(a, b datastructure.CHNode) int {
-		return int(a.ID - b.ID)
+	sort.Slice(nodes, func(a, b int) bool {
+		return nodes[a].ID < nodes[b].ID
 	})
 
 	ch.InitCHGraph(nodes, edgesCH, make(map[string][2]bool), util.NewIdMap(),

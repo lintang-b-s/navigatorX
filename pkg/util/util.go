@@ -34,23 +34,6 @@ func ReverseG[T any](arr []T) []T {
 	return copyArr
 }
 
-func BinarySearch[T any](arr []T, target T, compare func(a, b T) int) int {
-	left := 0
-	right := len(arr)
-	for left <= right {
-		mid := left + (right-left)/2
-		if compare(arr[mid], target) > 0 {
-			right = mid - 1
-		} else if compare(arr[mid], target) < 0 {
-			left = mid + 1
-		} else {
-			return mid
-		}
-
-	}
-	return left
-}
-
 func generateRandomInt(min, max int) int {
 	return min + rand.Intn(max-min)
 }
