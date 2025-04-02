@@ -416,7 +416,15 @@ Note:  "sources" and "targets" must be around the province of Yogyakarta/Surakar
 3. Copy the polyline string path of the response endpoint result to https://valhalla.github.io/demos/polyline . Check Unsescape '\'. The shortest route will appear on the map. :)
 ```
 
-#### Theory / Ref
+
+## Profiling 
+
+```
+1.  curl "http://localhost:5000/debug/pprof/profile?seconds=30" -o cpu.pprof
+2. open https://www.speedscope.app/ , upload cpu.pprof
+```
+
+####  Ref
 
 ```
 -  R. Geisberger, P. Sanders, D. Schultes, and D. Delling, “Contraction Hierarchies: Faster and Simpler Hierarchical Routing in Road Networks,” in Experimental Algorithms, C. C. McGeoch, Ed., Berlin, Heidelberg: Springer, 2008, pp. 319–333. doi: 10.1007/978-3-540-68552-4_24.

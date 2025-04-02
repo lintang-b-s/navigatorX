@@ -31,7 +31,8 @@ type ContractedGraph interface {
 	IsShortcutCsr(fromNodeID, toNodeID int32, reverse bool) (bool, error)
 	IsRoundaboutCsr(fromNodeID, toNodeID int32) (bool, error)
 	GetEdgePointsInBetweenCsr(fromNodeID, toNodeID int32, reverse bool) ([]datastructure.Coordinate, error)
-
+	GetEdgeInfo(fromNodeID, toNodeID int32) (datastructure.EdgeExtraInfo, error)
+	
 	GetStreetNameCsr(fromNodeID, toNodeID int32) (int, error)
 	GetRoadClassCsr(nodeID int32, edgeID int32) (int, error)
 	GetRoadClassLinkCsr(nodeID int32, edgeID int32) (int, error)

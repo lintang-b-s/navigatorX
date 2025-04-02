@@ -21,3 +21,4 @@ output*
 *.log
 *.db
 *.index
+*.prof

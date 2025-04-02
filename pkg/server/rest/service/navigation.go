@@ -40,6 +40,8 @@ type ContractedGraph interface {
 
 	GetNodeOutEdgesCsr2(nodeID int32) ([]datastructure.EdgeCH, error)
 	GetNodeInEdgesCsr2(nodeID int32) ([]datastructure.EdgeCH, error)
+
+	GetEdgeInfo(fromNodeID, toNodeID int32) (datastructure.EdgeExtraInfo, error)
 }
 
 type RoutingAlgorithm interface {

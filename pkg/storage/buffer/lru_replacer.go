@@ -20,6 +20,7 @@ type DoubleLinkedList struct {
 }
 
 // null <--> head <-> tail <-> null
+//
 //	-> next
 //	<- prev
 func NewDoubleLinkedList() *DoubleLinkedList {
@@ -55,6 +56,7 @@ func (d *DoubleLinkedList) PushFront(val int) *ListNode {
 func (d *DoubleLinkedList) GetBack() *ListNode {
 	return d.tail.prev
 }
+
 // Size. return jumlah node dalam list
 func (d *DoubleLinkedList) Size() int {
 	size := 0
@@ -72,7 +74,7 @@ func (d *DoubleLinkedList) GetKey(node *ListNode) int {
 }
 
 type LRUReplacer struct {
-	mu       sync.Mutex
+	mu       sync.RWMutex
 	capacity int
 	lst      *DoubleLinkedList
 	index    map[int]*ListNode
@@ -80,6 +82,7 @@ type LRUReplacer struct {
 
 func NewLRUReplacer(capacity int) *LRUReplacer {
 	return &LRUReplacer{
+		mu:       sync.RWMutex{},
 		capacity: capacity,
 		lst:      NewDoubleLinkedList(),
 		index:    make(map[int]*ListNode),
@@ -88,18 +91,23 @@ func NewLRUReplacer(capacity int) *LRUReplacer {
 
 // Unpin. marks a frame as unpinned, making it eligible for eviction dari LRU
 func (lru *LRUReplacer) Unpin(frameID int) {
-	lru.mu.Lock()
-	defer lru.mu.Unlock()
+	lru.mu.RLock()
 
 	if len(lru.index) >= lru.capacity {
-		// lru full -> dont do anything.. least recently used harus di write ke disk dulu.. 
+		lru.mu.RUnlock()
+		// lru full -> dont do anything.. least recently used harus di write ke disk dulu..
 		return
 	}
 
 	if _, ok := lru.index[frameID]; ok {
+		lru.mu.RUnlock()
 		// already in the list
 		return
 	}
+	lru.mu.RUnlock()
+
+	lru.mu.Lock()
+	defer lru.mu.Unlock()
 
 	elem := lru.lst.PushFront(frameID) // most recently used
 	lru.index[frameID] = elem
@@ -115,13 +123,20 @@ func (lru *LRUReplacer) Size() int {
 
 // Pin marks a frame as pinned. buat frame jadi ineligible for eviction dari LRU
 func (lru *LRUReplacer) Pin(frameID int) {
-	lru.mu.Lock()
-	defer lru.mu.Unlock()
+	lru.mu.RLock()
 
 	if elem, ok := lru.index[frameID]; ok {
-		lru.lst.Remove(elem) // remove from list
+		lru.mu.RUnlock()
+
+		lru.mu.Lock()
+		defer lru.mu.Unlock()
+
+		lru.lst.Remove(elem)       // remove from list
 		delete(lru.index, frameID) // remove from index
+	} else {
+		lru.mu.RUnlock()
 	}
+
 }
 
 // Victim. return frameID yang akan di evict dari LRU (yang least recently used di prevnya tail..)
@@ -142,13 +157,13 @@ func (lru *LRUReplacer) Victim(frameID *int) bool {
 		return false
 	}
 
-	*frameID = val // set frameID ke least recently used
+	*frameID = val         // set frameID ke least recently used
 	delete(lru.index, val) // remove dari index
-	return true 
+	return true
 }
 
 // Remove. remove frame dari LRU
-func (lru *LRUReplacer) Remove(frameID int ) {
+func (lru *LRUReplacer) Remove(frameID int) {
 	lru.mu.Lock()
 	defer lru.mu.Unlock()
 

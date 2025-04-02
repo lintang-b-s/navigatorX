@@ -225,11 +225,12 @@ func (rt *RouteAlgorithm) createPathCsr(commonVertex int32, from, to int32,
 	ok := true
 	for ok && v != -1 {
 
-		isShortcut, err := rt.ch.IsShortcutCsr(cameFromf[v].Edge.FromNodeID, cameFromf[v].Edge.ToNodeID, false)
+
+		cameFromEdgeInfo, err := rt.ch.GetEdgeInfo(cameFromf[v].Edge.FromNodeID, cameFromf[v].Edge.ToNodeID)
 		if err != nil {
 			return []datastructure.Coordinate{}, []datastructure.EdgeCH{}, -1, -1, err
 		}
-		if isShortcut {
+		if cameFromEdgeInfo.IsShortcut {
 
 			err = rt.unpackBackwardCsr(cameFromf[v].Edge, &fPath, &fedgePath, &eta, &dist)
 			if err != nil {
@@ -246,7 +247,8 @@ func (rt *RouteAlgorithm) createPathCsr(commonVertex int32, from, to int32,
 			pointsInBetween := make([]datastructure.Coordinate, 0)
 			if cameFromf[v].Edge.Weight != 0 {
 				fedgePath = append(fedgePath, cameFromf[v].Edge)
-				pointsInBetween, err = rt.ch.GetEdgePointsInBetweenCsr(cameFromf[v].Edge.FromNodeID, cameFromf[v].Edge.ToNodeID, false)
+
+				pointsInBetween = cameFromEdgeInfo.PointsInBetween
 				if err != nil {
 					return []datastructure.Coordinate{}, []datastructure.EdgeCH{}, -1, -1, err
 				}
@@ -275,11 +277,12 @@ func (rt *RouteAlgorithm) createPathCsr(commonVertex int32, from, to int32,
 	ok = true
 	for ok && v != -1 {
 
-		isShortcut, err := rt.ch.IsShortcutCsr(cameFromb[v].Edge.FromNodeID, cameFromb[v].Edge.ToNodeID, true)
+
+		cameFromEdgeInfo, err := rt.ch.GetEdgeInfo(cameFromb[v].Edge.FromNodeID, cameFromb[v].Edge.ToNodeID)
 		if err != nil {
 			return []datastructure.Coordinate{}, []datastructure.EdgeCH{}, -1, -1, err
 		}
-		if isShortcut {
+		if cameFromEdgeInfo.IsShortcut {
 
 			err = rt.unpackForwardCsr(cameFromb[v].Edge, &bPath, &bEdgePath, &eta, &dist)
 			if err != nil {
@@ -296,7 +299,8 @@ func (rt *RouteAlgorithm) createPathCsr(commonVertex int32, from, to int32,
 			pointsInBetween := make([]datastructure.Coordinate, 0)
 			if cameFromb[v].Edge.Weight != 0 {
 				bEdgePath = append(bEdgePath, cameFromb[v].Edge)
-				pointsInBetween, err = rt.ch.GetEdgePointsInBetweenCsr(cameFromb[v].Edge.FromNodeID, cameFromb[v].Edge.ToNodeID, true)
+
+				pointsInBetween = cameFromEdgeInfo.PointsInBetween
 				if err != nil {
 					return []datastructure.Coordinate{}, []datastructure.EdgeCH{}, -1, -1, err
 				}
@@ -352,10 +356,12 @@ func (rt *RouteAlgorithm) unpackBackwardCsr(edge datastructure.EdgeCH, path *[]d
 		return nil
 	}
 
-	isShortcut, err := rt.ch.IsShortcutCsr(edge.FromNodeID, edge.ToNodeID, false)
+	// isShortcut, err := rt.ch.IsShortcutCsr(edge.FromNodeID, edge.ToNodeID, false)
+	edgeInfo, err := rt.ch.GetEdgeInfo(edge.FromNodeID, edge.ToNodeID)
 	if err != nil {
 		return err
 	}
+	isShortcut := edgeInfo.IsShortcut
 	if !isShortcut {
 		if ok, _ := rt.ch.IsTrafficLightCsr(edge.FromNodeID); ok {
 			*eta += 3.0
@@ -363,11 +369,7 @@ func (rt *RouteAlgorithm) unpackBackwardCsr(edge datastructure.EdgeCH, path *[]d
 		*eta += edge.Weight
 		*dist += edge.Dist
 
-		pointsInBetween, err := rt.ch.GetEdgePointsInBetweenCsr(edge.FromNodeID, edge.ToNodeID, false)
-
-		if err != nil {
-			return err
-		}
+		pointsInBetween := edgeInfo.PointsInBetween
 
 		fromNode := rt.ch.GetNode(edge.FromNodeID)
 		if math.Abs(pointsInBetween[0].Lat-fromNode.Lat) <= tolerance && math.Abs(pointsInBetween[0].Lon-fromNode.Lon) <= tolerance {
@@ -431,10 +433,12 @@ func (rt *RouteAlgorithm) unpackForwardCsr(edge datastructure.EdgeCH, path *[]da
 		return nil
 	}
 
-	isShortcut, err := rt.ch.IsShortcutCsr(edge.FromNodeID, edge.ToNodeID, true)
+	// isShortcut, err := rt.ch.IsShortcutCsr(edge.FromNodeID, edge.ToNodeID, true)
+	edgeInfo, err := rt.ch.GetEdgeInfo(edge.FromNodeID, edge.ToNodeID)
 	if err != nil {
 		return err
 	}
+	isShortcut := edgeInfo.IsShortcut
 	if !isShortcut {
 		if ok, _ := rt.ch.IsTrafficLightCsr(edge.ToNodeID); ok {
 			*eta += 3.0
@@ -442,10 +446,7 @@ func (rt *RouteAlgorithm) unpackForwardCsr(edge datastructure.EdgeCH, path *[]da
 		*eta += edge.Weight
 		*dist += edge.Dist
 
-		pointsInBetween, err := rt.ch.GetEdgePointsInBetweenCsr(edge.FromNodeID, edge.ToNodeID, true)
-		if err != nil {
-			return err
-		}
+		pointsInBetween := edgeInfo.PointsInBetween
 
 		toNode := rt.ch.GetNode(edge.ToNodeID)
 

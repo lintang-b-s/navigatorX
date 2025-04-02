@@ -1,6 +1,10 @@
 package buffer
 
-import "github.com/lintang-b-s/navigatorx/pkg/storage/disk"
+import (
+	"sync/atomic"
+
+	"github.com/lintang-b-s/navigatorx/pkg/storage/disk"
+)
 
 type DiskManager interface {
 	Read(blockID disk.BlockID, page *disk.Page) error
@@ -21,7 +25,7 @@ type Buffer struct {
 	logManager     LogManager
 	contents       *disk.Page   // page yang disimpan di buffer.
 	blockID        disk.BlockID // blockID dari page. (buat nentuin offset pas write data page ke file)
-	pins           int
+	pins           atomic.Int32
 	transactionNum int
 	lsn            int
 
@@ -33,7 +37,7 @@ func NewBuffer(diskManager DiskManager, logManager LogManager) *Buffer {
 		diskManager:    diskManager,
 		logManager:     logManager,
 		blockID:        disk.BlockID{},
-		pins:           0,
+		pins:           atomic.Int32{},
 		transactionNum: -1,
 		lsn:            -1,
 	}
@@ -52,7 +56,7 @@ func (buf *Buffer) getBlockID() disk.BlockID {
 }
 
 func (buf *Buffer) isPinned() bool {
-	return buf.pins > 0
+	return buf.pins.Load() > 0
 }
 
 func (buf *Buffer) getTransactionNum() int {
@@ -70,7 +74,7 @@ func (buf *Buffer) assignToBlock(blockID disk.BlockID) error {
 	if err != nil {
 		return err
 	}
-	buf.pins = 0 // reset pins
+	buf.pins.Store(0) // reset pins
 	return nil
 }
 
@@ -92,17 +96,18 @@ func (buf *Buffer) flush() error {
 
 // incrementPin. increment pin count
 func (buf *Buffer) incrementPin() {
-	buf.pins++
+	buf.pins.Add(1)
+	
 }
 
 // getPinCount. return pin count
 func (buf *Buffer) getPinCount() int {
-	return buf.pins
+	return int(buf.pins.Load())
 }
 
 // decrementPin. decrement pin count
 func (buf *Buffer) decrementPin() {
-	buf.pins--
+	buf.pins.Add(-1)
 }
 
 // setDirty. set dirty flag

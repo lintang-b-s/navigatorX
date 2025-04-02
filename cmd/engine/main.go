@@ -53,20 +53,7 @@ var (
 // @schemes	http
 func main() {
 	flag.Parse()
-	if *cpuprofile != "" {
-		// https://go.dev/blog/pprof
-		// ./bin/navigatorx-engine -cpuprofile=navigatorxcpu.prof -memprofile=navigatorxmem.mprof
-		f, err := os.Create(*cpuprofile)
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer f.Close()
 
-		pprof.StartCPUProfile(f)
-		defer pprof.StopCPUProfile()
-	}
-
-	flag.Parse()
 	ch := contractor.NewContractedGraph()
 	err := ch.LoadGraph()
 	if err != nil {

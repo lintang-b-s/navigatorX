@@ -2,12 +2,13 @@ package buffer
 
 import (
 	"fmt"
+	"sync"
 
 	"github.com/lintang-b-s/navigatorx/pkg/storage"
 	"github.com/lintang-b-s/navigatorx/pkg/storage/disk"
 )
 
-// https://15445.courses.cs.cmu.edu/spring2023/slides/06-bufferpool.pdf
+// https://cs186berkeley.net/fa21/resources/static/notes/n04-BufferMgmt.pdf
 
 type BufferPoolManager struct {
 	bufferPool   []*Buffer // pages dari disk yang sementara disimpan di buffer.
@@ -16,8 +17,8 @@ type BufferPoolManager struct {
 	bufferTable  map[disk.BlockID]int // mapping antara page blockID dengan frameID/buffer index. {blockID: frameID}
 	freeList     []int                // list frame yang tidak hold any page data.
 	replacer     *LRUReplacer         // LRU replacer buat evict least recently used page dari buffer pool.
-	// latch        *sync.Mutex
-	nextBlockID int
+	latch        sync.RWMutex
+	nextBlockID  int
 }
 
 // NewBufferPoolManager. initialize buffer pool manager.
@@ -34,7 +35,8 @@ func NewBufferPoolManager(numBuffers int, diskManager DiskManager,
 	}
 
 	return &BufferPoolManager{bufferPool: bufferPool, numAvailable: numBuffers,
-		poolSize: numBuffers, bufferTable: make(map[disk.BlockID]int), freeList: fl, replacer: NewLRUReplacer(numBuffers), nextBlockID: 0}
+		poolSize: numBuffers, bufferTable: make(map[disk.BlockID]int), freeList: fl, replacer: NewLRUReplacer(numBuffers), nextBlockID: 0,
+		latch: sync.RWMutex{}}
 }
 
 func (bpm *BufferPoolManager) getBufferAvailable() int {
@@ -51,9 +53,10 @@ func (bpm *BufferPoolManager) flushAll(transactionNum int) {
 	}
 }
 
-// UnpinPage. unpin page/buffer dengan blockID. page yang diunpin akan di evict dari buffer pool & write ke disk jika dirty page.
+// UnpinPage. unpin page/buffer dengan blockID.jika page yang diunpin tidak dipakai thread lain, akan di evict dari buffer pool & write ke disk jika dirty page.
 func (bpm *BufferPoolManager) UnpinPage(blockID disk.BlockID, isDirty bool) bool {
-
+	bpm.latch.RLock()
+	defer bpm.latch.RUnlock()
 	if _, ok := bpm.bufferTable[blockID]; !ok {
 		// not in buffer pool
 		return true
@@ -89,10 +92,14 @@ FetchPage. fetch page dengan block id dari buffer pool. kalau page tidak ada di 
 */
 func (bpm *BufferPoolManager) FetchPage(blockID disk.BlockID) (*disk.Page, error) {
 
+	bpm.latch.RLock()
 	item, ok := bpm.bufferTable[blockID]
 	var frameID int
+	bpm.latch.RUnlock()
 
 	if ok {
+		bpm.latch.RLock()
+		defer bpm.latch.RUnlock()
 		// kalau buffer sudah ada di buffer pool
 		frameID = item
 		buffer := bpm.bufferPool[frameID] // get buffer from buffer pool
@@ -102,6 +109,9 @@ func (bpm *BufferPoolManager) FetchPage(blockID disk.BlockID) (*disk.Page, error
 
 		return buffer.getContents(), nil // return buffer
 	}
+
+	bpm.latch.Lock()
+	defer bpm.latch.Unlock()
 
 	// kalau page/buffer belum ada di buffer pool,
 
@@ -120,6 +130,7 @@ func (bpm *BufferPoolManager) FetchPage(blockID disk.BlockID) (*disk.Page, error
 	replacedBuffer := bpm.bufferPool[frameID] // least recently used buffer/page
 
 	pageBlockID := replacedBuffer.getBlockID()
+
 	delete(bpm.bufferTable, pageBlockID)
 
 	bpm.bufferTable[blockID] = frameID // put blockID ke pageTable
@@ -136,6 +147,8 @@ func (bpm *BufferPoolManager) FetchPage(blockID disk.BlockID) (*disk.Page, error
 
 // PinPage. pin page dengan block id & put page di buffer pool. buffer/page yang di pin tidak akan dihapus dari buffer pool.
 func (bpm *BufferPoolManager) PinPage(blockID disk.BlockID) (*Buffer, error) {
+	bpm.latch.Lock()
+	defer bpm.latch.Unlock()
 
 	allPinned := true
 	for i := 0; i < bpm.poolSize; i++ {
@@ -185,6 +198,8 @@ NewPage. Allocates a new page on disk. dan put new buffer/page ke buffer pool.
 ,frameID baru di ambil dari freelist or  dari evict least recently used page dari buffer pool. dan replace buffer least recently used di buffer pool dengan page blockID.
 */
 func (bpm *BufferPoolManager) NewPage(blockID *disk.BlockID) (*disk.Page, error) {
+	bpm.latch.Lock()
+	defer bpm.latch.Unlock()
 
 	allPinned := true
 	for i := 0; i < bpm.poolSize; i++ {
@@ -234,7 +249,8 @@ func (bpm *BufferPoolManager) NewPage(blockID *disk.BlockID) (*disk.Page, error)
 
 // DeletePage. Removes a page from the database, both on disk and in memory.
 func (bpm *BufferPoolManager) DeletePage(blockID disk.BlockID) bool {
-
+	bpm.latch.Lock()
+	defer bpm.latch.Unlock()
 	frameID, ok := bpm.bufferTable[blockID]
 	if !ok {
 		// page tidak ada di buffer pool

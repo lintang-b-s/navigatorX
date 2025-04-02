@@ -75,7 +75,7 @@ func (p *Page) Contents() []byte {
 func (p *Page) Compress() error {
 	inputBuf := bytes.NewBuffer(p.Contents())
 	p.bb.Reset()
-	encoder, err := zstd.NewWriter(p.bb, zstd.WithEncoderLevel(zstd.SpeedBestCompression))
+	encoder, err := zstd.NewWriter(p.bb, zstd.WithEncoderLevel(zstd.SpeedFastest))
 	if err != nil {
 		return fmt.Errorf("failed to create zstd encoder: %w", err)
 	}

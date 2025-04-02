@@ -1055,18 +1055,23 @@ func (ch *ContractedGraph) AccessPageNodeEdge(nodeID int32) (*disk.Page, error) 
 	if err != nil {
 		return nil, err
 	}
-	ch.bufferPoolManager.UnpinPage(blockID, false)
 	return page, nil
 }
 
 func (ch *ContractedGraph) AccessPageNodeEdgeInfo(nodeID int32) (*disk.Page, error) {
 	blockID := disk.NewBlockID(storage.GRAPH_FILE_NAME, ch.NodeIDBlockIDMap[nodeID]+1)
 	page, err := ch.bufferPoolManager.FetchPage(blockID)
+
 	if err != nil {
 		return nil, err
 	}
-	ch.bufferPoolManager.UnpinPage(blockID, false)
+
 	return page, nil
+}
+
+func (ch *ContractedGraph) UnpinPage(nodeID int32) {
+	blockID := disk.NewBlockID(storage.GRAPH_FILE_NAME, ch.NodeIDBlockIDMap[nodeID])
+	ch.bufferPoolManager.UnpinPage(blockID, false)
 }
 
 func (ch *ContractedGraph) GetNodeOutEdgesCsr2(nodeID int32) ([]datastructure.EdgeCH, error) {
@@ -1074,6 +1079,7 @@ func (ch *ContractedGraph) GetNodeOutEdgesCsr2(nodeID int32) ([]datastructure.Ed
 	if err != nil {
 		return []datastructure.EdgeCH{}, err
 	}
+	defer ch.UnpinPage(nodeID)
 
 	blockID := ch.NodeIDBlockIDMap[nodeID]
 	return page.GetNodeOutEdgesCsr(nodeID, ch.CompressedBlock[blockID])
@@ -1084,6 +1090,7 @@ func (ch *ContractedGraph) GetNodeInEdgesCsr2(nodeID int32) ([]datastructure.Edg
 	if err != nil {
 		return []datastructure.EdgeCH{}, err
 	}
+	defer ch.UnpinPage(nodeID)
 
 	blockID := ch.NodeIDBlockIDMap[nodeID]
 	return page.GetNodeInEdgesCsr(nodeID, ch.CompressedBlock[blockID])
@@ -1095,6 +1102,7 @@ func (ch *ContractedGraph) IsShortcutCsr(fromNodeID, toNodeID int32, reverse boo
 	if err != nil {
 		return false, err
 	}
+	defer ch.UnpinPage(fromNodeID)
 	blockID := ch.NodeIDBlockIDMap[fromNodeID]
 	edgeInfo, err := page.GetEdgeInfo(fromNodeID, toNodeID, reverse, ch.CompressedBlock[blockID])
 
@@ -1106,6 +1114,7 @@ func (ch *ContractedGraph) IsRoundaboutCsr(fromNodeID, toNodeID int32) (bool, er
 	if err != nil {
 		return false, err
 	}
+	defer ch.UnpinPage(fromNodeID)
 	blockID := ch.NodeIDBlockIDMap[fromNodeID]
 	edgeInfo, err := page.GetEdgeInfo(fromNodeID, toNodeID, false, ch.CompressedBlock[blockID])
 
@@ -1117,7 +1126,7 @@ func (ch *ContractedGraph) GetEdgePointsInBetweenCsr(fromNodeID, toNodeID int32,
 	if err != nil {
 		return []datastructure.Coordinate{}, err
 	}
-
+	defer ch.UnpinPage(fromNodeID)
 	blockID := ch.NodeIDBlockIDMap[fromNodeID]
 	edgeInfo, err := page.GetEdgeInfo(fromNodeID, toNodeID, reverse, ch.CompressedBlock[blockID])
 
@@ -1129,11 +1138,23 @@ func (ch *ContractedGraph) GetStreetNameCsr(fromNodeID, toNodeID int32) (int, er
 	if err != nil {
 		return 0, err
 	}
-
+	defer ch.UnpinPage(fromNodeID)
 	blockID := ch.NodeIDBlockIDMap[fromNodeID]
 	edgeInfo, err := page.GetEdgeInfo(fromNodeID, toNodeID, false, ch.CompressedBlock[blockID])
 
 	return edgeInfo.StreetName, err
+}
+
+func (ch *ContractedGraph) GetEdgeInfo(fromNodeID, toNodeID int32) (datastructure.EdgeExtraInfo, error) {
+	page, err := ch.AccessPageNodeEdgeInfo(fromNodeID)
+	if err != nil {
+		return datastructure.EdgeExtraInfo{}, err
+	}
+	defer ch.UnpinPage(fromNodeID)
+	blockID := ch.NodeIDBlockIDMap[fromNodeID]
+	edgeInfo, err := page.GetEdgeInfo(fromNodeID, toNodeID, false, ch.CompressedBlock[blockID])
+
+	return edgeInfo, err
 }
 
 func (ch *ContractedGraph) GetRoadClassCsr(fromNodeID, toNodeID int32) (int, error) {
@@ -1141,7 +1162,7 @@ func (ch *ContractedGraph) GetRoadClassCsr(fromNodeID, toNodeID int32) (int, err
 	if err != nil {
 		return 0, err
 	}
-
+	defer ch.UnpinPage(fromNodeID)
 	blockID := ch.NodeIDBlockIDMap[fromNodeID]
 	edgeInfo, err := page.GetEdgeInfo(fromNodeID, toNodeID, false, ch.CompressedBlock[blockID])
 
@@ -1153,7 +1174,7 @@ func (ch *ContractedGraph) GetRoadClassLinkCsr(fromNodeID, toNodeID int32) (int,
 	if err != nil {
 		return 0, err
 	}
-
+	defer ch.UnpinPage(fromNodeID)
 	blockID := ch.NodeIDBlockIDMap[fromNodeID]
 	edgeInfo, err := page.GetEdgeInfo(fromNodeID, toNodeID, false, ch.CompressedBlock[blockID])
 
@@ -1165,7 +1186,7 @@ func (ch *ContractedGraph) GetLanesCsr(fromNodeID, toNodeID int32) (int, error) 
 	if err != nil {
 		return 0, err
 	}
-
+	defer ch.UnpinPage(fromNodeID)
 	blockID := ch.NodeIDBlockIDMap[fromNodeID]
 	edgeInfo, err := page.GetEdgeInfo(fromNodeID, toNodeID, false, ch.CompressedBlock[blockID])
 
@@ -1177,5 +1198,6 @@ func (ch *ContractedGraph) IsTrafficLightCsr(nodeID int32) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	defer ch.UnpinPage(nodeID)
 	return page.IsNodeTrafficLight(nodeID), err
 }
