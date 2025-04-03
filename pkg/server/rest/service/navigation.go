@@ -15,42 +15,33 @@ type ContractedGraph interface {
 
 	GetNodeFirstOutEdges(nodeID int32) []int32
 	GetNodeFirstInEdges(nodeID int32) []int32
+
 	GetNode(nodeID int32) datastructure.CHNode
-	GetOutEdge(edgeID int32) datastructure.EdgeCH
-	GetInEdge(edgeID int32) datastructure.EdgeCH
-	GetNumNodes() int
-	Contraction() (err error)
-	SetCHReady()
+	GetOutEdge(edgeID int32) datastructure.Edge
+	GetInEdge(edgeID int32) datastructure.Edge
+	IsRoundabout(edgeID int32) bool
+
+	IsShortcut(edgeID int32) bool
+	GetEdgePointsInBetween(edgeID int32) []datastructure.Coordinate
+	IsTrafficLight(nodeID int32) bool
+
 	SaveToFile() error
 	LoadGraph() error
 	GetStreetDirection(streetName int) [2]bool
 
+	GetEdgeInfo(edgeID int32) datastructure.EdgeExtraInfo
+
 	GetStreetNameFromID(streetName int) string
-	GetRoadClassFromID(roadClass int) string
-	GetRoadClassLinkFromID(roadClassLink int) string
-
-	// csr
-	IsShortcutCsr(nodeID int32, edgeID int32, reverse bool) (bool, error)
-	IsRoundaboutCsr(nodeID int32, edgeID int32) (bool, error)
-	GetEdgePointsInBetweenCsr(nodeID int32, edgeID int32, reverse bool) ([]datastructure.Coordinate, error)
-	GetStreetNameCsr(nodeID int32, edgeID int32) (int, error)
-	GetRoadClassCsr(nodeID int32, edgeID int32) (int, error)
-	GetRoadClassLinkCsr(nodeID int32, edgeID int32) (int, error)
-	GetLanesCsr(nodeID int32, edgeID int32) (int, error)
-
-	GetNodeOutEdgesCsr2(nodeID int32) ([]datastructure.EdgeCH, error)
-	GetNodeInEdgesCsr2(nodeID int32) ([]datastructure.EdgeCH, error)
-
-	GetEdgeInfo(fromNodeID, toNodeID int32) (datastructure.EdgeExtraInfo, error)
+	GetRoadClassFromID(roadClass uint8) string
+	GetRoadClassLinkFromID(roadClassLink uint8) string
 }
 
 type RoutingAlgorithm interface {
-	ShortestPathBiDijkstraCH(from, to int32) ([]datastructure.Coordinate, []datastructure.EdgeCH, float64, float64)
+	ShortestPathBiDijkstraCH(from, to int32) ([]datastructure.Coordinate, []datastructure.Edge, float64, float64)
 
-	ShortestPathBiDijkstraCHCSR(from, to int32) ([]datastructure.Coordinate, []datastructure.EdgeCH, float64, float64, error)
 	ShortestPathManyToManyBiDijkstraWorkers(from []int32, to []int32) map[int32]map[int32]datastructure.SPSingleResultResult
 	CreateDistMatrix(spPair [][]int32) map[int32]map[int32]datastructure.SPSingleResultResult
-	ShortestPathAStar(from, to int32) ([]datastructure.Coordinate, []datastructure.EdgeCH, float64, float64)
+	ShortestPathAStar(from, to int32) ([]datastructure.Coordinate, []datastructure.Edge, float64, float64)
 }
 
 type KVDB interface {
@@ -58,12 +49,12 @@ type KVDB interface {
 }
 
 type Heuristics interface {
-	TravelingSalesmanProblemSimulatedAnnealing(cities []int32) ([]datastructure.Coordinate, []datastructure.EdgeCH, float64, float64, [][]float64)
-	TravelingSalesmanProblemAntColonyOptimization(cities []int32) ([]datastructure.Coordinate, []datastructure.EdgeCH, float64, float64, [][]float64)
+	TravelingSalesmanProblemSimulatedAnnealing(cities []int32) ([]datastructure.Coordinate, []datastructure.Edge, float64, float64, [][]float64)
+	TravelingSalesmanProblemAntColonyOptimization(cities []int32) ([]datastructure.Coordinate, []datastructure.Edge, float64, float64, [][]float64)
 }
 
 type InstructionsFromEdges interface {
-	GetDrivingInstructions(path []datastructure.EdgeCH) ([]string, error)
+	GetDrivingInstructions(path []datastructure.Edge) ([]string, error)
 }
 
 type Hungarian interface {
@@ -77,13 +68,14 @@ type NavigationService struct {
 	heuristic Heuristics
 }
 
-func NewNavigationService(contractedGraph ContractedGraph, kv KVDB, hung Hungarian, routing RoutingAlgorithm, heu Heuristics) *NavigationService {
+func NewNavigationService(contractedGraph ContractedGraph, kv KVDB, hung Hungarian, routing RoutingAlgorithm, heu Heuristics,
+) *NavigationService {
 	return &NavigationService{CH: contractedGraph, KV: kv, hungarian: hung, routing: routing, heuristic: heu}
 }
 
 func (uc *NavigationService) ShortestPathETA(ctx context.Context, srcLat, srcLon float64,
 	dstLat float64, dstLon float64) (string, float64, []guidance.DrivingInstruction, bool, []datastructure.Coordinate, float64,
-	[]datastructure.EdgeCH, bool, error) {
+	[]datastructure.Edge, bool, error) {
 
 	from := &datastructure.CHNode{
 		Lat: srcLat,
@@ -96,18 +88,26 @@ func (uc *NavigationService) ShortestPathETA(ctx context.Context, srcLat, srcLon
 
 	fromSurakartaNode, err := uc.SnapLocToStreetNode(from.Lat, from.Lon)
 	if err != nil {
-		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, []datastructure.EdgeCH{}, false, server.WrapErrorf(err, server.ErrNotFound, "sorry!! the location you entered is not covered on my map :(, please use diferrent opensteetmap pbf file")
+		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, []datastructure.Edge{}, false, server.WrapErrorf(err, server.ErrNotFound, "sorry!! the location you entered is not covered on my map :(, please use diferrent opensteetmap pbf file")
 	}
 	toSurakartaNode, err := uc.SnapLocToStreetNode(to.Lat, to.Lon)
 	if err != nil {
-		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, []datastructure.EdgeCH{}, false, server.WrapErrorf(err, server.ErrNotFound, "sorry!! the location you entered is not covered on my map :(, please use diferrent opensteetmap pbf file")
+		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, []datastructure.Edge{}, false, server.WrapErrorf(err, server.ErrNotFound, "sorry!! the location you entered is not covered on my map :(, please use diferrent opensteetmap pbf file")
 	}
 
 	found := false
 
-	pN, ePath, eta, dist, err := uc.routing.ShortestPathBiDijkstraCHCSR(fromSurakartaNode, toSurakartaNode)
+	var (
+		pN    []datastructure.Coordinate
+		ePath []datastructure.Edge
+		eta   float64
+		dist  float64
+	)
+
+	pN, ePath, eta, dist = uc.routing.ShortestPathBiDijkstraCH(fromSurakartaNode, toSurakartaNode)
+
 	if err != nil {
-		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, []datastructure.EdgeCH{}, false, server.WrapErrorf(err, server.ErrInternalServerError, "internal server error")
+		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, []datastructure.Edge{}, false, server.WrapErrorf(err, server.ErrInternalServerError, "internal server error")
 	}
 	p := datastructure.CreatePolyline(pN)
 	if eta != -1 {
@@ -115,7 +115,7 @@ func (uc *NavigationService) ShortestPathETA(ctx context.Context, srcLat, srcLon
 	}
 
 	if !found {
-		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, []datastructure.EdgeCH{}, false, server.WrapErrorf(err, server.ErrNotFound, "sorry!! the location you entered is not covered on my map :(, please use diferrent opensteetmap pbf file")
+		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, []datastructure.Edge{}, false, server.WrapErrorf(err, server.ErrNotFound, "sorry!! the location you entered is not covered on my map :(, please use diferrent opensteetmap pbf file")
 	}
 	var route []datastructure.Coordinate = make([]datastructure.Coordinate, 0)
 
@@ -123,7 +123,7 @@ func (uc *NavigationService) ShortestPathETA(ctx context.Context, srcLat, srcLon
 	instructions, err := drivingInstruction.GetDrivingInstructions(ePath)
 
 	if err != nil {
-		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, []datastructure.EdgeCH{}, false, server.WrapErrorf(err, server.ErrInternalServerError, "internal server error")
+		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, []datastructure.Edge{}, false, server.WrapErrorf(err, server.ErrInternalServerError, "internal server error")
 	}
 
 	return p, dist, instructions, found, route, eta, ePath, true, nil
@@ -141,7 +141,7 @@ func (uc *NavigationService) SnapLocToStreetNode(lat, lon float64) (int32, error
 
 type ShortestPathResult struct {
 	PathsCH []datastructure.Coordinate
-	ePath   []datastructure.EdgeCH
+	ePath   []datastructure.Edge
 	ETA     float64
 	Found   bool
 	Dist    float64
@@ -203,8 +203,10 @@ func (uc *NavigationService) ShortestPathAlternativeStreetETA(ctx context.Contex
 		var found bool
 		var dist float64
 		var isCH bool
-		var ePath []datastructure.EdgeCH
-		pN, ePath, eta, dist, err = uc.routing.ShortestPathBiDijkstraCHCSR(fromSurakartaNode, alternativeStreetSurakartaNode)
+		var ePath []datastructure.Edge
+
+		pN, ePath, eta, dist = uc.routing.ShortestPathBiDijkstraCH(fromSurakartaNode, alternativeStreetSurakartaNode)
+
 		if err != nil {
 			return
 		}
@@ -232,9 +234,10 @@ func (uc *NavigationService) ShortestPathAlternativeStreetETA(ctx context.Contex
 		var found bool
 		var dist float64
 		var isCH bool
-		var ePath []datastructure.EdgeCH
+		var ePath []datastructure.Edge
 
-		pN, ePath, eta, dist, err = uc.routing.ShortestPathBiDijkstraCHCSR(alternativeStreetSurakartaNode, toSurakartaNode)
+		pN, ePath, eta, dist = uc.routing.ShortestPathBiDijkstraCH(alternativeStreetSurakartaNode, toSurakartaNode)
+
 		if err != nil {
 			return
 		}
@@ -269,7 +272,7 @@ func (uc *NavigationService) ShortestPathAlternativeStreetETA(ctx context.Contex
 	}
 
 	concatedPathsCH := []datastructure.Coordinate{}
-	concatedEdgesCH := []datastructure.EdgeCH{}
+	concatedEdgesCH := []datastructure.Edge{}
 	paths[0].PathsCH = paths[0].PathsCH[:len(paths[0].PathsCH)-1] // exclude start node dari paths[1]
 	concatedPathsCH = append(concatedPathsCH, paths[0].PathsCH...)
 	concatedPathsCH = append(concatedPathsCH, paths[1].PathsCH...)

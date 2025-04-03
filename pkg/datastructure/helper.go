@@ -8,7 +8,7 @@ type SPSingleResultResult struct {
 	Source   int32
 	Dest     int32
 	Paths    []Coordinate
-	EdgePath []EdgeCH
+	EdgePath []Edge
 	Dist     float64
 	Eta      float64
 }

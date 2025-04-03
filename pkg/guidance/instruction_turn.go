@@ -22,12 +22,22 @@ GetAlternativeTurns. get jumlah belokan alternatif yang bisa dilakukan dari base
 ada 4 belokan yang bisa dilakukan dari baseNode B. belokan didapat dari  contractedGraph.GetFirstOutEdge(baseNode)
 --- / | = jalan 2 arah
 */ // nolint: gofmt
-func (ife *InstructionsFromEdges) GetAlternativeTurns(baseNode, adjNode, prevNode int32) (int, []datastructure.EdgeCH, error) {
-	alternativeTurns := []datastructure.EdgeCH{}
-	edges, err := ife.contractedGraph.GetNodeOutEdgesCsr2(baseNode)
-	if err != nil {
-		return 0, alternativeTurns, err
+func (ife *InstructionsFromEdges) GetAlternativeTurns(baseNode, adjNode, prevNode int32) (int, []datastructure.Edge, error) {
+	alternativeTurns := []datastructure.Edge{}
+	var (
+		edges []datastructure.Edge = make([]datastructure.Edge, 0)
+	)
+
+	edgeIDs := ife.contractedGraph.GetNodeFirstOutEdges(baseNode)
+	for _, edgeID := range edgeIDs {
+		if ife.contractedGraph.IsShortcut(edgeID) {
+			continue
+		}
+		edge := ife.contractedGraph.GetOutEdge(edgeID)
+
+		edges = append(edges, edge)
 	}
+
 	for _, edge := range edges {
 		if edge.ToNodeID != prevNode && edge.ToNodeID != adjNode {
 			alternativeTurns = append(alternativeTurns, edge)
@@ -37,7 +47,7 @@ func (ife *InstructionsFromEdges) GetAlternativeTurns(baseNode, adjNode, prevNod
 	return 1 + len(alternativeTurns), alternativeTurns, nil
 }
 
-func (ife *InstructionsFromEdges) isLeavingCurrentStreet(prevStreetName, currentStreetName string, prevEdge, currentEdge datastructure.EdgeCH,
+func (ife *InstructionsFromEdges) isLeavingCurrentStreet(prevStreetName, currentStreetName string, prevEdge, currentEdge datastructure.Edge,
 	prevEdgeInfo, currentEdgeInfo datastructure.EdgeExtraInfo) (bool, error) {
 	if isSameName(currentStreetName, prevStreetName) {
 		// isSameName == false - bisa ketika nama street kosong di osm.
@@ -62,9 +72,12 @@ getOtherEdgeContinueDirection. get alternativeEdges lain dari baseNode yang arah
 
 delta bearing antara currentEdge dan alternativeEdge mendekati 0°
 */ // nolint: gofmt
-func (ife *InstructionsFromEdges) getOtherEdgeContinueDirection(prevLat, prevLon, prevOrientation float64, alternativeTurns []datastructure.EdgeCH) datastructure.EdgeCH {
+func (ife *InstructionsFromEdges) getOtherEdgeContinueDirection(prevLat, prevLon, prevOrientation float64, alternativeTurns []datastructure.Edge) datastructure.Edge {
 	var tmpSign int
 	for _, edge := range alternativeTurns {
+		if ife.contractedGraph.IsShortcut(edge.EdgeID) {
+			continue
+		}
 
 		node := ife.contractedGraph.GetNode(edge.ToNodeID)
 		lat, lon := node.Lat, node.Lon
@@ -74,7 +87,7 @@ func (ife *InstructionsFromEdges) getOtherEdgeContinueDirection(prevLat, prevLon
 			return edge
 		}
 	}
-	return datastructure.EdgeCH{}
+	return datastructure.Edge{}
 }
 
 /*
@@ -85,7 +98,7 @@ func (ife *InstructionsFromEdges) getOtherEdgeContinueDirection(prevLat, prevLon
 
 examplenya di jalan solo-semarang, A.Yani : -7.5533505900708455, 110.82338424980728
 */ // nolint: gofmt
-func (ife *InstructionsFromEdges) isStreetMerged(currentEdge, prevEdge datastructure.EdgeCH,
+func (ife *InstructionsFromEdges) isStreetMerged(currentEdge, prevEdge datastructure.Edge,
 	currentEdgeInfo, prevEdgeInfo datastructure.EdgeExtraInfo) (bool, error) {
 	baseNode := currentEdge.FromNodeID
 
@@ -95,10 +108,19 @@ func (ife *InstructionsFromEdges) isStreetMerged(currentEdge, prevEdge datastruc
 		return false, nil
 	}
 
-	var otherEdge *datastructure.EdgeCH = nil // inEdge dari BaseNode selain PrevEdge yang mengarah ke BaseNode
-	outEdges, err := ife.contractedGraph.GetNodeOutEdgesCsr2(baseNode)
-	if err != nil {
-		return false, err
+	var otherEdge *datastructure.Edge = nil // inEdge dari BaseNode selain PrevEdge yang mengarah ke BaseNode
+	var (
+		outEdges []datastructure.Edge = make([]datastructure.Edge, 0)
+	)
+
+	edgeIDs := ife.contractedGraph.GetNodeFirstOutEdges(baseNode)
+	for _, edgeID := range edgeIDs {
+		if ife.contractedGraph.IsShortcut(edgeID) {
+			continue
+		}
+		edge := ife.contractedGraph.GetOutEdge(edgeID)
+
+		outEdges = append(outEdges, edge)
 	}
 
 	for _, edge := range outEdges {
@@ -121,10 +143,8 @@ func (ife *InstructionsFromEdges) isStreetMerged(currentEdge, prevEdge datastruc
 	if otherEdge == nil {
 		return false, nil
 	}
-	otherEdgeInfo, err := ife.GetEdgeInfo(otherEdge.FromNodeID, otherEdge.ToNodeID)
-	if err != nil {
-		return false, err
-	}
+	otherEdgeInfo := ife.GetEdgeInfo(otherEdge.EdgeID)
+
 	currentEdgeDirection := ife.contractedGraph.GetStreetDirection(currentEdgeInfo.StreetName) // [0] forward, [1] reversed
 	if currentEdgeDirection[1] {
 
@@ -158,7 +178,7 @@ func (ife *InstructionsFromEdges) isStreetMerged(currentEdge, prevEdge datastruc
 							   	<--otherEdge--
 		examplenya di -7.559777239220366, 110.83649946865347
 */ // nolint: gofmt
-func (ife *InstructionsFromEdges) isStreetSplit(currentEdge, prevEdge datastructure.EdgeCH,
+func (ife *InstructionsFromEdges) isStreetSplit(currentEdge, prevEdge datastructure.Edge,
 	currentEdgeInfo, prevEdgeInfo datastructure.EdgeExtraInfo) (bool, error) {
 	baseNode := currentEdge.FromNodeID
 
@@ -168,13 +188,30 @@ func (ife *InstructionsFromEdges) isStreetSplit(currentEdge, prevEdge datastruct
 		return false, nil
 	}
 
-	var otherEdge *datastructure.EdgeCH = nil // inEdge dari BaseNode selain PrevEdge yang mengarah ke BaseNode
-	outEdges, err := ife.contractedGraph.GetNodeInEdgesCsr2(baseNode)
+	var otherEdge *datastructure.Edge = nil // inEdge dari BaseNode selain PrevEdge yang mengarah ke BaseNode
+	var (
+		outEdges []datastructure.Edge = make([]datastructure.Edge, 0)
+		err      error
+	)
+
+	edgeIDs := ife.contractedGraph.GetNodeFirstInEdges(baseNode)
+	for _, edgeID := range edgeIDs {
+		if ife.contractedGraph.IsShortcut(edgeID) {
+			continue
+		}
+		edge := ife.contractedGraph.GetInEdge(edgeID)
+
+		outEdges = append(outEdges, edge)
+
+	}
 	if err != nil {
 		return false, err
 	}
 
 	for _, edge := range outEdges {
+		if ife.contractedGraph.IsShortcut(edge.EdgeID) {
+			continue
+		}
 
 		edgeStreetName := currentEdgeInfo.StreetName
 		edgeRoadClass := currentEdgeInfo.RoadClass
@@ -193,10 +230,8 @@ func (ife *InstructionsFromEdges) isStreetSplit(currentEdge, prevEdge datastruct
 		return false, nil
 	}
 
-	otherEdgeInfo, err := ife.GetEdgeInfo(otherEdge.FromNodeID, otherEdge.ToNodeID)
-	if err != nil {
-		return false, err
-	}
+	otherEdgeInfo := ife.GetEdgeInfo(otherEdge.EdgeID)
+
 	otherEdgeStretName := otherEdgeInfo.StreetName
 	otherEdgeLanes := otherEdgeInfo.Lanes
 
@@ -215,7 +250,7 @@ func (ife *InstructionsFromEdges) isStreetSplit(currentEdge, prevEdge datastruct
 	return laneDiff <= 1, nil
 }
 
-func (ife *InstructionsFromEdges) isSameRoadClassAndLink(edge1, edge2 datastructure.EdgeCH,
+func (ife *InstructionsFromEdges) isSameRoadClassAndLink(edge1, edge2 datastructure.Edge,
 	edge1Info, edge2Info datastructure.EdgeExtraInfo) bool {
 
 	return edge1Info.RoadClass == edge2Info.RoadClass && edge1Info.RoadClassLink == edge2Info.RoadClassLink

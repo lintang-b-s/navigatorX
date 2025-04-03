@@ -5,6 +5,7 @@ import (
 	"log"
 	"math"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/lintang-b-s/navigatorx/pkg/concurrent"
@@ -12,38 +13,52 @@ import (
 	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
 	"github.com/lintang-b-s/navigatorx/pkg/engine/routingalgorithm"
 	"github.com/lintang-b-s/navigatorx/pkg/geo"
-	"github.com/lintang-b-s/navigatorx/pkg/util"
 )
 
 type ContractedGraph interface {
-	IsChReady() bool
-	SnapLocationToRoadNetworkNodeH3(ways []datastructure.KVEdge, wantToSnap []float64) int32
-	GetOutEdge(edgeID int32) datastructure.EdgeCH
-	GetNode(nodeID int32) datastructure.CHNode
-	GetOutEdges() []datastructure.EdgeCH
-	GetInEdges() []datastructure.EdgeCH
-	GetNodeFirstOutEdges(nodeID int32) []int32
-	GetNodeFirstInEdges(nodeID int32) []int32
+	GetOutEdges() []datastructure.Edge
+	GetInEdges() []datastructure.Edge
+
 	GetNodes() []datastructure.CHNode
 	GetFirstInEdges() [][]int32
 	GetFirstOutEdges() [][]int32
-	AddEdge(newEdge datastructure.EdgeCH)
+	AddEdge(newEdge datastructure.Edge)
+	SetEdgeInfo(edgeInfo datastructure.EdgeExtraInfo)
 	RemoveEdge(edgeID int32, fromNodeID int32, toNodeID int32)
 	AddNode(node datastructure.CHNode)
-	SetEdgeInfo(fromNodeID, toNodeID int32, reverse bool, edgeInfo datastructure.EdgeExtraInfo)
-	SetPointsInBetween(fromNodeID, toNodeID int32, reverse bool, points []datastructure.Coordinate)
-	GetEdgePointsInBetween(fromNodeID, toNodeID int32, reverse bool) []datastructure.Coordinate
-	GetStreetName(fromNodeID, toNodeID int32, reverse bool) int
-	GetRoadClass(fromNodeID, toNodeID int32, reverse bool) int
-	GetRoadClassLink(fromNodeID, toNodeID int32, reverse bool) int
-	GetLanes(fromNodeID, toNodeID int32, reverse bool) int
-	IsRoundabout(fromNodeID, toNodeID int32, reverse bool) bool
+
+	SnapLocationToRoadNetworkNodeH3(ways []datastructure.KVEdge, wantToSnap []float64) int32
+
+	GetNodeFirstOutEdges(nodeID int32) []int32
+	GetNodeFirstInEdges(nodeID int32) []int32
+
+	GetNode(nodeID int32) datastructure.CHNode
+	GetOutEdge(edgeID int32) datastructure.Edge
+	GetInEdge(edgeID int32) datastructure.Edge
+	IsRoundabout(edgeID int32) bool
+
+	GetOutEdgesLen() int
+
+	GetEdgeInfo(edgeID int32) datastructure.EdgeExtraInfo
+
+	IsShortcut(edgeID int32) bool
+	GetEdgePointsInBetween(edgeID int32) []datastructure.Coordinate
+	IsTrafficLight(nodeID int32) bool
+
+	SaveToFile() error
+	LoadGraph() error
+	GetStreetDirection(streetName int) [2]bool
+
+	GetStreetNameFromID(streetName int) string
+	GetRoadClassFromID(roadClass uint8) string
+	GetRoadClassLinkFromID(roadClassLink uint8) string
+	SetPointsInBetween(edgeID int32, points []datastructure.Coordinate) (int, int)
 }
 
 type RouteAlgorithm interface {
-	ShortestPathAStar(int32, int32) ([]datastructure.Coordinate, []datastructure.EdgeCH, float64, float64)
-	ShortestPathBiDijkstraCH(from, to int32) ([]datastructure.Coordinate, []datastructure.EdgeCH, float64, float64)
-	ShortestPathBiDijkstra(from, to int32, fromEdgeFilter, toEdgeFilter func(edge datastructure.EdgeCH) bool) ([]datastructure.Coordinate, []datastructure.EdgeCH,
+	ShortestPathAStar(int32, int32) ([]datastructure.Coordinate, []datastructure.Edge, float64, float64)
+	ShortestPathBiDijkstraCH(from, to int32) ([]datastructure.Coordinate, []datastructure.Edge, float64, float64)
+	ShortestPathBiDijkstra(from, to int32, fromEdgeFilter, toEdgeFilter func(edge datastructure.Edge) bool) ([]datastructure.Coordinate, []datastructure.Edge,
 		float64, float64)
 }
 type kvdb interface {
@@ -115,24 +130,24 @@ func (hmm *HMMMapMatching) calculateTransitionProb(param concurrent.CalculateTra
 
 	// if state is virtual node, then only consider the virtual edge
 	// if not, consider all edges of the state graph node
-	sourceEdgeFilter := func(edge datastructure.EdgeCH) bool {
+	sourceEdgeFilter := func(edge datastructure.Edge) bool {
 		return true
 	}
 
-	targetEdgeFilter := func(edge datastructure.EdgeCH) bool {
+	targetEdgeFilter := func(edge datastructure.Edge) bool {
 		return true
 	}
 
 	if prevState.GetType() == datastructure.VirtualNode {
 		prevStatef := prevState
-		sourceEdgeFilter = func(edge datastructure.EdgeCH) bool {
+		sourceEdgeFilter = func(edge datastructure.Edge) bool {
 			return edge.EdgeID == prevStatef.OutgoingVirtualEdgeID
 		}
 	}
 
 	if currentState.GetType() == datastructure.VirtualNode {
 		currentStatef := currentState
-		targetEdgeFilter = func(edge datastructure.EdgeCH) bool {
+		targetEdgeFilter = func(edge datastructure.Edge) bool {
 			return edge.EdgeID == currentStatef.IncomingVirtualEdgeID
 		}
 	}
@@ -142,7 +157,6 @@ func (hmm *HMMMapMatching) calculateTransitionProb(param concurrent.CalculateTra
 		targetEdgeFilter)
 	// shortest path harus dari antara 2 projectionPoint.
 
-	//
 	routeDist *= 1000
 
 	if routeDist != -1000 && math.Abs(routeDist-linearDistance) < maxTransitionDist {
@@ -168,7 +182,7 @@ func (hmm *HMMMapMatching) calculateTransitionProb(param concurrent.CalculateTra
 	return newTransitionWithProb(prevState.StateID, currentState.StateID, math.Inf(-1), nil)
 }
 
-func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, nextStateID int) ([]datastructure.Coordinate, []datastructure.EdgeCH, []datastructure.Coordinate) {
+func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, nextStateID int) ([]datastructure.Coordinate, []datastructure.Edge, []datastructure.Coordinate) {
 
 	stateDataMap := make(map[int]*datastructure.State)
 	viterbi := NewViterbiAlgorithm(true)
@@ -184,7 +198,7 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 			fromNode := hmm.ch.GetNode(gps[i].State[j].EdgeFromNodeID)
 			toNode := hmm.ch.GetNode(gps[i].State[j].EdgeToNodeID)
 
-			pointsInBetween := hmm.ch.GetEdgePointsInBetween(gps[i].State[j].EdgeFromNodeID, gps[i].State[j].EdgeToNodeID, false)
+			pointsInBetween := hmm.ch.GetEdgePointsInBetween(gps[i].State[j].EdgeID)
 			pos := geo.PointPositionBetweenLinePoints(gps[i].Observation.Lat,
 				gps[i].Observation.Lon, pointsInBetween) - 1
 
@@ -263,7 +277,7 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 			linearDistance := geo.CalculateHaversineDistance(prevObservation.Observation.Lat, prevObservation.Observation.Lon,
 				gps[i].Observation.Lat, gps[i].Observation.Lon) * 1000
 
-			workers := concurrent.NewWorkerPool[concurrent.CalculateTransitionProbParam, transitionWithProb](10,
+			workers := concurrent.NewWorkerPool[concurrent.CalculateTransitionProbParam, transitionWithProb](30,
 				len(gps[i].State)*len(prevObservation.State))
 
 			for j := 0; j < len(prevObservation.State); j++ {
@@ -317,7 +331,7 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 		observationPath = append(observationPath, datastructure.NewCoordinate(obs.Observation.Lat, obs.Observation.Lon))
 	}
 	solutions := make([]datastructure.Coordinate, 0)
-	solutionEdges := make([]datastructure.EdgeCH, 0)
+	solutionEdges := make([]datastructure.Edge, 0)
 
 	for i := 1; i < len(statesPath); i++ {
 
@@ -373,14 +387,17 @@ func (hmm *HMMMapMatching) splitEdges(gps []datastructure.StateObservationPair, 
 	}
 
 	// split all edges in edgesSnapMap
-
+	count := 0
 	for edgeID, edgeSnaps := range edgeSnapMap {
+		if (count+1)%100 == 0 {
+			log.Printf("splitting edge %d of %d edges in querygraph", count+1, len(edgeSnapMap))
+		}
 
 		// for all <edgeID, []snap> create virtual edge & virtual node between edge.
-
+		count++
 		edge := queryGraph.GetOutEdge(edgeID)
 
-		edgePointsInBetween := queryGraph.GetEdgePointsInBetween(edge.FromNodeID, edge.ToNodeID, false)
+		edgePointsInBetween := queryGraph.GetEdgePointsInBetween(edge.EdgeID)
 
 		fromNode := queryGraph.GetNode(edge.FromNodeID)
 		toNode := queryGraph.GetNode(edge.ToNodeID)
@@ -393,19 +410,26 @@ func (hmm *HMMMapMatching) splitEdges(gps []datastructure.StateObservationPair, 
 
 		// sort snaps based on their projection place in line points.
 
-		edgeSnaps = util.QuickSortG(edgeSnaps, func(a, b *datastructure.State) int {
+		snapDists := make([]float64, len(edgeSnaps))
+		for i := 0; i < len(edgeSnaps); i++ {
+			snapDists[i] = geo.CalculateHaversineDistance(fromNode.Lat, fromNode.Lon,
+				edgeSnaps[i].ProjectionLoc[0], edgeSnaps[i].ProjectionLoc[1])
+		}
 
+		sort.Slice(edgeSnaps, func(i, j int) bool {
+			a := edgeSnaps[i]
+			b := edgeSnaps[j]
 			distA := geo.CalculateHaversineDistance(fromNode.Lat, fromNode.Lon,
 				a.ProjectionLoc[0], a.ProjectionLoc[1])
 			distB := geo.CalculateHaversineDistance(fromNode.Lat, fromNode.Lon,
 				b.ProjectionLoc[0], b.ProjectionLoc[1])
 
 			if distA < distB {
-				return -1
+				return true
 			} else if distA > distB {
-				return 1
+				return false
 			} else {
-				return a.ObservationID - b.ObservationID
+				return a.ObservationID < b.ObservationID
 			}
 		})
 
@@ -417,8 +441,6 @@ func (hmm *HMMMapMatching) splitEdges(gps []datastructure.StateObservationPair, 
 
 		// for every snap projection point, add virtual edge <prevNodeID, newProjectionNodeID>
 		for i := 0; i < len(edgeSnaps); i++ {
-			position := geo.PointPositionBetweenLinePoints(edgeSnaps[i].ProjectionLoc[0], edgeSnaps[i].ProjectionLoc[1], edgePointsInBetween)
-			snapIndexInPoints[edgeSnaps[i].StateID] = position
 
 			snap := edgeSnaps[i]
 			currSnapProjection := datastructure.NewCoordinate(snap.ProjectionLoc[0], snap.ProjectionLoc[1])
@@ -453,11 +475,8 @@ func (hmm *HMMMapMatching) splitEdges(gps []datastructure.StateObservationPair, 
 				prevPoint, currSnapProjection, prevPositionInLinePoints,
 				snapIndexInPoints[edgeSnaps[i].StateID])
 
-			edgePointsInBetween = queryGraph.GetEdgePointsInBetween(edge.FromNodeID, edge.ToNodeID, false)
-
 			prevNodeID = newNodeID
 			prevPoint = currSnapProjection
-			prevPositionInLinePoints = snapIndexInPoints[edgeSnaps[i].StateID]
 
 		}
 
@@ -471,30 +490,15 @@ func (hmm *HMMMapMatching) splitEdges(gps []datastructure.StateObservationPair, 
 
 }
 
-func removeUnsuedEdgesInOsmWay(queryGraph ContractedGraph, matchedEdge datastructure.EdgeCH) {
+func removeUnsuedEdgesInOsmWay(queryGraph ContractedGraph, matchedEdge datastructure.Edge) {
 
 	queryGraph.RemoveEdge(matchedEdge.EdgeID, matchedEdge.FromNodeID, matchedEdge.ToNodeID)
 
 }
 
 func (hmm *HMMMapMatching) addVirtualEdge(queryGraph ContractedGraph,
-	matchedEdge datastructure.EdgeCH, prevNodeID, nodeID int32, prevProjection, currProjection datastructure.Coordinate,
+	matchedEdge datastructure.Edge, prevNodeID, nodeID int32, prevProjection, currProjection datastructure.Coordinate,
 	prevPositionInLinePoints, currPositionInLinePoints int) int32 {
-	pointsInBetweenNewEdge := make([]datastructure.Coordinate, 0)
-
-	matchedEdgePointsInBetween := queryGraph.GetEdgePointsInBetween(matchedEdge.FromNodeID, matchedEdge.ToNodeID, false)
-
-	// add points in between source and target of new edge
-	pointsInBetweenNewEdge = append(pointsInBetweenNewEdge, datastructure.NewCoordinate(prevProjection.Lat, prevProjection.Lon))
-
-	for i := prevPositionInLinePoints + 1; i < currPositionInLinePoints; i++ {
-		pointsInBetweenNewEdge = append(pointsInBetweenNewEdge, matchedEdgePointsInBetween[i])
-	}
-	pointsInBetweenNewEdge = append(pointsInBetweenNewEdge, datastructure.NewCoordinate(currProjection.Lat, currProjection.Lon))
-
-	matchedEdgePointsInBetween = append(matchedEdgePointsInBetween, datastructure.NewCoordinate(currProjection.Lat, currProjection.Lon))
-
-	queryGraph.SetPointsInBetween(matchedEdge.FromNodeID, matchedEdge.ToNodeID, false, matchedEdgePointsInBetween)
 
 	// calculate edge distance
 	dist := 0.0
@@ -508,20 +512,20 @@ func (hmm *HMMMapMatching) addVirtualEdge(queryGraph ContractedGraph,
 	eta := dist / speed
 
 	// add new edge to graph
-	newEdgeID := int32(len(queryGraph.GetOutEdges()))
-	newEdge := datastructure.NewEdgeCHPlain(newEdgeID, eta, dist, nodeID, prevNodeID)
+	newEdgeID := int32(queryGraph.GetOutEdgesLen())
+	newEdge := datastructure.NewEdge(newEdgeID, nodeID, prevNodeID, -1, eta, dist)
 
 	queryGraph.AddEdge(newEdge)
 
-	queryGraph.SetEdgeInfo(matchedEdge.FromNodeID, nodeID, false,
+	matchedEdgeInfo := queryGraph.GetEdgeInfo(matchedEdge.EdgeID)
+
+	queryGraph.SetEdgeInfo(
 		datastructure.NewEdgeExtraInfo(
-			queryGraph.GetStreetName(matchedEdge.FromNodeID, nodeID, false),
-			queryGraph.GetRoadClass(matchedEdge.FromNodeID, nodeID, false),
-			queryGraph.GetLanes(matchedEdge.FromNodeID, nodeID, false),
-			queryGraph.GetRoadClassLink(matchedEdge.FromNodeID, nodeID, false),
-			pointsInBetweenNewEdge,
-			queryGraph.IsRoundabout(matchedEdge.FromNodeID, nodeID, false),
-			false,
+			matchedEdgeInfo.StreetName,
+			matchedEdgeInfo.RoadClass,
+			matchedEdgeInfo.Lanes,
+			matchedEdgeInfo.RoadClassLink,
+			uint32(0), uint32(0),
 		))
 
 	return newEdgeID

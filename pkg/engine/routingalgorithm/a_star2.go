@@ -7,11 +7,11 @@ import (
 	"github.com/lintang-b-s/navigatorx/pkg/util"
 )
 
-// https://www.cs.princeton.edu/courses/archive/spr06/cos423/Handouts/GH05.pdf
 
-func (rt *RouteAlgorithm) ShortestPathAStar(from, to int32) ([]datastructure.Coordinate, []datastructure.EdgeCH, float64, float64) {
+
+func (rt *RouteAlgorithm) ShortestPathAStar(from, to int32) ([]datastructure.Coordinate, []datastructure.Edge, float64, float64) {
 	if from == to {
-		return []datastructure.Coordinate{}, []datastructure.EdgeCH{}, 0, 0
+		return []datastructure.Coordinate{}, []datastructure.Edge{}, 0, 0
 	}
 
 	pq := contractor.NewMinHeap[int32]()
@@ -29,19 +29,19 @@ func (rt *RouteAlgorithm) ShortestPathAStar(from, to int32) ([]datastructure.Coo
 
 	cameFrom := make(map[int32]cameFromPair)
 
-	cameFrom[from] = cameFromPair{datastructure.EdgeCH{}, -1}
+	cameFrom[from] = cameFromPair{datastructure.Edge{}, -1}
 
 	visited := make(map[int32]struct{})
 
 	for {
 		if pq.Size() == 0 {
-			return []datastructure.Coordinate{}, []datastructure.EdgeCH{}, 0, 0
+			return []datastructure.Coordinate{}, []datastructure.Edge{}, 0, 0
 		}
 
 		current, _ := pq.ExtractMin()
 		if current.Item == to {
 			pathCoords := []datastructure.Coordinate{}
-			pathEdges := []datastructure.EdgeCH{}
+			pathEdges := []datastructure.Edge{}
 			etaTraffic := 0.0
 
 			currNode := rt.ch.GetNode(current.Item)

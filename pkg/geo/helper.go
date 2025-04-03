@@ -12,7 +12,7 @@ const (
 
 // https://cartography-playground.gitlab.io/playgrounds/douglas-peucker-algorithm/
 
-func RamesDouglasPeucker(coords []datastructure.Coordinate) []datastructure.Coordinate {
+func RamerDouglasPeucker(coords []datastructure.Coordinate) []datastructure.Coordinate {
 	size := len(coords)
 	if size < 2 {
 		return coords
@@ -47,6 +47,7 @@ func RamesDouglasPeucker(coords []datastructure.Coordinate) []datastructure.Coor
 		if maxDist > threshold {
 			// if the perpendicular distance of the farthestIndex point is greater than the threshold
 			// we kept this point
+			// recursively calls itself with the first point and the farthest point and then with the farthest point and the last point,
 			kepts[farthestIndex] = true
 			if left < farthestIndex {
 				stack.PushBack([2]int{left, farthestIndex})

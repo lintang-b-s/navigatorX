@@ -3,7 +3,7 @@ package routingalgorithm
 // saat ini support contraction hierarchies saja, di commit sebelumnya masih support (karena driving instruction yang masih cuma baru support CH).
 // func (rt *RouteAlgorithm) AStar(from, to int32) (pathN []datastructure.CHNode, path string, eta float64, found bool, dist float64) {
 // 	cameFromf := make(map[int32]cameFromPair)
-// 	cameFromf[from] = cameFromPair{datastructure.EdgeCH{}, -1}
+// 	cameFromf[from] = cameFromPair{datastructure.Edge{}, -1}
 // 	heap := contractor.NewMinHeap[int32]()
 
 // 	fromNode := contractor.PriorityQueueNode[int32]{Rank: 0, Item: from}
@@ -45,7 +45,7 @@ package routingalgorithm
 // 			coords := make([][]float64, 0)
 
 // 			pathN := []datastructure.CHNode{}
-// 			edgePath := []datastructure.EdgeCH{}
+// 			edgePath := []datastructure.Edge{}
 // 			for _, p := range path {
 // 				pathN = append(pathN, p)
 // 				coords = append(coords, []float64{p.Lat, p.Lon})

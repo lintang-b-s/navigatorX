@@ -94,7 +94,7 @@ func (sa *SimulatedAnnealing) Solve() ([]int, float64) {
 	return best, bestDistance
 }
 
-func (sa *Heuristics) TravelingSalesmanProblemSimulatedAnnealing(cities []int32) ([]datastructure.Coordinate, []datastructure.EdgeCH, float64, float64, [][]float64) {
+func (sa *Heuristics) TravelingSalesmanProblemSimulatedAnnealing(cities []int32) ([]datastructure.Coordinate, []datastructure.Edge, float64, float64, [][]float64) {
 
 	spPair := [][]int32{}
 	for i := 0; i < len(cities); i++ {
@@ -144,7 +144,7 @@ func (sa *Heuristics) TravelingSalesmanProblemSimulatedAnnealing(cities []int32)
 	saTSP := NewSimulatedAnnealing(distancesMat)
 	bestTour, bestETA := saTSP.Solve() // solve tsp pake simulated annealing
 	tspTourNodes := []datastructure.Coordinate{}
-	tspTourEdgePath := []datastructure.EdgeCH{}
+	tspTourEdgePath := []datastructure.Edge{}
 	bestDistance := 0.0
 	for i := 0; i < len(bestTour); i++ {
 

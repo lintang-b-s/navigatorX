@@ -1,10 +1,7 @@
 package datastructure
 
 import (
-	"encoding/binary"
 	"math"
-
-	"github.com/lintang-b-s/navigatorx/pkg/util"
 )
 
 // contracted graph
@@ -24,20 +21,6 @@ func NewCHNode(lat, lon float64, orderPos int32, idx int32) CHNode {
 	}
 }
 
-type NodeInfo struct {
-	TrafficLight map[int32]bool
-}
-
-func NewNodeInfo() *NodeInfo {
-	return &NodeInfo{
-		TrafficLight: make(map[int32]bool),
-	}
-}
-
-func (ni *NodeInfo) SetTrafficLight(nodeID int32) {
-	ni.TrafficLight[nodeID] = true
-}
-
 func NewCHNodePlain(lat, lon float64, idx int32) CHNode {
 	return CHNode{
 		Lat: lat,
@@ -46,204 +29,213 @@ func NewCHNodePlain(lat, lon float64, idx int32) CHNode {
 	}
 }
 
-type EdgeCH struct {
-	EdgeID     int32
-	Weight     float64 // minute
-	Dist       float64 // meter
-	ToNodeID   int32
-	FromNodeID int32
+type GraphStorage struct {
+	GlobalPoints []Coordinate
+	EdgeStorage  []Edge // main info (weight, dist, edgeID, toNodeID, fromNodeID, viaNodeID)
 
-	ViaNodeID int32
+	/*
+		32 bit -> 32 boolean flag for roundabout & trafficlight
+
+		idx in flag array = floor(edgeID/32)
+		idx in flag = edgeID % 32
+	*/
+	RoundaboutFlag   []int32
+	NodeTrafficLight []int32
+
+	StartShortcutID int32
+
+	MapEdgeInfo []EdgeExtraInfo
 }
 
-func NewEdgeCH(edgeID int32, weight, dist float64, toNodeID, fromNodeID int32, viaNodeID int32) EdgeCH {
-	return EdgeCH{
-		EdgeID:     edgeID,
+func NewGraphStorage() *GraphStorage {
+	return &GraphStorage{}
+}
+
+type Edge struct {
+	Weight     float64 // minute
+	Dist       float64 // meter
+	EdgeID     int32
+	ToNodeID   int32
+	FromNodeID int32
+	ViaNodeID  int32
+}
+
+func NewEdge(edgeID, toNodeID, fromNodeID, viaNodeID int32, weight, dist float64) Edge {
+	return Edge{
 		Weight:     weight,
 		Dist:       dist,
+		EdgeID:     edgeID,
 		ToNodeID:   toNodeID,
 		FromNodeID: fromNodeID,
 		ViaNodeID:  viaNodeID,
 	}
 }
 
-func NewEdgeCHPlain(edgeID int32, weight, dist float64, toNodeID, fromNodeID int32,
-) EdgeCH {
-	return EdgeCH{
+func NewEdgePlain(edgeID int32, weight, dist float64, toNodeID, fromNodeID int32) Edge {
+	return Edge{
 		EdgeID:     edgeID,
-		Weight:     weight,
-		Dist:       dist,
 		ToNodeID:   toNodeID,
 		FromNodeID: fromNodeID,
-		ViaNodeID:  -1,
+		Weight:     weight,
+		Dist:       dist,
 	}
 }
 
-func (e *EdgeCH) Serialize() []byte {
-	// 4byte*5 + 8byte*2 = 36byte
-
-	buf := make([]byte, 36)
-
-	// edgeID
-	binary.LittleEndian.PutUint32(buf[0:4], uint32(e.EdgeID))
-	// weight
-	binary.LittleEndian.PutUint64(buf[4:12], math.Float64bits(e.Weight))
-	// dist
-	binary.LittleEndian.PutUint64(buf[12:20], math.Float64bits(e.Dist))
-	// toNodeID
-	binary.LittleEndian.PutUint32(buf[20:24], uint32(e.ToNodeID))
-	// fromNodeID
-	binary.LittleEndian.PutUint32(buf[24:28], uint32(e.FromNodeID))
-
-	binary.LittleEndian.PutUint32(buf[28:32], uint32(e.ViaNodeID))
-
-	return buf
-}
-
-func DeserializeEdgeCH(buf []byte) EdgeCH {
-	// 4byte*5 + 8byte*2 = 36byte
-
-	edgeID := int32(binary.LittleEndian.Uint32(buf[0:4]))
-	weight := math.Float64frombits(binary.LittleEndian.Uint64(buf[4:12]))
-	dist := math.Float64frombits(binary.LittleEndian.Uint64(buf[12:20]))
-	toNodeID := int32(binary.LittleEndian.Uint32(buf[20:24]))
-	fromNodeID := int32(binary.LittleEndian.Uint32(buf[24:28]))
-
-	viaNodeID := int32(binary.LittleEndian.Uint32(buf[28:32]))
-
-	return NewEdgeCH(edgeID, weight, dist, toNodeID, fromNodeID, viaNodeID)
-}
-
-// EdgeExtraInfo is a struct that contains information about each edge in the graph
-// {from -> to -> edgeInfo (streetName, roadClass, lanes, roadClassLink, pointsInBetween, roundabout, isShortcut)}
-type EdgeExtraInfo struct {
-	StreetName      int
-	RoadClass       int
-	RoadClassLink   int
-	Lanes           int
-	PointsInBetween []Coordinate
-	Roundabout      bool
-	IsShortcut      bool
-}
-
-func NewEdgeExtraInfo(streetName, roadClass, lanes, roadClassLink int, pointsInBetween []Coordinate, roundabout bool, shortcut bool) EdgeExtraInfo {
-	return EdgeExtraInfo{
-		StreetName:      streetName,
-		RoadClass:       roadClass,
-		PointsInBetween: pointsInBetween,
-		RoadClassLink:   roadClassLink,
-		Lanes:           lanes,
-		Roundabout:      roundabout,
-		IsShortcut:      shortcut,
+func (gs *GraphStorage) SetRoundabout(edgeID int32, isRoundabout bool) {
+	index := int(math.Floor(float64(edgeID) / 32))
+	if len(gs.RoundaboutFlag) <= int(index) {
+		gs.RoundaboutFlag = append(gs.RoundaboutFlag, 0)
+	}
+	if isRoundabout {
+		gs.RoundaboutFlag[index] |= 1 << (edgeID % 32)
 	}
 }
 
-/*
-edgeIInfo:
+func (gs *GraphStorage) SetTrafficLight(nodeID int32) {
+	index := int(math.Floor(float64(nodeID) / 32))
 
-	| StreetName | RoadClass | RoadClassLink | Lanes | Roundabout | IsShourtcut | PointsInBetween |
-		4 byte		4 byte			4 byte		4 byte	1 byte		 1 byte			dynamic
-
-	use bitpacking for edgeInfo
-	https://wiki.openstreetmap.org/wiki/Map_features
-
-	maxRoadclass is 120 so its 7 bits  (2^7-1=127)
-	maxRoadClassLink is 5 so its 3 bits
-	maxLanes is just 8 so its 4 bits
-	roundabout is 1 bit
-	shortcut is 1 bit
-
-	bitpackedEdgeInfoField: (RoadClass, RoadClassLink, Lanes, Roundabout, IsShortcut)
-
-
-	bitpackedEdgeInfo:
-	| Streetname | bitpackedEdgeInfoField | PointsInBetween |
-		4 byte			4 byte				dynamic
-*/
-func (ex *EdgeExtraInfo) Serialize() ([]byte, error) {
-
-	buf := make([]byte, 8)
-
-	// streetName
-	binary.LittleEndian.PutUint32(buf[0:4], uint32(ex.StreetName))
-
-	bitpackedEdgeInfoField := int32(ex.RoadClass)
-	bitpackedEdgeInfoField = util.BitPackInt(bitpackedEdgeInfoField, int32(ex.RoadClassLink), 8)
-	bitpackedEdgeInfoField = util.BitPackInt(bitpackedEdgeInfoField, int32(ex.Lanes), 14)
-	bitpackedEdgeInfoField = util.BitPackIntBool(bitpackedEdgeInfoField, ex.Roundabout, 20)
-	bitpackedEdgeInfoField = util.BitPackIntBool(bitpackedEdgeInfoField, ex.IsShortcut, 21)
-
-	binary.LittleEndian.PutUint32(buf[4:8], uint32(bitpackedEdgeInfoField))
-
-	coordBuf, err := serializeCoordinates(ex.PointsInBetween)
-	if err != nil {
-		return nil, err
+	if len(gs.NodeTrafficLight) <= int(index) {
+		gs.NodeTrafficLight = append(gs.NodeTrafficLight, make([]int32, nodeID-int32(len(gs.NodeTrafficLight))+1)...)
 	}
 
-	buf = append(buf, coordBuf...)
-
-	return buf, nil
+	gs.NodeTrafficLight[index] |= 1 << (nodeID % 32)
 }
 
-func DeserializeEdgeExtraInfo(buf []byte) (EdgeExtraInfo, error) {
+func (gs *GraphStorage) GetTrafficLight(nodeID int32) bool {
+	index := int(math.Floor(float64(nodeID) / 32))
 
-	streetName := int(binary.LittleEndian.Uint32(buf[0:4]))
-
-	bitpackedEdgeInfoField := int32(binary.LittleEndian.Uint32(buf[4:8]))
-
-	bitpackedEdgeInfoField, isShortcut := util.BitUnpackIntBool(bitpackedEdgeInfoField, 21)
-	bitpackedEdgeInfoField, roundabout := util.BitUnpackIntBool(bitpackedEdgeInfoField, 20)
-	bitpackedEdgeInfoField, lanes := util.BitUnpackInt(bitpackedEdgeInfoField, 14)
-	bitpackedEdgeInfoField, roadClassLink := util.BitUnpackInt(bitpackedEdgeInfoField, 8)
-	roadClass := int(bitpackedEdgeInfoField)
-
-	coordBuf := buf[8:]
-	pointsInBetween, err := deserializeCoordinates(coordBuf)
-
-	return NewEdgeExtraInfo(streetName, roadClass,
-		int(lanes), int(roadClassLink), pointsInBetween, roundabout, isShortcut), err
+	return (gs.NodeTrafficLight[index] & (1 << (nodeID % 32))) != 0
 }
 
-type MapEdgeInfo map[int32]map[int32]EdgeExtraInfo
-
-func NewMapEdgeInfo() MapEdgeInfo {
-	return make(map[int32]map[int32]EdgeExtraInfo)
-}
-
-func (ex *MapEdgeInfo) GetEdgeInfo(fromNodeID, toNodeID int32, reverse bool) EdgeExtraInfo {
-
+func (gs *GraphStorage) GetEdgeInfo(edgeID int32, reverse bool) Edge {
 	if !reverse {
-		return (*ex)[fromNodeID][toNodeID]
+		return gs.EdgeStorage[edgeID]
 	}
-	return (*ex)[toNodeID][fromNodeID]
 
+	edge := gs.EdgeStorage[edgeID]
+	edge.FromNodeID, edge.ToNodeID = edge.ToNodeID, edge.FromNodeID
+	return edge
 }
 
-func (ex *EdgeExtraInfo) GetEdgeInfoSize() (int, error) {
-	size := 4 * 2 // 2 int32 (bitpackedField  & streetname)
-	// slice of Coordinate
-	polylineBuf, err := serializeCoordinates(ex.PointsInBetween)
-	polylineSize := len(polylineBuf)
-	size += polylineSize
-
-	return size, err
+func (gs *GraphStorage) GetOutEdge(edgeID int32) Edge {
+	return gs.GetEdgeInfo(edgeID, false)
 }
 
-func (ex *MapEdgeInfo) AppendEdgeInfo(from, to int32, shortcut bool) {
-	if _, ok := (*ex)[from]; !ok {
-		(*ex)[from] = make(map[int32]EdgeExtraInfo)
-	}
-	(*ex)[from][to] = NewEdgeExtraInfo(0, 0, 0, 0, nil, false, shortcut)
+func (gs *GraphStorage) GetInEdge(edgeID int32) Edge {
+	return gs.GetEdgeInfo(edgeID, true)
 }
 
-func NewEdgeEdgeInfo(streetName int, roadClass int, lanes int, roadClassLink int, pointsInBetween []Coordinate, roundabout bool, shortcut bool) EdgeExtraInfo {
+func (gs *GraphStorage) UpdateEdge(edgeID int32, weight, dist float64, vianode int32) {
+	edge := gs.EdgeStorage[edgeID]
+	edge.Weight = weight
+	edge.Dist = dist
+	edge.ViaNodeID = vianode
+	gs.EdgeStorage[edgeID] = edge
+}
+
+type EdgeExtraInfo struct {
+	StartPointsIndex uint32
+	EndPointsIndex   uint32
+	StreetName       int
+	RoadClass        uint8
+	RoadClassLink    uint8
+	Lanes            uint8
+}
+
+func NewEdgeExtraInfo(streetName int, roadClass, lanes, roadClassLink uint8, StartPointsIdx, EndPointsIdx uint32) EdgeExtraInfo {
 	return EdgeExtraInfo{
-		StreetName:      streetName,
-		RoadClass:       roadClass,
-		RoadClassLink:   roadClassLink,
-		Lanes:           lanes,
-		PointsInBetween: pointsInBetween,
-		Roundabout:      roundabout,
-		IsShortcut:      shortcut,
+		StreetName:       streetName,
+		RoadClass:        roadClass,
+		RoadClassLink:    roadClassLink,
+		Lanes:            lanes,
+		StartPointsIndex: StartPointsIdx,
+		EndPointsIndex:   EndPointsIdx,
 	}
+}
+
+func (gs *GraphStorage) GetPointsInbetween(edgeID int32) []Coordinate {
+	edge := gs.MapEdgeInfo[edgeID]
+	var (
+		edgePoints []Coordinate
+	)
+	startIndex := edge.StartPointsIndex
+	endIndex := edge.EndPointsIndex
+	if startIndex < endIndex {
+		edgePoints = gs.GlobalPoints[startIndex:endIndex]
+
+		return edgePoints
+	}
+
+	for i := startIndex - 1; i >= endIndex; i-- {
+		edgePoints = append(edgePoints, gs.GlobalPoints[i])
+	}
+
+	return edgePoints
+}
+
+func (gs *GraphStorage) IsShortcut(edgeID int32) bool {
+
+	if edgeID < gs.StartShortcutID {
+		return false
+	}
+
+	return true
+}
+
+// return edgeExtraInfo, isRoundabout
+func (gs *GraphStorage) GetEdgeExtraInfo(edgeID int32, reverse bool) (EdgeExtraInfo, bool) {
+
+	if edgeID < gs.StartShortcutID {
+		index := int(math.Floor(float64(edgeID) / 32))
+		roundabout := (gs.RoundaboutFlag[index] & (1 << (edgeID % 32))) != 0
+		return gs.MapEdgeInfo[edgeID], roundabout
+	}
+
+	return gs.MapEdgeInfo[edgeID], false
+}
+
+func (gs *GraphStorage) UpdateEdgePoints(edgeID int32, startIdx, endIdx uint32) {
+	edge := gs.MapEdgeInfo[edgeID]
+	edge.StartPointsIndex = startIdx
+	edge.EndPointsIndex = endIdx
+	gs.MapEdgeInfo[edgeID] = edge
+}
+
+func (gs *GraphStorage) AppendGlobalPoints(edgePoints []Coordinate) {
+	gs.GlobalPoints = append(gs.GlobalPoints, edgePoints...)
+}
+
+func (gs *GraphStorage) AppendMapEdgeInfo(edgeInfo EdgeExtraInfo) {
+	gs.MapEdgeInfo = append(gs.MapEdgeInfo, edgeInfo)
+}
+
+func (gs *GraphStorage) AppendEdgeStorage(edgeInfo Edge) {
+	gs.EdgeStorage = append(gs.EdgeStorage, edgeInfo)
+}
+
+func (gs *GraphStorage) SetStartShortcutID(edgeid int32) {
+	gs.StartShortcutID = edgeid
+}
+
+func (gs *GraphStorage) GetOutEdges() []Edge {
+	var edges []Edge
+	for i := range gs.EdgeStorage {
+		edges = append(edges, gs.EdgeStorage[i])
+
+	}
+
+	return edges
+}
+
+func (gs *GraphStorage) GetOutEdgesLen() int {
+	return len(gs.EdgeStorage)
+}
+func (gs *GraphStorage) GetInEdges() []Edge {
+	var edges []Edge
+	for _, edge := range gs.EdgeStorage {
+		edge.FromNodeID, edge.ToNodeID = edge.ToNodeID, edge.FromNodeID
+		edges = append(edges, edge)
+	}
+
+	return edges
 }

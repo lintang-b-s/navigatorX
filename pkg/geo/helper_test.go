@@ -13,7 +13,7 @@ func TestDouglasPecker(t *testing.T) {
 		{-7.566406, 110.833232},
 	}
 
-	simplified := RamesDouglasPeucker(lineCoords)
+	simplified := RamerDouglasPeucker(lineCoords)
 	if len(simplified) > 2 {
 		t.Errorf("expected 2, got %d", len(simplified))
 	}

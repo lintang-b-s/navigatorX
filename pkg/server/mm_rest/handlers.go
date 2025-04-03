@@ -18,8 +18,8 @@ import (
 
 type MapMatchingService interface {
 	MapMatch(ctx context.Context, gps []datastructure.Coordinate) (string,
-		[]datastructure.Coordinate, []datastructure.EdgeCH, []datastructure.Coordinate, error)
-	NearestRoadSegments(ctx context.Context, lat, lon float64, radius float64, k int) ([]datastructure.EdgeCH, []float64, error)
+		[]datastructure.Coordinate, []datastructure.Edge, []datastructure.Coordinate, error)
+	NearestRoadSegments(ctx context.Context, lat, lon float64, radius float64, k int) ([]datastructure.Edge, []float64, error)
 }
 
 type MapMatchingHandler struct {
@@ -66,25 +66,25 @@ func (s *MapMatchingRequest) Bind(r *http.Request) error {
 type MapMatchingResponse struct {
 	Path  string `json:"path"`
 	Snaps []struct {
-		Coord       Coord                `json:"coordinates"`
-		Observation Coord                `json:"observation"`
-		Edge        datastructure.EdgeCH `json:"edge"`
+		Coord       Coord              `json:"coordinates"`
+		Observation Coord              `json:"observation"`
+		Edge        datastructure.Edge `json:"edge"`
 	} `json:"snaps,omitempty"`
 }
 
-func RenderMapMatchingResponse(path string, coords []datastructure.Coordinate, edges []datastructure.EdgeCH, obsPath []datastructure.Coordinate) *MapMatchingResponse {
+func RenderMapMatchingResponse(path string, coords []datastructure.Coordinate, edges []datastructure.Edge, obsPath []datastructure.Coordinate) *MapMatchingResponse {
 	snapsResp := []struct {
 		Coord       Coord `json:"coordinates"`
 		Observation Coord `json:"observation"`
 
-		Edge datastructure.EdgeCH `json:"edge"`
+		Edge datastructure.Edge `json:"edge"`
 	}{}
 	for i, c := range coords {
 		snapsResp = append(snapsResp, struct {
 			Coord       Coord "json:\"coordinates\""
 			Observation Coord "json:\"observation\""
 
-			Edge datastructure.EdgeCH "json:\"edge\""
+			Edge datastructure.Edge "json:\"edge\""
 		}{
 			Coord{
 				Lat: c.Lat,
@@ -173,20 +173,20 @@ func (s *RoadSnappingRequest) Bind(r *http.Request) error {
 //	@Description	response body for road snapping
 type RoadSnappingResponse struct {
 	Edges []struct {
-		Edge     datastructure.EdgeCH `json:"edge"`
-		Distance float64              `json:"distance"`
+		Edge     datastructure.Edge `json:"edge"`
+		Distance float64            `json:"distance"`
 	} `json:"edges"`
 }
 
-func RenderRoadSnappingResponse(edges []datastructure.EdgeCH, dists []float64) *RoadSnappingResponse {
+func RenderRoadSnappingResponse(edges []datastructure.Edge, dists []float64) *RoadSnappingResponse {
 	edgesResp := make([]struct {
-		Edge     datastructure.EdgeCH `json:"edge"`
-		Distance float64              `json:"distance"`
+		Edge     datastructure.Edge `json:"edge"`
+		Distance float64            `json:"distance"`
 	}, 0)
 	for i, e := range edges {
 		edgesResp = append(edgesResp, struct {
-			Edge     datastructure.EdgeCH `json:"edge"`
-			Distance float64              `json:"distance"`
+			Edge     datastructure.Edge `json:"edge"`
+			Distance float64            `json:"distance"`
 		}{
 			Edge:     e,
 			Distance: dists[i],

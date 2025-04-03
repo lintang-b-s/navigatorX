@@ -30,7 +30,7 @@ func (rs *RoadSnapper) SnapToRoad(p datastructure.Point) datastructure.OSMObject
 }
 
 const (
-	minRadius = 0.3 // 300 meter  (dari  paper fmm)
+	minRadius = 0.3 // 300 meter
 )
 
 func (rs *RoadSnapper) SnapToRoads(p datastructure.Point) []datastructure.OSMObject {
@@ -130,7 +130,7 @@ const (
 )
 
 // insertEdgeToRtree insert filtered osm ways (road segments) to rtree
-func (rs *RoadSnapper) insertEdgeToRtree(edge datastructure.EdgeCH, ch *contractor.ContractedGraph) {
+func (rs *RoadSnapper) insertEdgeToRtree(edge datastructure.Edge, ch *contractor.ContractedGraph) {
 	tag := make(map[int]int)
 	tag[0] = int(edge.EdgeID)
 

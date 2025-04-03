@@ -27,6 +27,12 @@ func CalculateHaversineDistance(latOne, longOne, latTwo, longTwo float64) float6
 	return earthRadiusKM * c
 }
 
+func CalculateEuclidianDistanceEquiRectangularAprox(latOne, longOne, latTwo, longTwo float64) float64 {
+	x := (longTwo - longOne) * math.Cos((latOne+latTwo)/2)
+	y := latTwo - latOne
+	return math.Sqrt(x*x+y*y) * earthRadiusKM
+}
+
 func degToRad(d float64) float64 {
 	return d * math.Pi / 180.0
 }

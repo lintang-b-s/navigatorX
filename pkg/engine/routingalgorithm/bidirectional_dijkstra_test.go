@@ -33,7 +33,7 @@ func TestShortestPathBidirectionalDijkstraWithoutCH(t *testing.T) {
 	from := int32(0)
 	to := int32(5)
 
-	dummyEdgeFilter := func(edge datastructure.EdgeCH) bool {
+	dummyEdgeFilter := func(edge datastructure.Edge) bool {
 		return true
 	}
 

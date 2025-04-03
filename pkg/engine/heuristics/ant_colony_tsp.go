@@ -325,8 +325,8 @@ type ContractedGraph interface {
 	GetNodeFirstOutEdges(nodeID int32) []int32
 	GetNodeFirstInEdges(nodeID int32) []int32
 	GetNode(nodeID int32) datastructure.CHNode
-	GetOutEdge(edgeID int32) datastructure.EdgeCH
-	GetInEdge(edgeID int32) datastructure.EdgeCH
+	GetOutEdge(edgeID int32) datastructure.Edge
+	GetInEdge(edgeID int32) datastructure.Edge
 	GetNumNodes() int
 }
 
@@ -342,7 +342,7 @@ func NewHeuristics(route RouteAlgorithm, ch ContractedGraph) *Heuristics {
 	}
 }
 
-func (aco *Heuristics) TravelingSalesmanProblemAntColonyOptimization(cities []int32) ([]datastructure.Coordinate, []datastructure.EdgeCH, float64, float64, [][]float64) {
+func (aco *Heuristics) TravelingSalesmanProblemAntColonyOptimization(cities []int32) ([]datastructure.Coordinate, []datastructure.Edge, float64, float64, [][]float64) {
 
 	spPair := [][]int32{}
 	for i := 0; i < len(cities); i++ {
@@ -393,7 +393,7 @@ func (aco *Heuristics) TravelingSalesmanProblemAntColonyOptimization(cities []in
 	acoTSP := NewACO(distancesMat, 30, 1.0, 0.5, 0.1, 2.0, 0.0, 0.05, len(cities))
 	bestTour, bestETA := acoTSP.Solve(500, 150) // solve tsp pake ant colony optimization
 	tspTourNodes := []datastructure.Coordinate{}
-	tspTourEdgePath := []datastructure.EdgeCH{}
+	tspTourEdgePath := []datastructure.Edge{}
 	bestDistance := 0.0
 	for i := 0; i < len(bestTour); i++ {
 

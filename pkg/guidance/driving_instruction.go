@@ -2,37 +2,33 @@ package guidance
 
 import (
 	"errors"
-	"log"
 	"math"
 
 	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
 )
 
 type ContractedGraph interface {
-	GetNodeOutEdgesCsr2(nodeID int32) ([]datastructure.EdgeCH, error)
-	GetNodeInEdgesCsr2(nodeID int32) ([]datastructure.EdgeCH, error)
+	GetNodeFirstOutEdges(nodeID int32) []int32
+	GetNodeFirstInEdges(nodeID int32) []int32
+
 	GetNode(nodeID int32) datastructure.CHNode
-	GetOutEdge(edgeID int32) datastructure.EdgeCH
-	GetInEdge(edgeID int32) datastructure.EdgeCH
+	GetOutEdge(edgeID int32) datastructure.Edge
+	GetInEdge(edgeID int32) datastructure.Edge
 	GetStreetDirection(streetName int) [2]bool
 	GetStreetNameFromID(streetName int) string
-	GetRoadClassFromID(roadClass int) string
-	GetRoadClassLinkFromID(roadClassLink int) string
+	GetRoadClassFromID(roadClass uint8) string
+	GetRoadClassLinkFromID(roadClassLink uint8) string
 
-	IsShortcutCsr(nodeID int32, edgeID int32, reverse bool) (bool, error)
-	IsRoundaboutCsr(nodeID int32, edgeID int32) (bool, error)
-	GetEdgePointsInBetweenCsr(nodeID int32, edgeID int32, reverse bool) ([]datastructure.Coordinate, error)
-	GetStreetNameCsr(nodeID int32, edgeID int32) (int, error)
-	GetRoadClassCsr(nodeID int32, edgeID int32) (int, error)
-	GetRoadClassLinkCsr(nodeID int32, edgeID int32) (int, error)
-	GetLanesCsr(nodeID int32, edgeID int32) (int, error)
-	GetEdgeInfo(fromNodeID, toNodeID int32) (datastructure.EdgeExtraInfo, error)
+	IsRoundabout(edgeID int32) bool
+	IsShortcut(edgeID int32) bool
+
+	GetEdgeInfo(edgeID int32) datastructure.EdgeExtraInfo
 }
 
 type InstructionsFromEdges struct {
 	contractedGraph       ContractedGraph
 	ways                  []*Instruction
-	prevEdge              datastructure.EdgeCH
+	prevEdge              datastructure.Edge
 	prevEdgeInfo          datastructure.EdgeExtraInfo
 	edgeInfo              datastructure.EdgeExtraInfo
 	prevNode              int32   // previous Node (base node prevEdge)
@@ -81,7 +77,7 @@ func NewDrivingInstruction(ins Instruction, description string, prevETA, prevDis
 	}
 }
 
-func (ife *InstructionsFromEdges) GetDrivingInstructions(path []datastructure.EdgeCH) ([]DrivingInstruction, error) {
+func (ife *InstructionsFromEdges) GetDrivingInstructions(path []datastructure.Edge) ([]DrivingInstruction, error) {
 	drivingInstructions := make([]DrivingInstruction, 0)
 	if len(path) == 0 {
 
@@ -89,15 +85,11 @@ func (ife *InstructionsFromEdges) GetDrivingInstructions(path []datastructure.Ed
 	}
 
 	for _, edge := range path {
-		prevEdgeInfo, err := ife.GetEdgeInfo(ife.prevEdge.FromNodeID, ife.prevEdge.ToNodeID)
-		if err != nil {
-			return nil, err
-		}
+		prevEdgeInfo := ife.GetEdgeInfo(ife.prevEdge.EdgeID)
+
 		ife.prevEdgeInfo = prevEdgeInfo
-		edgeInfo, err := ife.GetEdgeInfo(edge.FromNodeID, edge.ToNodeID)
-		if err != nil {
-			return nil, err
-		}
+		edgeInfo := ife.GetEdgeInfo(edge.EdgeID)
+
 		ife.edgeInfo = edgeInfo
 		ife.AddInstructionFromEdge(edge)
 	}
@@ -117,7 +109,7 @@ func (ife *InstructionsFromEdges) GetDrivingInstructions(path []datastructure.Ed
 	return drivingInstructions, nil
 }
 
-func (ife *InstructionsFromEdges) AddInstructionFromEdge(edge datastructure.EdgeCH) error {
+func (ife *InstructionsFromEdges) AddInstructionFromEdge(edge datastructure.Edge) error {
 	adjNode := edge.ToNodeID
 	baseNode := edge.FromNodeID
 
@@ -128,7 +120,7 @@ func (ife *InstructionsFromEdges) AddInstructionFromEdge(edge datastructure.Edge
 	adjLon := adjNodeData.Lon
 	var latitude, longitude float64
 
-	isRoundabout := ife.edgeInfo.Roundabout
+	isRoundabout := ife.contractedGraph.IsRoundabout(edge.EdgeID)
 
 	latitude = adjLat
 	longitude = adjLon
@@ -166,19 +158,14 @@ func (ife *InstructionsFromEdges) AddInstructionFromEdge(edge datastructure.Edge
 			ife.doublePrevOrientation = ife.prevOrientation
 			if ife.prevInstruction != nil {
 
-				outEdges, err := ife.contractedGraph.GetNodeOutEdgesCsr2(baseNode)
-				if err != nil {
-					return err
-				}
+				outEdges := ife.contractedGraph.GetNodeFirstOutEdges(baseNode)
+
 				for _, e := range outEdges {
 					// add jumlah exit Point dari bundaran
-					eIsRoundabout, err := ife.contractedGraph.IsRoundaboutCsr(e.FromNodeID, e.ToNodeID)
+					edge := ife.contractedGraph.GetOutEdge(e)
+					eIsRoundabout := ife.contractedGraph.IsRoundabout(edge.EdgeID)
 
-					if err != nil {
-						return err
-					}
-
-					if (e.ToNodeID != ife.prevNode) && !eIsRoundabout {
+					if (edge.ToNodeID != ife.prevNode) && !eIsRoundabout {
 						roundaboutInstruction.ExitNumber++
 						break
 					}
@@ -197,15 +184,12 @@ func (ife *InstructionsFromEdges) AddInstructionFromEdge(edge datastructure.Edge
 			ife.ways = append(ife.ways, ife.prevInstruction)
 		}
 
-		outgoingEdges, err := ife.contractedGraph.GetNodeInEdgesCsr2(adjNode)
-		if err != nil {
-			return err
-		}
+		outgoingEdges := ife.contractedGraph.GetNodeFirstInEdges(adjNode)
+
 		for _, e := range outgoingEdges {
-			eIsRoundabout, err := ife.contractedGraph.IsRoundaboutCsr(e.FromNodeID, e.ToNodeID)
-			if err != nil {
-				return err
-			}
+
+			eIsRoundabout := ife.contractedGraph.IsRoundabout(e)
+
 			if !eIsRoundabout {
 				// add jumlah exit Point dari bundaran
 				roundaboutInstruction := ife.prevInstruction
@@ -261,9 +245,9 @@ func (ife *InstructionsFromEdges) AddInstructionFromEdge(edge datastructure.Edge
 	return nil
 }
 
-func (ife *InstructionsFromEdges) GetEdgeInfo(fromNodeID, toNodeID int32) (datastructure.EdgeExtraInfo, error) {
+func (ife *InstructionsFromEdges) GetEdgeInfo(edgeID int32) datastructure.EdgeExtraInfo {
 
-	return ife.contractedGraph.GetEdgeInfo(fromNodeID, toNodeID)
+	return ife.contractedGraph.GetEdgeInfo(edgeID)
 }
 
 /*
@@ -280,7 +264,7 @@ D <--currentEdge---C
 
 jika dari A->B belok kanan, dan dari B->C belok kanan, dan delta bearing antara A->B dan C->D mendekati 180 derajat, maka bisa dianggap U-turn
 */ // nolint: gofmt
-func (ife *InstructionsFromEdges) CheckUTurn(sign int, name string, edge datastructure.EdgeCH) (bool, int) {
+func (ife *InstructionsFromEdges) CheckUTurn(sign int, name string, edge datastructure.Edge) (bool, int) {
 	isUTurn := false
 	uTurnType := U_TURN_UNKNOWN
 
@@ -315,10 +299,7 @@ func (ife *InstructionsFromEdges) Finish() error {
 
 	baseNodeData := ife.contractedGraph.GetNode(ife.prevEdge.FromNodeID)
 
-	prevEdgeExtraInfo, err := ife.GetEdgeInfo(ife.prevEdge.FromNodeID, ife.prevEdge.ToNodeID)
-	if err != nil {
-		return err
-	}
+	prevEdgeExtraInfo := ife.GetEdgeInfo(ife.prevEdge.EdgeID)
 
 	node := ife.contractedGraph.GetNode(ife.prevEdge.ToNodeID)
 	point := datastructure.NewCoordinate(node.Lat, node.Lon)
@@ -342,7 +323,7 @@ prevNode----prevEdge----BaseNode
 						AdjNode
 
 */ // nolint: gofmt
-func (ife *InstructionsFromEdges) GetTurnSign(edge datastructure.EdgeCH, baseNode, prevNode, adjNode int32, name string) (int, error) {
+func (ife *InstructionsFromEdges) GetTurnSign(edge datastructure.Edge, baseNode, prevNode, adjNode int32, name string) (int, error) {
 	baseNodeData := ife.contractedGraph.GetNode(edge.FromNodeID)
 	point := ife.contractedGraph.GetNode(edge.ToNodeID)
 	lat := point.Lat
@@ -396,12 +377,7 @@ func (ife *InstructionsFromEdges) GetTurnSign(edge datastructure.EdgeCH, baseNod
 	// get edge lain dari baseNode yang arahnya continue
 	otherContinueEdge := ife.getOtherEdgeContinueDirection(baseNodeData.Lat, baseNodeData.Lon, ife.prevOrientation, alternativeTurns) //
 
-	otherContinueEdgeExtraInfo, err := ife.GetEdgeInfo(otherContinueEdge.FromNodeID, otherContinueEdge.ToNodeID)
-
-	if err != nil {
-		log.Printf("Error getting edge info: %v", err)
-		return IGNORE, nil
-	}
+	otherContinueEdgeExtraInfo := ife.GetEdgeInfo(otherContinueEdge.EdgeID)
 
 	prevCurrEdgeOrientationDiff := calculateOrientationDelta(baseNodeData.Lat, baseNodeData.Lon, lat, lon, ife.prevOrientation) // bearing difference antara prevNode->baseNode->edge.ToNodeID/adjNode
 	if otherContinueEdge.Weight != 0 {

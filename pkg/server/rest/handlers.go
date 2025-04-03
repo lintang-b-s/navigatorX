@@ -23,7 +23,7 @@ import (
 type NavigationService interface {
 	ShortestPathETA(ctx context.Context, srcLat, srcLon float64,
 		dstLat float64, dstLon float64) (string, float64, []guidance.DrivingInstruction, bool, []datastructure.Coordinate, float64,
-		[]datastructure.EdgeCH, bool, error)
+		[]datastructure.Edge, bool, error)
 
 	ShortestPathAlternativeStreetETA(ctx context.Context, srcLat, srcLon float64,
 		alternativeStreetLat float64, alternativeStreetLon float64,
@@ -107,7 +107,7 @@ type ShortestPathResponse struct {
 }
 
 func NewShortestPathResponse(path string, distance float64, navs []guidance.DrivingInstruction, eta float64, route []datastructure.Coordinate, found bool,
-	edgePath []datastructure.EdgeCH, isCH bool) *ShortestPathResponse {
+	edgePath []datastructure.Edge, isCH bool) *ShortestPathResponse {
 
 	alg := "Contraction Hieararchies + Bidirectional Dijkstra"
 
@@ -210,7 +210,7 @@ func (h *NavigationHandler) shortestPathAlternativeStreetETA(w http.ResponseWrit
 
 	render.Status(r, http.StatusOK)
 	render.JSON(w, r, NewShortestPathResponse(p, dist, n, eta, route, found,
-		[]datastructure.EdgeCH{}, isCH))
+		[]datastructure.Edge{}, isCH))
 }
 
 // Coord model info

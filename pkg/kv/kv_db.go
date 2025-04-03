@@ -25,21 +25,31 @@ func NewKVDB(db *badger.DB) *KVDB {
 	return &KVDB{db}
 }
 
-func (k *KVDB) BuildH3IndexedEdges(ctx context.Context, edges []datastructure.EdgeCH, edgesExtraInfo []datastructure.EdgeExtraInfo) error {
+func (k *KVDB) BuildH3IndexedEdges(ctx context.Context, graphStorage *datastructure.GraphStorage) error {
 	log.Printf("wait until loading contracted graph complete...")
 
 	log.Printf("creating & saving h3 indexed street to key-value db...")
 	kv := make(map[string][]datastructure.KVEdge)
-	for i := range edges {
+	for i := range graphStorage.EdgeStorage {
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("context cancelled")
 		default:
 		}
 
-		roadSegment := edges[i]
-
-		pointsInBetween := edgesExtraInfo[i].PointsInBetween
+		roadSegment := graphStorage.EdgeStorage[i]
+		startIndex := graphStorage.MapEdgeInfo[i].StartPointsIndex
+		endIndex := graphStorage.MapEdgeInfo[i].EndPointsIndex
+		var (
+			pointsInBetween []datastructure.Coordinate
+		)
+		if startIndex < endIndex {
+			pointsInBetween = graphStorage.GlobalPoints[graphStorage.MapEdgeInfo[i].StartPointsIndex:graphStorage.MapEdgeInfo[i].EndPointsIndex]
+		} else {
+			for j := startIndex - 1; j >= endIndex; j-- {
+				pointsInBetween = append(pointsInBetween, graphStorage.GlobalPoints[j])
+			}
+		}
 
 		edgeLat := pointsInBetween[0].Lat
 		edgeLon := pointsInBetween[0].Lon

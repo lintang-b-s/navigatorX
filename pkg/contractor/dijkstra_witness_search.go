@@ -54,7 +54,7 @@ func (ch *ContractedGraph) dijkstraWitnessSearch(fromNodeID, targetNodeID int32,
 
 		visited[currItem.Item] = true
 		for _, outID := range ch.ContractedFirstOutEdge[currItem.Item] {
-			neighbor := ch.ContractedOutEdges[outID]
+			neighbor := ch.GetOutEdge(outID)
 			if visited[neighbor.ToNodeID] || neighbor.ToNodeID == ignoreNodeID ||
 				contracted[neighbor.ToNodeID] {
 				continue

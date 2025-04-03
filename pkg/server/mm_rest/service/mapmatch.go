@@ -9,8 +9,8 @@ import (
 )
 
 type RouteAlgorithm interface {
-	ShortestPathAStar(int32, int32) ([]datastructure.Coordinate, []datastructure.EdgeCH, float64, float64)
-	ShortestPathBiDijkstraCH(from, to int32) ([]datastructure.Coordinate, []datastructure.EdgeCH, float64, float64)
+	ShortestPathAStar(int32, int32) ([]datastructure.Coordinate, []datastructure.Edge, float64, float64)
+	ShortestPathBiDijkstraCH(from, to int32) ([]datastructure.Coordinate, []datastructure.Edge, float64, float64)
 }
 
 type KVDB interface {
@@ -18,7 +18,7 @@ type KVDB interface {
 }
 
 type Matching interface {
-	MapMatch(gps []datastructure.StateObservationPair, nextStateID int) ([]datastructure.Coordinate, []datastructure.EdgeCH, []datastructure.Coordinate)
+	MapMatch(gps []datastructure.StateObservationPair, nextStateID int) ([]datastructure.Coordinate, []datastructure.Edge, []datastructure.Coordinate)
 }
 
 type RoadSnapper interface {
@@ -31,20 +31,20 @@ type ContractedGraph interface {
 	GetNodeFirstOutEdges(nodeID int32) []int32
 	GetNodeFirstInEdges(nodeID int32) []int32
 	GetNode(nodeID int32) datastructure.CHNode
-	GetOutEdge(edgeID int32) datastructure.EdgeCH
-	GetInEdge(edgeID int32) datastructure.EdgeCH
-	GetOutEdges() []datastructure.EdgeCH
-	GetInEdges() []datastructure.EdgeCH
+	GetOutEdge(edgeID int32) datastructure.Edge
+	GetInEdge(edgeID int32) datastructure.Edge
+	GetOutEdges() []datastructure.Edge
+	GetInEdges() []datastructure.Edge
 	GetNumNodes() int
 	Contraction() (err error)
-	SetCHReady()
+
 	SaveToFile() error
 	LoadGraph() error
 	GetStreetDirection(streetName int) [2]bool
 	GetStreetNameFromID(streetName int) string
-	GetRoadClassFromID(roadClass int) string
-	GetRoadClassLinkFromID(roadClassLink int) string
-	GetEdgePointsInBetween(fromNodeID, toNodeID int32, reverse bool) []datastructure.Coordinate
+	GetRoadClassFromID(roadClass uint8) string
+	GetRoadClassLinkFromID(roadClassLink uint8) string
+	GetEdgePointsInBetween(edgeID int32) []datastructure.Coordinate
 }
 
 type MapMatchingService struct {
@@ -63,7 +63,7 @@ const (
 )
 
 func (uc *MapMatchingService) MapMatch(ctx context.Context, gps []datastructure.Coordinate) (string,
-	[]datastructure.Coordinate, []datastructure.EdgeCH, []datastructure.Coordinate, error) {
+	[]datastructure.Coordinate, []datastructure.Edge, []datastructure.Coordinate, error) {
 	hmmPair := []datastructure.StateObservationPair{}
 
 	stateID := 0
@@ -145,7 +145,7 @@ func (uc *MapMatchingService) FilterEdges(edges []datastructure.OSMObject, pLat,
 
 		edge := uc.ch.GetOutEdge(edgeID)
 
-		pointsInBetween := uc.ch.GetEdgePointsInBetween(edge.FromNodeID, edge.ToNodeID, false)
+		pointsInBetween := uc.ch.GetEdgePointsInBetween(edge.EdgeID)
 
 		pos := geo.PointPositionBetweenLinePoints(pLat, pLon, pointsInBetween) - 1
 
@@ -173,14 +173,14 @@ func (uc *MapMatchingService) FilterEdges(edges []datastructure.OSMObject, pLat,
 	return filteredEdges
 }
 
-func (uc *MapMatchingService) NearestRoadSegments(ctx context.Context, lat, lon float64, radius float64, k int) ([]datastructure.EdgeCH, []float64, error) {
+func (uc *MapMatchingService) NearestRoadSegments(ctx context.Context, lat, lon float64, radius float64, k int) ([]datastructure.Edge, []float64, error) {
 	nearestEdges := uc.roadSnapper.SnapToRoadsWithinRadius(datastructure.Point{Lat: lat, Lon: lon}, radius, k)
 
 	selected := make(map[int32]struct{})
 
 	dists := make([]float64, 0, len(nearestEdges))
 
-	edges := make([]datastructure.EdgeCH, 0)
+	edges := make([]datastructure.Edge, 0)
 	for _, roadSegment := range nearestEdges {
 		if _, ok := selected[int32(roadSegment.ID)]; ok {
 			// can be duplicate . because i insert two same edges into r-tree but with different bounding boxes (depending on the baseNode/targetNode of the edge).
@@ -197,7 +197,7 @@ func (uc *MapMatchingService) NearestRoadSegments(ctx context.Context, lat, lon 
 
 		gpsLoc := datastructure.NewCoordinate(lat, lon)
 
-		pointsInBetween := uc.ch.GetEdgePointsInBetween(edge.FromNodeID, edge.ToNodeID, false)
+		pointsInBetween := uc.ch.GetEdgePointsInBetween(edge.EdgeID)
 		fromNodeLoc := datastructure.NewCoordinate(pointsInBetween[0].Lat, pointsInBetween[0].Lon)
 		toNodeLoc := datastructure.NewCoordinate(pointsInBetween[len(pointsInBetween)-1].Lat, pointsInBetween[len(pointsInBetween)-1].Lon)
 		projection := geo.ProjectPointToLineCoord(fromNodeLoc, toNodeLoc, gpsLoc)

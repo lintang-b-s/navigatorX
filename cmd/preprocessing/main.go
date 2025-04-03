@@ -58,8 +58,7 @@ func main() {
 
 	log.Printf("reading osm file %s", *mapFile)
 	osmParser := osmparser.NewOSMParserV2()
-	processedNodes, processedEdges, streetDirection,
-		edgesExtraInfo, nodeInfo := osmParser.Parse(*mapFile)
+	processedNodes, graphStorage, streetDirection := osmParser.Parse(*mapFile)
 
 	ch := contractor.NewContractedGraph()
 
@@ -79,21 +78,18 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		err = kvDB.BuildH3IndexedEdges(ctx, processedEdges, edgesExtraInfo)
+		err = kvDB.BuildH3IndexedEdges(ctx, graphStorage)
 		if err != nil {
+			log.Printf("error building h3 index: %v", err)
 			panic(err)
 		}
 	}()
 
-	ch.InitCHGraph(processedNodes, processedEdges, streetDirection, osmParser.GetTagStringIdMap(),
-		edgesExtraInfo, nodeInfo)
+	ch.InitCHGraph(processedNodes, graphStorage, streetDirection, osmParser.GetTagStringIdMap())
 
 	if !*mapmatch {
 		ch.Contraction()
-		err := ch.GroupNodeByProximityAndSaveToDisk()
-		if err != nil {
-			panic(err)
-		}
+
 	}
 
 	log.Printf("Saving Contracted Graph to a file...")
