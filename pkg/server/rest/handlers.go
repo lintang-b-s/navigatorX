@@ -25,6 +25,9 @@ type NavigationService interface {
 		dstLat float64, dstLon float64) (string, float64, []guidance.DrivingInstruction, bool, []datastructure.Coordinate, float64,
 		[]datastructure.Edge, bool, error)
 
+	ShortestPathWithAlternativeRoutes(ctx context.Context, srcLat, srcLon float64,
+		dstLat float64, dstLon float64) ([]datastructure.AlternativeRouteInfo, []string, [][]guidance.DrivingInstruction, error)
+
 	ShortestPathAlternativeStreetETA(ctx context.Context, srcLat, srcLon float64,
 		alternativeStreetLat float64, alternativeStreetLon float64,
 		dstLat float64, dstLon float64) (string, float64, []guidance.DrivingInstruction, bool, []datastructure.Coordinate, float64, bool, error)
@@ -47,6 +50,7 @@ func NavigatorRouter(r *chi.Mux, svc NavigationService, m *metrics) {
 	r.Group(func(r chi.Router) {
 		r.Route("/api/navigations", func(r chi.Router) {
 			r.Post("/shortest-path", handler.shortestPathETA)
+			r.Post("/shortest-path-alternative-routes", handler.shortestPathWithAlternativeRoutes)
 			r.Post("/shortest-path-alternative-street", handler.shortestPathAlternativeStreetETA)
 			r.Post("/many-to-many", handler.ManyToManyQuery)
 			r.Post("/tsp", handler.TravelingSalesmanProblemSimulatedAnnealing)
@@ -155,7 +159,7 @@ func (h *NavigationHandler) shortestPathETA(w http.ResponseWriter, r *http.Reque
 	p, dist, n, found, route, eta, edgePath, isCH, err := h.svc.ShortestPathETA(r.Context(), data.SrcLat, data.SrcLon, data.DstLat, data.DstLon)
 	if err != nil {
 		if !found {
-			render.Render(w, r, ErrInvalidRequest(errors.New("node not found")))
+			render.Render(w, r, ErrInvalidRequest(errors.New("no path found from source to destination")))
 			return
 		}
 		render.Render(w, r, ErrChi(err))
@@ -164,6 +168,66 @@ func (h *NavigationHandler) shortestPathETA(w http.ResponseWriter, r *http.Reque
 
 	render.Status(r, http.StatusOK)
 	render.JSON(w, r, NewShortestPathResponse(p, dist, n, eta, route, found, edgePath, isCH))
+}
+
+type ShortestPathWithAlternativeRoutesResponse struct {
+	Routes []ShortestPathResponse `json:"routes"`
+}
+
+func NewShortestPathWithAlternativeRoutesResponse(routes []datastructure.AlternativeRouteInfo,
+	routePolylines []string, routeDrivingInstruction [][]guidance.DrivingInstruction) *ShortestPathWithAlternativeRoutesResponse {
+
+	alg := "Contraction Hieararchies + Bidirectional Dijkstra"
+
+	routesResp := make([]ShortestPathResponse, len(routes))
+	for i, route := range routes {
+		routesResp[i] = ShortestPathResponse{
+			Path:        routePolylines[i],
+			Dist:        util.RoundFloat(route.Dist/1000, 2),
+			ETA:         route.Eta,
+			Alg:         alg,
+			Found:       true,
+			Navigations: routeDrivingInstruction[i],
+			Route:       []datastructure.Coordinate{},
+		}
+	}
+
+	return &ShortestPathWithAlternativeRoutesResponse{
+		Routes: routesResp,
+	}
+}
+
+// shortes
+
+func (h *NavigationHandler) shortestPathWithAlternativeRoutes(w http.ResponseWriter, r *http.Request) {
+	data := &SortestPathRequest{}
+	if err := render.Bind(r, data); err != nil {
+		render.Render(w, r, ErrInvalidRequest(err))
+		return
+	}
+
+	validate := validator.New()
+	if err := validate.Struct(*data); err != nil {
+		english := en.New()
+		uni := ut.New(english, english)
+		trans, _ := uni.GetTranslator("en")
+		_ = enTranslations.RegisterDefaultTranslations(validate, trans)
+		vv := translateError(err, trans)
+		render.Render(w, r, ErrValidation(err, vv))
+		return
+	}
+
+	alternativeRoutes, routePolylines, routeDrivingInstructions, err :=
+		h.svc.ShortestPathWithAlternativeRoutes(r.Context(), data.SrcLat, data.SrcLon, data.DstLat, data.DstLon)
+	if err != nil {
+
+		render.Render(w, r, ErrChi(err))
+		return
+	}
+
+	render.Status(r, http.StatusOK)
+	render.JSON(w, r,
+		NewShortestPathWithAlternativeRoutesResponse(alternativeRoutes, routePolylines, routeDrivingInstructions))
 }
 
 // shortestPathAlternativeStreetETA

@@ -31,6 +31,8 @@ type ContractedGraph struct {
 	Metadata               Metadata
 	ContractedFirstOutEdge [][]int32
 	ContractedFirstInEdge  [][]int32
+	SCC                    []int32 // map for nodeID -> sccID
+	SCCNodesCount          []int32 // map for sccID -> nodes count in scc
 
 	nextEdgeID int32
 
@@ -108,8 +110,7 @@ func (ch *ContractedGraph) InitCHGraph(processedNodes []datastructure.CHNode,
 	ch.Metadata.OutEdgeOrigCount = make([]int, gLen)
 	ch.Metadata.ShortcutsCount = 0
 
-	outEdgeID := int32(0)
-	inEdgeID := int32(0)
+	edgeID := int32(0)
 	ch.ContractedFirstOutEdge = make([][]int32, len(ch.ContractedNodes))
 	ch.ContractedFirstInEdge = make([][]int32, len(ch.ContractedNodes))
 
@@ -118,16 +119,16 @@ func (ch *ContractedGraph) InitCHGraph(processedNodes []datastructure.CHNode,
 	// init graph original
 	for _, edge := range ch.GraphStorage.EdgeStorage {
 
-		ch.ContractedFirstOutEdge[edge.FromNodeID] = append(ch.ContractedFirstOutEdge[edge.FromNodeID], int32(outEdgeID))
+		ch.ContractedFirstOutEdge[edge.FromNodeID] = append(ch.ContractedFirstOutEdge[edge.FromNodeID], int32(edgeID))
 
-		outEdgeID++
 		ch.Metadata.OutEdgeOrigCount[edge.FromNodeID]++
 
 		// in Edges
-		ch.ContractedFirstInEdge[edge.ToNodeID] = append(ch.ContractedFirstInEdge[edge.ToNodeID], int32(inEdgeID))
+		ch.ContractedFirstInEdge[edge.ToNodeID] = append(ch.ContractedFirstInEdge[edge.ToNodeID], int32(edgeID))
 
-		inEdgeID++
-		ch.Metadata.InEdgeOrigCount[edge.FromNodeID]++
+		edgeID++
+
+		ch.Metadata.InEdgeOrigCount[edge.ToNodeID]++
 
 		// tambah degree nodenya
 		ch.Metadata.degrees[edge.FromNodeID]++
@@ -141,6 +142,7 @@ func (ch *ContractedGraph) InitCHGraph(processedNodes []datastructure.CHNode,
 	ch.Metadata.NodeCount = gLen
 	ch.Metadata.MeanDegree = float64(len(ch.GraphStorage.EdgeStorage) * 1.0 / gLen)
 
+	ch.kosarajuSCC()
 }
 
 func (ch *ContractedGraph) Contraction() (err error) {
@@ -597,6 +599,14 @@ func (ch *ContractedGraph) IsTrafficLight(nodeID int32) bool {
 
 func (ch *ContractedGraph) SetEdgeInfo(edgeInfo datastructure.EdgeExtraInfo) {
 	ch.GraphStorage.AppendMapEdgeInfo(edgeInfo)
+}
+
+func (ch *ContractedGraph) GetNodeSCCID(nodeID int32) int32 {
+	return ch.SCC[nodeID]
+}
+
+func (ch *ContractedGraph) IsInBigComponent(nodeID int32) bool {
+	return ch.SCCNodesCount[ch.SCC[nodeID]] >= 1000
 }
 
 func (ch *ContractedGraph) SaveToFile() error {
