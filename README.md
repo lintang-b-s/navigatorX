@@ -45,7 +45,7 @@ Make sure you have done the preprocessing stage above!
 ### Shortest Path Between 2 Place in Openstreetmap
 
 ```
-1. wait until there is a log "server started at :5000". If you want the query to be >10x faster, wait for the Contraction Hierarchies preprocessing to complete.
+1. wait until there is a log "server started at :5000".
 2. request ke shortest path (source=surakarta , destination=pantai parangtritis) [untuk data openstreetmap pada step setup]
 curl --location 'http://localhost:5000/api/navigations/shortest-path' \
 --header 'Content-Type: application/json' \
@@ -58,6 +58,19 @@ curl --location 'http://localhost:5000/api/navigations/shortest-path' \
 
 Note: Source & Destination Coordinates must be around Yogyakarta Province/Surakarta City/Klaten if using OpenStreetMap data in the setup step
 5. Copy the polyline string path of the response endpoint result to https://valhalla.github.io/demos/polyline . Check Unsescape '\'. The shortest route will appear on the map. :)
+```
+
+### Alternative Routes
+```
+1.  wait until there is a log "server started at :5000".
+curl --location 'http://localhost:5000/api/navigations/shortest-path-alternative-routes' \
+--header 'Content-Type: application/json' \
+--data '{
+  "src_lat":  -7.75696, 
+    "src_lon":  110.37668,
+    "dst_lat": -7.759619, 
+    "dst_lon":   110.399085
+}'
 ```
 
 
@@ -399,7 +412,7 @@ Note:  "sources" and "targets" must be around the province of Yogyakarta/Surakar
 ### Shortest Path with alternative street
 
 ```
-1. wait until there is a log "server started at :5000". If you want the query to be >10x faster, wait for the Contraction Hierarchies preprocessing to complete.
+1. wait until there is a log "server started at :5000".
 2. request query shortest path w/ alternative street
 curl --location 'http://localhost:5000/api/navigations/shortest-path-alternative-street' \
 --header 'Content-Type: application/json' \
