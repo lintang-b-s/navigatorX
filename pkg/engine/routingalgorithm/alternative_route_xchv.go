@@ -56,7 +56,7 @@ func (ar *AlternativeRouteXCHV) RunAlternativeRouteXCHV(from, to int32) ([]datas
 
 		// use stopping criteria from x-bdv
 		// prune any vertex u with dist(s, u) + dist(u, t) > (1 + epsilon)`(Opt).
-		if camefromf[vnode].Weight+camefromb[vnode].Weight > (1+ar.epsilon)*bestDist {
+		if camefromf[vnode].Dist+camefromb[vnode].Dist > (1+ar.epsilon)*bestDist {
 			continue
 		}
 
@@ -66,7 +66,7 @@ func (ar *AlternativeRouteXCHV) RunAlternativeRouteXCHV(from, to int32) ([]datas
 		// for calculating plateau, we use camefrom from s-t shortest-path tree
 		plateau := ar.calculatePlateauContainingV(camefromf, camefromb, vnode)
 
-		objectiveValue := ar.calculateObjectiveFunctionValue(camefromf[vnode].Weight+camefromb[vnode].Weight,
+		objectiveValue := ar.calculateObjectiveFunctionValue(camefromf[vnode].Dist+camefromb[vnode].Dist,
 			sharedDistanceWithOpt, plateau)
 		alternativeRoute := datastructure.NewAlternativeRouteInfo(objectiveValue, vnode)
 
@@ -163,7 +163,7 @@ func (ar *AlternativeRouteXCHV) calculateDistanceShare(nodesOne []datastructure.
 		_, fromNodeInPathOne := nodesOneSet[edge.FromNodeID]
 		_, toNodeInPathOne := nodesOneSet[edge.ToNodeID]
 		if fromNodeInPathOne && toNodeInPathOne {
-			sharedDistance += edge.Weight
+			sharedDistance += edge.Dist
 		}
 	}
 
@@ -188,7 +188,7 @@ func (ar *AlternativeRouteXCHV) calculatePlateauContainingV(vCameFromf, vCameFro
 	// check if this node is also visited in backward search if yes, add the edge dist to plateau
 	// and continue backtrack to the parent node, else break
 	parentFrom := vCameFromf[vNode].NodeID
-	parentFromEdgeDist := vCameFromf[vNode].Weight
+	parentFromEdgeDist := vCameFromf[vNode].Dist
 	for parentFrom != -1 {
 		// for a node the be included in plateau, the node must be traversed in both forward and backward search
 
@@ -200,14 +200,14 @@ func (ar *AlternativeRouteXCHV) calculatePlateauContainingV(vCameFromf, vCameFro
 		plateau += parentFromEdgeDist
 
 		parentFrom = vCameFromf[parentFrom].NodeID
-		parentFromEdgeDist = vCameFromf[parentFrom].Weight
+		parentFromEdgeDist = vCameFromf[parentFrom].Dist
 	}
 
 	// then we perform backtrack from v to t, then for every node in the backtrack path
 	// check if this node is also visited in forward search if yes, add the edge dist to plateau
 	// and continue backtrack to the parent node, else break
 	parentTo := vCameFromb[vNode].NodeID
-	parentToEdgeDist := vCameFromb[vNode].Weight
+	parentToEdgeDist := vCameFromb[vNode].Dist
 	for parentTo != -1 {
 		if _, ok := vCameFromf[parentTo]; !ok {
 			break
@@ -216,7 +216,7 @@ func (ar *AlternativeRouteXCHV) calculatePlateauContainingV(vCameFromf, vCameFro
 		plateau += parentToEdgeDist
 
 		parentTo = vCameFromb[parentTo].NodeID
-		parentToEdgeDist = vCameFromb[parentTo].Weight
+		parentToEdgeDist = vCameFromb[parentTo].Dist
 	}
 
 	return plateau
@@ -235,7 +235,7 @@ func (ar *AlternativeRouteXCHV) tTest(lengthPvExcludeOpt float64, edgeIDContainV
 	distancef := 0.0
 	// Among all vertices in P1 that are at least T away from v, let x be the closest to v
 	for edgeIDContainV-1 >= 0 && distancef < lengthPvExcludeOpt {
-		distancef += pvEdges[edgeIDContainV-1].Weight
+		distancef += pvEdges[edgeIDContainV-1].Dist
 		xNode = pvEdges[edgeIDContainV-1].FromNodeID
 
 		edgeIDContainV--
@@ -244,7 +244,7 @@ func (ar *AlternativeRouteXCHV) tTest(lengthPvExcludeOpt float64, edgeIDContainV
 	distanceb := 0.0
 	// Among all vertices in P2 that are at least T away from v, let y be the closest to v
 	for edgeIDContainV < len(pvEdges) && distanceb < lengthPvExcludeOpt {
-		distanceb += pvEdges[edgeIDContainV].Weight
+		distanceb += pvEdges[edgeIDContainV].Dist
 		yNode = pvEdges[edgeIDContainV].ToNodeID
 
 		edgeIDContainV++
