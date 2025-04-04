@@ -232,6 +232,7 @@ func (v *ViterbiAlgorithm) initializeStateProbabilities(
 	return nil
 }
 
+
 func (v *ViterbiAlgorithm) forwardStep(
 	observation int,
 	prevCandidates []int,

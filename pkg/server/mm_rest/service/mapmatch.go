@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"log"
+	"sort"
 
 	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
 	"github.com/lintang-b-s/navigatorx/pkg/geo"
@@ -59,7 +60,7 @@ func NewMapMatchingService(mapMatching Matching, rs RoadSnapper, kv KVDB, ch Con
 }
 
 const (
-	distThresold = 4.0
+	distThresold = 4.07
 )
 
 func (uc *MapMatchingService) MapMatch(ctx context.Context, gps []datastructure.Coordinate) (string,
@@ -124,7 +125,8 @@ func (uc *MapMatchingService) NearestRoadSegmentsForMapMatching(lat, lon float64
 }
 
 const (
-	radius = 80.0 // dist(projected, obs) <  80 meter
+	radius = 300.0
+	k      = 32
 )
 
 func (uc *MapMatchingService) FilterEdges(edges []datastructure.OSMObject, pLat, pLon float64,
@@ -134,14 +136,14 @@ func (uc *MapMatchingService) FilterEdges(edges []datastructure.OSMObject, pLat,
 
 	edgeSet := make(map[int32]struct{}, len(edges))
 
-	for _, edge := range edges {
+	for _, edgeObj := range edges {
 
-		if _, ok := edgeSet[int32(edge.ID)]; ok {
+		if _, ok := edgeSet[int32(edgeObj.ID)]; ok {
 			continue
 		}
-		edgeSet[int32(edge.ID)] = struct{}{}
+		edgeSet[int32(edgeObj.ID)] = struct{}{}
 
-		edgeID := int32(edge.ID)
+		edgeID := int32(edgeObj.ID)
 
 		edge := uc.ch.GetOutEdge(edgeID)
 
@@ -158,19 +160,34 @@ func (uc *MapMatchingService) FilterEdges(edges []datastructure.OSMObject, pLat,
 
 		if dist < radius {
 			filteredEdges = append(filteredEdges, &datastructure.State{
-				Dist:            dist,
-				EdgeID:          edgeID,
-				PointsInBetween: pointsInBetween,
-				EdgeFromNodeID:  edge.FromNodeID,
-				EdgeToNodeID:    edge.ToNodeID,
-				ProjectionID:    -1,
-				Type:            datastructure.VirtualNode, // by default all virtual node
-				ObservationID:   obsID,
+				Dist:              dist,
+				EdgeID:            edgeID,
+				PointsInBetween:   pointsInBetween,
+				EdgeFromNodeID:    edge.FromNodeID,
+				EdgeToNodeID:      edge.ToNodeID,
+				ProjectionID:      -1,
+				Type:              datastructure.VirtualNode, // by default all virtual node
+				ObservationID:     obsID,
+				PerpendicularDist: dist,
 			})
 		}
+
 	}
 
+	sort.Slice(filteredEdges, func(i, j int) bool {
+		return filteredEdges[i].Dist < filteredEdges[j].Dist
+	})
+
+	filteredEdges = filteredEdges[:min(len(filteredEdges), k)]
+
 	return filteredEdges
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func (uc *MapMatchingService) NearestRoadSegments(ctx context.Context, lat, lon float64, radius float64, k int) ([]datastructure.Edge, []float64, error) {

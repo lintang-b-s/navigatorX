@@ -2,6 +2,7 @@ package contractor
 
 import (
 	"log"
+	"math"
 
 	"github.com/lintang-b-s/navigatorx/pkg/util"
 )
@@ -24,11 +25,37 @@ func (ch *ContractedGraph) kosarajuSCC() [][]int32 {
 	// reset visited
 	visited = make([]bool, n)
 
+	roots := make([]int32, n)
+
 	for _, v := range order {
 		if !visited[v] {
 			component := make([]int32, 0)
 			ch.dfs(v, &component, visited, true)
 			components = append(components, component)
+			root := int32(math.MaxInt32)
+			for _, node := range component {
+				if node < root {
+					root = node
+				}
+			}
+
+			for _, node := range component {
+				roots[node] = root
+			}
+
+		}
+	}
+
+	// add edges to condensation graph
+	condAdj := make([][]int32, n)
+	for v := int32(0); v < n; v++ {
+		for _, outEdgeID := range ch.GetNodeFirstOutEdges(v) {
+			outEdge := ch.GetOutEdge(outEdgeID)
+			toNodeID := outEdge.ToNodeID
+
+			if roots[v] != roots[toNodeID] {
+				condAdj[roots[v]] = append(condAdj[roots[v]], roots[toNodeID])
+			}
 		}
 	}
 
@@ -41,6 +68,15 @@ func (ch *ContractedGraph) kosarajuSCC() [][]int32 {
 			ch.SCC[v] = int32(i)
 		}
 		ch.SCCNodesCount[i] = int32(len(component))
+	}
+
+	ch.SCCCondensationAdj = make([][]int32, len(components))
+	for fromRootID, adjRootIDs := range condAdj {
+		sccOfV := ch.SCC[fromRootID]
+		for _, adjRootID := range adjRootIDs {
+			sccOfAdjRootID := ch.SCC[adjRootID]
+			ch.SCCCondensationAdj[sccOfV] = append(ch.SCCCondensationAdj[sccOfV], sccOfAdjRootID)
+		}
 	}
 
 	return components

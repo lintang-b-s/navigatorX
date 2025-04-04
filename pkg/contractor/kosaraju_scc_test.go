@@ -38,4 +38,8 @@ func TestKosarajuSCC(t *testing.T) {
 	assert.Equal(t, 3, len(scc[0]))
 	assert.Equal(t, 2, len(scc[1]))
 
+	condAdj := ch.SCCCondensationAdj
+	assert.Equal(t, 2, len(condAdj))
+	assert.Equal(t, 1, len(condAdj[0]))
+	assert.Equal(t, int32(1), condAdj[0][0])
 }

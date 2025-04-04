@@ -11,7 +11,7 @@ import (
 type cameFromPairXCHV struct {
 	Edge   datastructure.Edge
 	NodeID int32
-	Dist   float64
+	Weight   float64
 }
 
 func (rt *RouteAlgorithm) ShortestPathBiDijkstraXCHV(from, to int32) ([]datastructure.CHNode,
@@ -115,7 +115,7 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraXCHV(from, to int32) ([]datastru
 
 							neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
 							frontier.Insert(neighborNode)
-							cameFromf[toNID] = cameFromPairXCHV{edge, node.Item, newDist}
+							cameFromf[toNID] = cameFromPairXCHV{edge, node.Item, newCost}
 						} else if newCost < df[toNID] {
 							df[toNID] = newCost
 
@@ -124,7 +124,7 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraXCHV(from, to int32) ([]datastru
 							neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
 							frontier.DecreaseKey(neighborNode)
 
-							cameFromf[toNID] = cameFromPairXCHV{edge, node.Item, newDist}
+							cameFromf[toNID] = cameFromPairXCHV{edge, node.Item, newCost}
 						}
 
 						_, ok = db[toNID]
@@ -168,7 +168,7 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraXCHV(from, to int32) ([]datastru
 
 							neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
 							frontier.Insert(neighborNode)
-							cameFromb[toNID] = cameFromPairXCHV{edge, node.Item, newDist}
+							cameFromb[toNID] = cameFromPairXCHV{edge, node.Item, newCost}
 						}
 						if newCost < db[toNID] {
 							db[toNID] = newCost
@@ -178,7 +178,7 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraXCHV(from, to int32) ([]datastru
 							neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
 							frontier.DecreaseKey(neighborNode)
 
-							cameFromb[toNID] = cameFromPairXCHV{edge, node.Item, newDist}
+							cameFromb[toNID] = cameFromPairXCHV{edge, node.Item, newCost}
 						}
 
 						_, ok = df[toNID]
@@ -388,7 +388,7 @@ func (rt *RouteAlgorithm) unpackBackwardXCHV(edge datastructure.Edge, path *[]da
 		*ePath = append(*ePath, edge)
 
 		// for calculating plateau we must update the camefrom to, because all edge in camefrom is a shorcut
-		cameFromf[edge.ToNodeID] = cameFromPairXCHV{edge, edge.FromNodeID, *dist}
+		cameFromf[edge.ToNodeID] = cameFromPairXCHV{edge, edge.FromNodeID, *eta}
 	} else {
 		var (
 			edgeTwo datastructure.Edge
@@ -440,7 +440,7 @@ func (rt *RouteAlgorithm) unpackForwardXCHV(edge datastructure.Edge, path *[]dat
 
 		*ePath = append(*ePath, edge)
 
-		cameFromb[edge.ToNodeID] = cameFromPairXCHV{edge, edge.FromNodeID, *dist}
+		cameFromb[edge.ToNodeID] = cameFromPairXCHV{edge, edge.FromNodeID, *eta}
 	} else {
 
 		var (

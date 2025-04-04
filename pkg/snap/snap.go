@@ -118,7 +118,6 @@ func (rs *RoadSnapper) BuildRoadSnapper(ch *contractor.ContractedGraph) {
 		if (idx+1)%10000 == 0 {
 			log.Printf("inserting edge id %d to r-tree...", idx+1)
 		}
-
 		rs.insertEdgeToRtree(edge, ch)
 
 		duplicateEdges[int(edge.FromNodeID)][int(edge.ToNodeID)] = struct{}{}
@@ -126,11 +125,12 @@ func (rs *RoadSnapper) BuildRoadSnapper(ch *contractor.ContractedGraph) {
 }
 
 const (
-	edgeBBRadius = 0.025 // 25 meter from fromNode & toNode
+	edgeBBRadius = 0.15 // 150 meter from fromNode & toNode
 )
 
 // insertEdgeToRtree insert filtered osm ways (road segments) to rtree
-func (rs *RoadSnapper) insertEdgeToRtree(edge datastructure.Edge, ch *contractor.ContractedGraph) {
+func (rs *RoadSnapper) insertEdgeToRtree(edge datastructure.Edge, ch *contractor.ContractedGraph,
+) {
 	tag := make(map[int]int)
 	tag[0] = int(edge.EdgeID)
 
@@ -160,7 +160,6 @@ func (rs *RoadSnapper) insertEdgeToRtree(edge datastructure.Edge, ch *contractor
 	)
 
 	rs.rtree.InsertLeaf(nodeBB, osmObj, false)
-
 }
 
 func max(a, b float64) float64 {

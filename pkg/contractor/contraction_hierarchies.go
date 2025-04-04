@@ -33,6 +33,7 @@ type ContractedGraph struct {
 	ContractedFirstInEdge  [][]int32
 	SCC                    []int32 // map for nodeID -> sccID
 	SCCNodesCount          []int32 // map for sccID -> nodes count in scc
+	SCCCondensationAdj     [][]int32
 
 	nextEdgeID int32
 
@@ -41,7 +42,7 @@ type ContractedGraph struct {
 }
 
 var maxPollFactorHeuristic = 5
-var maxPollFactorContraction = 200
+var maxPollFactorContraction = 500
 
 func NewContractedGraph() *ContractedGraph {
 
@@ -225,7 +226,7 @@ findAndHandleShortcuts , ketika mengontraksi node v, kita  harus cari shortest p
 kalau cost dari shortest path u->w  <= c(u,v) + c(v,w) , tambahkan shortcut edge (u,w).
 */
 func (ch *ContractedGraph) findAndHandleShortcuts(nodeID int32, shortcutHandler func(fromNodeID, toNodeID int32, nodeIdx int32, weight float64,
-	outOrigEdgeCount, inOrigEdgeCount int),
+	outOrigEdgeCount, inOrigEdgeCount int, shortcuts *[]shortcut),
 	maxVisitedNodes int, contracted []bool) (int, int, int, error) {
 	degree := 0
 	shortcutCount := 0      // jumlah shortcut yang ditambahkan
@@ -255,6 +256,8 @@ func (ch *ContractedGraph) findAndHandleShortcuts(nodeID int32, shortcutHandler 
 		}
 	}
 	pMax = pInMax + pOutMax
+
+	shortcuts := make([]shortcut, 0)
 
 	for _, inIdx := range ch.ContractedFirstInEdge[nodeID] {
 
@@ -297,25 +300,52 @@ func (ch *ContractedGraph) findAndHandleShortcuts(nodeID int32, shortcutHandler 
 
 			shortcutCount++
 			shortcutHandler(fromNodeID, toNode, nodeID, existingDirectWeight,
-				ch.Metadata.OutEdgeOrigCount[nodeID], ch.Metadata.InEdgeOrigCount[nodeID])
+				ch.Metadata.OutEdgeOrigCount[nodeID], ch.Metadata.InEdgeOrigCount[nodeID], &shortcuts)
 
 		}
 	}
+
+	ch.addShorcuts(shortcuts)
 
 	originalEdgesCount = ch.Metadata.InEdgeOrigCount[nodeID] + ch.Metadata.OutEdgeOrigCount[nodeID]
 
 	return degree, shortcutCount, originalEdgesCount, nil
 }
 
+func (ch *ContractedGraph) addShorcuts(shortcuts []shortcut) {
+	for _, shortcut := range shortcuts {
+
+		fromNodeID := shortcut.fromNodeID
+		toNodeID := shortcut.toNodeID
+		contractedNodeID := shortcut.contractedNodeID
+		weight := shortcut.weight
+		dist := shortcut.dist
+
+		currEdgeID := int32(len(ch.GraphStorage.EdgeStorage))
+
+		// out edge
+		ch.ContractedFirstOutEdge[fromNodeID] = append(ch.ContractedFirstOutEdge[fromNodeID], currEdgeID)
+		ch.Metadata.degrees[fromNodeID]++
+
+		// in edge
+		ch.ContractedFirstInEdge[toNodeID] = append(ch.ContractedFirstInEdge[toNodeID], currEdgeID)
+		ch.Metadata.degrees[toNodeID]++
+
+		ch.GraphStorage.AppendEdgeStorage(datastructure.NewEdge(
+			currEdgeID, toNodeID, fromNodeID, contractedNodeID, weight, dist,
+		))
+	}
+}
+
 func countShortcut(fromNodeID, toNodeID int32, nodeID int32, weight float64,
-	outOrigEdgeCount, inOrigEdgeCount int) {
+	outOrigEdgeCount, inOrigEdgeCount int, shortcuts *[]shortcut) {
 }
 
 /*
 addOrUpdateShortcut, menambahkan shortcut (u,w) jika path dari u->w tanpa lewati v cost nya lebih kecil dari c(u,v) + c(v,w).
 */
 func (ch *ContractedGraph) addOrUpdateShortcut(fromNodeID, toNodeID int32, nodeID int32, weight float64,
-	outOrigEdgeCount, inOrigEdgeCount int) {
+	outOrigEdgeCount, inOrigEdgeCount int, shortcuts *[]shortcut) {
 
 	exists := false
 	for _, outID := range ch.ContractedFirstOutEdge[fromNodeID] {
@@ -323,9 +353,11 @@ func (ch *ContractedGraph) addOrUpdateShortcut(fromNodeID, toNodeID int32, nodeI
 		if edge.ToNodeID != toNodeID {
 			continue
 		}
-		exists = true
-		isShortcut := ch.IsShortcut(edge.EdgeID)
 
+		isShortcut := ch.IsShortcut(edge.EdgeID)
+		if isShortcut {
+			exists = true
+		}
 		if isShortcut && weight < edge.Weight { // only update edge weight when the edge is a shortcut
 			edge.Weight = weight
 		}
@@ -336,23 +368,43 @@ func (ch *ContractedGraph) addOrUpdateShortcut(fromNodeID, toNodeID int32, nodeI
 		if edge.ToNodeID != fromNodeID {
 			continue
 		}
-		exists = true
 
 		isShortcut := ch.IsShortcut(edge.EdgeID)
-
+		if isShortcut {
+			exists = true
+		}
 		if isShortcut && weight < edge.Weight {
 			edge.Weight = weight
 		}
+
 	}
 
 	if !exists {
-		ch.addShortcut(fromNodeID, toNodeID, nodeID, weight)
+		ch.addShortcut(fromNodeID, toNodeID, nodeID, weight, shortcuts)
 		ch.Metadata.ShortcutsCount++
 	}
 }
 
+type shortcut struct {
+	fromNodeID       int32
+	toNodeID         int32
+	weight           float64
+	dist             float64
+	contractedNodeID int32
+}
+
+func newShortcut(fromNodeID, toNodeID int32, contractedNodeID int32, weight float64, dist float64) shortcut {
+	return shortcut{
+		fromNodeID:       fromNodeID,
+		toNodeID:         toNodeID,
+		weight:           weight,
+		dist:             dist,
+		contractedNodeID: contractedNodeID,
+	}
+}
+
 func (ch *ContractedGraph) addShortcut(fromNodeID, toNodeID, contractedNodeID int32, weight float64,
-) {
+	shortcuts *[]shortcut) {
 
 	fromN := ch.ContractedNodes[fromNodeID]
 	toN := ch.ContractedNodes[toNodeID]
@@ -360,60 +412,8 @@ func (ch *ContractedGraph) addShortcut(fromNodeID, toNodeID, contractedNodeID in
 	dist := geo.CalculateHaversineDistance(fromN.Lat, fromN.Lon, toN.Lat, toN.Lon) * 1000
 	// add shortcut outcoming edge
 
-	dupf := false
-	for _, outID := range ch.ContractedFirstOutEdge[fromNodeID] {
-		edge := ch.GraphStorage.GetOutEdge(outID)
-		isShortcut := ch.IsShortcut(outID)
-		// mark it as duplicate if the edge with fromNodeID and toNodeID exits (either a shortcut or not)
-		if isShortcut && edge.ToNodeID == toNodeID && weight < edge.Weight {
+	*shortcuts = append(*shortcuts, newShortcut(fromNodeID, toNodeID, contractedNodeID, weight, dist))
 
-			ch.GraphStorage.UpdateEdge(outID, weight, dist, contractedNodeID)
-			dupf = true
-			break
-		} else if !isShortcut && edge.ToNodeID == toNodeID {
-			// if the edge is not a shortcut, but the edge with fromNodeID and toNodeID exits, then mark its as duplicate and dont update the edge
-			dupf = true
-			break
-		}
-	}
-
-	currEdgeID := int32(len(ch.GraphStorage.EdgeStorage))
-	if !dupf {
-
-		ch.ContractedFirstOutEdge[fromNodeID] = append(ch.ContractedFirstOutEdge[fromNodeID], currEdgeID)
-		ch.Metadata.degrees[fromNodeID]++
-	}
-
-	dupb := false
-	// add shortcut
-	for _, inID := range ch.ContractedFirstInEdge[toNodeID] {
-		edge := ch.GraphStorage.GetInEdge(inID)
-		isShortcut := ch.IsShortcut(inID)
-		if isShortcut && edge.ToNodeID == fromNodeID && weight < edge.Weight {
-			ch.GraphStorage.UpdateEdge(inID, weight, dist, contractedNodeID)
-			dupb = true
-			break
-		} else if !isShortcut && edge.ToNodeID == fromNodeID {
-			// if the edge is not a shortcut, but the edge with fromNodeID and toNodeID exits, then mark its as duplicate and dont update the edge
-			dupb = true
-			break
-		}
-	}
-
-	// incoming edge
-	if !dupb {
-
-		ch.ContractedFirstInEdge[toNodeID] = append(ch.ContractedFirstInEdge[toNodeID], currEdgeID)
-
-		ch.Metadata.degrees[toNodeID]++
-
-	}
-
-	if !dupf || !dupb {
-		ch.GraphStorage.AppendEdgeStorage(datastructure.NewEdge(
-			currEdgeID, toNodeID, fromNodeID, contractedNodeID, weight, dist,
-		))
-	}
 }
 
 func (ch *ContractedGraph) calculatePriority(nodeID int32, contracted []bool) float64 {
@@ -603,6 +603,18 @@ func (ch *ContractedGraph) SetEdgeInfo(edgeInfo datastructure.EdgeExtraInfo) {
 
 func (ch *ContractedGraph) GetNodeSCCID(nodeID int32) int32 {
 	return ch.SCC[nodeID]
+}
+
+func (ch *ContractedGraph) IsCondensationGraphFromToConnected(fromNodeID int32, toNodeID int32) bool {
+	sccOfFrom := ch.SCC[fromNodeID]
+	sccOfTo := ch.SCC[toNodeID]
+
+	for _, outID := range ch.SCCCondensationAdj[sccOfFrom] {
+		if outID == sccOfTo {
+			return true
+		}
+	}
+	return false
 }
 
 func (ch *ContractedGraph) IsInBigComponent(nodeID int32) bool {

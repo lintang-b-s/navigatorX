@@ -25,7 +25,7 @@ func (ch *ContractedGraph) SnapLocationToRoadNetworkNodeH3WithSccAnalysis(edgesF
 			sccIDFrom := ch.GetNodeSCCID(edgeFrom.FromNodeID)
 			sccIDTo := ch.GetNodeSCCID(edgeTo.FromNodeID)
 
-			if sccIDFrom == sccIDTo  {
+			if sccIDFrom == sccIDTo {
 				bestEdgeFrom = edgeFrom
 				bestEdgeTo = edgeTo
 				found = true
@@ -34,6 +34,23 @@ func (ch *ContractedGraph) SnapLocationToRoadNetworkNodeH3WithSccAnalysis(edgesF
 		}
 		if found {
 			break
+		}
+	}
+
+	if !found {
+		for _, edgeFrom := range edgesFrom {
+			for _, edgeTo := range edgesTo {
+
+				if ch.IsCondensationGraphFromToConnected(edgeFrom.FromNodeID, edgeTo.FromNodeID) {
+					bestEdgeFrom = edgeFrom
+					bestEdgeTo = edgeTo
+					found = true
+					break
+				}
+			}
+			if found {
+				break
+			}
 		}
 	}
 

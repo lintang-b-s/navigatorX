@@ -516,8 +516,21 @@ func (p *OsmParser) addEdge(segment []node, tempMap map[string]string, speed flo
 		lanes = 1 // assume
 	}
 
+	if _, ok := edgeSet[p.nodeIDMap[from.id]]; !ok {
+		edgeSet[p.nodeIDMap[from.id]] = make(map[int32]struct{})
+	}
+	if _, ok := edgeSet[p.nodeIDMap[to.id]]; !ok {
+		edgeSet[p.nodeIDMap[to.id]] = make(map[int32]struct{})
+	}
+
 	if wayExtraInfoData.oneWay {
 		if wayExtraInfoData.forward {
+
+			if _, ok := edgeSet[p.nodeIDMap[from.id]][p.nodeIDMap[to.id]]; ok {
+				return
+			}
+
+			edgeSet[p.nodeIDMap[from.id]][p.nodeIDMap[to.id]] = struct{}{}
 
 			startPointsIndex := len(graphStorage.GlobalPoints)
 
@@ -540,6 +553,11 @@ func (p *OsmParser) addEdge(segment []node, tempMap map[string]string, speed flo
 					-1, etaWeight, distanceInMeter))
 
 		} else {
+
+			if _, ok := edgeSet[p.nodeIDMap[to.id]][p.nodeIDMap[from.id]]; ok {
+				return
+			}
+			edgeSet[p.nodeIDMap[to.id]][p.nodeIDMap[from.id]] = struct{}{}
 
 			graphStorage.SetRoundabout(int32(len(graphStorage.EdgeStorage)), isRoundabout)
 
@@ -565,6 +583,11 @@ func (p *OsmParser) addEdge(segment []node, tempMap map[string]string, speed flo
 
 		}
 	} else {
+		if _, ok := edgeSet[p.nodeIDMap[from.id]][p.nodeIDMap[to.id]]; ok {
+			return
+		}
+		edgeSet[p.nodeIDMap[from.id]][p.nodeIDMap[to.id]] = struct{}{}
+		edgeSet[p.nodeIDMap[to.id]][p.nodeIDMap[from.id]] = struct{}{}
 
 		// !reversed edge
 		graphStorage.SetRoundabout(int32(len(graphStorage.EdgeStorage)), isRoundabout)
@@ -624,7 +647,7 @@ func RoadTypeMaxSpeed2(roadType string) float64 {
 	case "residential":
 		return 30
 	case "service":
-		return 10
+		return 20
 	case "motorway_link":
 		return 70
 	case "trunk_link":
@@ -642,7 +665,7 @@ func RoadTypeMaxSpeed2(roadType string) float64 {
 	case "track":
 		return 15
 	default:
-		return 30
+		return 40
 	}
 }
 

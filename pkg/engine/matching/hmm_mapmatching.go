@@ -309,7 +309,34 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 			if err != nil {
 				hmm.handleHMMBreak(gps, i, viterbi, stateDataMap, transitionProbMatrix, prevObservation, routeAlgo,
 					&statesPath, &observationPath, &viterbiResetCount)
-				break
+				path := viterbi.ComputeMostLikelySequence()
+
+				for _, p := range path {
+					statesPath = append(statesPath, p.State)
+					obs := gps[p.Observation]
+					observationPath = append(observationPath, datastructure.NewCoordinate(obs.Observation.Lat, obs.Observation.Lon))
+				}
+
+				viterbi = NewViterbiAlgorithm(true)
+				viterbiResetCount++
+
+				states = make([]int, 0)
+				emissionProbMatrix := make(map[int]float64)
+
+				for j := 0; j < len(prevObservation.State); j++ {
+					states = append(states, prevObservation.State[j].StateID)
+
+					projectionLoc := prevObservation.State[j].ProjectionLoc
+
+					distance := geo.CalculateHaversineDistance(projectionLoc[0], projectionLoc[1],
+						prevObservation.Observation.Lat, prevObservation.Observation.Lon) * 1000
+					emissionProb := computeEmissionLogProb(distance)
+
+					emissionProbMatrix[prevObservation.State[j].StateID] = emissionProb
+				}
+				viterbi.StartWithInitialStateProbabilities(int(prevObservation.Observation.ID), states, emissionProbMatrix)
+
+				continue
 			} else {
 				processedObsCount++
 			}

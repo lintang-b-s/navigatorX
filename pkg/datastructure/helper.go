@@ -57,6 +57,7 @@ type State struct {
 	OutgoingVirtualEdgeID int32
 	Type                  StatePosition
 	ObservationID         int
+	PerpendicularDist   float64
 }
 
 func (s *State) SetOutgoingVirtualEdge(id int32) {

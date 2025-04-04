@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	maxVisitedNodes = 15 // prevState->nextState should be less than 15 node visit. idk
+	maxVisitedNodes = 25 // prevState->nextState should be less than 25 node visit. idk
 )
 
 // https://www.cs.princeton.edu/courses/archive/spr06/cos423/Handouts/GH05.pdf
@@ -85,13 +85,13 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32, fromEdgeFilter,
 			}
 
 			if turnF {
-				// _, okb := visitedB[node.Item]
-				// if okb {
-				// 	// The algorithm
-				// 	// terminates when the search in one directing selects a
-				// 	// vertex that has been scanned in the other direction.
-				// 	break
-				// }
+				_, okb := visitedB[node.Item]
+				if okb {
+					// The algorithm
+					// terminates when the search in one directing selects a
+					// vertex that has been scanned in the other direction.
+					break
+				}
 
 				for _, arc := range rt.ch.GetNodeFirstOutEdges(node.Item) {
 
@@ -148,13 +148,13 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32, fromEdgeFilter,
 				visitedF[node.Item] = struct{}{}
 
 			} else {
-				// _, okf := visitedF[node.Item]
-				// if okf {
-				// 	// The algorithm
-				// 	// terminates when the search in one directing selects a
-				// 	// vertex that has been scanned in the other direction.
-				// 	break
-				// }
+				_, okf := visitedF[node.Item]
+				if okf {
+					// The algorithm
+					// terminates when the search in one directing selects a
+					// vertex that has been scanned in the other direction.
+					break
+				}
 
 				for _, arc := range rt.ch.GetNodeFirstInEdges(node.Item) {
 

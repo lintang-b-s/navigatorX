@@ -19,7 +19,7 @@ func (ch *ContractedGraph) dijkstraWitnessSearch(fromNodeID, targetNodeID int32,
 
 	cost[fromNodeID] = 0.0
 	settledNodes := 0
-	for {
+	for settledNodes < maxSettledNodes {
 
 		smallest, _ := pq.GetMin()
 		if pq.Size() == 0 || smallest.Rank > acceptedWeight {
@@ -78,4 +78,5 @@ func (ch *ContractedGraph) dijkstraWitnessSearch(fromNodeID, targetNodeID int32,
 
 		settledNodes++
 	}
+	return math.MaxFloat64
 }
