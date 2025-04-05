@@ -35,10 +35,6 @@ Make sure you have done the preprocessing stage above!
 ```
 1. provide openstreetmap filename flag when running the program
  ./bin/navigatorx -f jakarta.osm.pbf
-2. for docker setup, change the Filename args "MAP_FILE" and google drive file id "DRIVE_FILE_ID" in docker-compose
- args:
-        MAP_FILE: solo_jogja
-        DRIVE_FILE_ID: 1pEHN8wwUbB5XpuYMZm141fXQ_ZsIf4CO
 ```
 
 ### Shortest Path Between 2 Place in Openstreetmap
@@ -54,7 +50,7 @@ Note: Source & Destination Coordinates must be around Yogyakarta Province/Suraka
 ### Alternative Routes
 ```
 1.  wait until there is a log "server started at :5000".
-curl --location 'http://localhost:5000/api/navigations/shortest-path-alternative-routes?src_lat=-7.75596&src_lon=110.37666&dst_lat=-7.554324&dst_lon=110.827275' 
+curl --location 'http://localhost:5000/api/navigations/shortest-path-alternative-routes?src_lat=-7.75596&src_lon=110.37666&dst_lat=-7.554324&dst_lon=110.827275'
 ```
 
 
@@ -422,9 +418,5 @@ Note:  "sources" and "targets" must be around the province of Yogyakarta/Surakar
 -  https://en.wikipedia.org/wiki/Hungarian_algorithm
 -  https://en.wikipedia.org/wiki/Simulated_annealing#:~:text=Simulated%20annealing%20(SA)%20is%20a,can%20find%20the%20global%20optimum.
 -  https://jlazarsfeld.github.io/ch.150.project/sections/7-ch-overview/
--  https://www.uber.com/en-ID/blog/engineering-routing-engine/
--  https://h3geo.org/
--  https://www.uber.com/blog/mapping-accuracy-with-catchme/
--  http://theory.stanford.edu/~amitp/GameProgramming/ImplementationNotes.html
 ```
 

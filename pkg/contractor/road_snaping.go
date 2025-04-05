@@ -40,6 +40,10 @@ func (s edgeSlice) Less(i, j int) bool {
 	return s.dists[i] < s.dists[j]
 }
 
+const (
+	k = 20
+)
+
 func (ch *ContractedGraph) SnapLocationToRoadNetworkNodeH3WithSccAnalysis(edgesFrom, edgesTo []datastructure.KVEdge,
 	wantToSnapFrom, wantToSnapTo []float64) (int32, int32, datastructure.Coordinate, datastructure.Coordinate, error) {
 
@@ -85,6 +89,9 @@ func (ch *ContractedGraph) SnapLocationToRoadNetworkNodeH3WithSccAnalysis(edgesF
 	}
 	sort.Sort(edgeSliceFrom)
 	sort.Sort(edgeSliceTo)
+
+	edgeSliceFrom.entries = edgeSliceFrom.entries[:k]
+	edgeSliceTo.entries = edgeSliceTo.entries[:k]
 
 	var (
 		bestEdgeFrom datastructure.KVEdge
