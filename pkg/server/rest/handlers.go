@@ -49,9 +49,9 @@ func NavigatorRouter(r *chi.Mux, svc NavigationService, m *metrics) {
 
 	r.Group(func(r chi.Router) {
 		r.Route("/api/navigations", func(r chi.Router) {
-			r.Post("/shortest-path", handler.shortestPathETA)
-			r.Post("/shortest-path-alternative-routes", handler.shortestPathWithAlternativeRoutes)
-			r.Post("/shortest-path-alternative-street", handler.shortestPathAlternativeStreetETA)
+			r.Get("/shortest-path", handler.shortestPathETA)
+			r.Get("/shortest-path-alternative-routes", handler.shortestPathWithAlternativeRoutes)
+			r.Get("/shortest-path-alternative-street", handler.shortestPathAlternativeStreetETA)
 			r.Post("/many-to-many", handler.ManyToManyQuery)
 			r.Post("/tsp", handler.TravelingSalesmanProblemSimulatedAnnealing)
 			r.Post("/matching", handler.WeightedBipartiteMatching)
@@ -130,7 +130,7 @@ func NewShortestPathResponse(path string, distance float64, navs []guidance.Driv
 //	@Summary		shortest path query antara 2 tempat di openstreetmap.
 //	@Description	shortest path query antara 2 tempat di openstreetmap. Hanya 1 source dan 1 destination
 //	@Tags			navigations
-//	@Param			body	body	SortestPathRequest	true	"request body query shortest path antara 2 tempat"
+//	@Param			query	query	SortestPathRequest	true	"request body query shortest path antara 2 tempat"
 //	@Accept			application/json
 //	@Produce		application/json
 //	@Router			/navigations/shortest-path [post]
@@ -138,10 +138,32 @@ func NewShortestPathResponse(path string, distance float64, navs []guidance.Driv
 //	@Failure		400	{object}	ErrResponse
 //	@Failure		500	{object}	ErrResponse
 func (h *NavigationHandler) shortestPathETA(w http.ResponseWriter, r *http.Request) {
-	data := &SortestPathRequest{}
-	if err := render.Bind(r, data); err != nil {
+	srcLat, err := util.StringToFloat64(r.URL.Query().Get("src_lat"))
+	if err != nil {
 		render.Render(w, r, ErrInvalidRequest(err))
 		return
+	}
+	srcLon, err := util.StringToFloat64(r.URL.Query().Get("src_lon"))
+	if err != nil {
+		render.Render(w, r, ErrInvalidRequest(err))
+		return
+	}
+	dstLat, err := util.StringToFloat64(r.URL.Query().Get("dst_lat"))
+	if err != nil {
+		render.Render(w, r, ErrInvalidRequest(err))
+		return
+	}
+	dstLon, err := util.StringToFloat64(r.URL.Query().Get("dst_lon"))
+	if err != nil {
+		render.Render(w, r, ErrInvalidRequest(err))
+		return
+	}
+
+	data := &SortestPathRequest{
+		SrcLat: srcLat,
+		SrcLon: srcLon,
+		DstLat: dstLat,
+		DstLon: dstLon,
 	}
 
 	validate := validator.New()
@@ -200,10 +222,32 @@ func NewShortestPathWithAlternativeRoutesResponse(routes []datastructure.Alterna
 // shortes
 
 func (h *NavigationHandler) shortestPathWithAlternativeRoutes(w http.ResponseWriter, r *http.Request) {
-	data := &SortestPathRequest{}
-	if err := render.Bind(r, data); err != nil {
+	srcLat, err := util.StringToFloat64(r.URL.Query().Get("src_lat"))
+	if err != nil {
 		render.Render(w, r, ErrInvalidRequest(err))
 		return
+	}
+	srcLon, err := util.StringToFloat64(r.URL.Query().Get("src_lon"))
+	if err != nil {
+		render.Render(w, r, ErrInvalidRequest(err))
+		return
+	}
+	dstLat, err := util.StringToFloat64(r.URL.Query().Get("dst_lat"))
+	if err != nil {
+		render.Render(w, r, ErrInvalidRequest(err))
+		return
+	}
+	dstLon, err := util.StringToFloat64(r.URL.Query().Get("dst_lon"))
+	if err != nil {
+		render.Render(w, r, ErrInvalidRequest(err))
+		return
+	}
+
+	data := &SortestPathRequest{
+		SrcLat: srcLat,
+		SrcLon: srcLon,
+		DstLat: dstLat,
+		DstLon: dstLon,
 	}
 
 	validate := validator.New()
@@ -235,7 +279,7 @@ func (h *NavigationHandler) shortestPathWithAlternativeRoutes(w http.ResponseWri
 //	@Summary		shortest path query antara 2 tempat di openstreetmap dengan menentukan alternative street untuk rutenya.
 //	@Description	shortest path query antara 2 tempat di openstreetmap dengan menentukan alternative street untuk rutenya.. Hanya 1 source dan 1 destination
 //	@Tags			navigations
-//	@Param			body	body	SortestPathAlternativeStreetRequest	true	"request body query shortest path antara 2 tempat"
+//	@Param			query	query	SortestPathAlternativeStreetRequest	true	"request body query shortest path antara 2 tempat"
 //	@Accept			application/json
 //	@Produce		application/json
 //	@Router			/navigations/shortest-path-alternative-street [post]
@@ -243,10 +287,44 @@ func (h *NavigationHandler) shortestPathWithAlternativeRoutes(w http.ResponseWri
 //	@Failure		400	{object}	ErrResponse
 //	@Failure		500	{object}	ErrResponse
 func (h *NavigationHandler) shortestPathAlternativeStreetETA(w http.ResponseWriter, r *http.Request) {
-	data := &SortestPathAlternativeStreetRequest{}
-	if err := render.Bind(r, data); err != nil {
+	srcLat, err := util.StringToFloat64(r.URL.Query().Get("src_lat"))
+	if err != nil {
 		render.Render(w, r, ErrInvalidRequest(err))
 		return
+	}
+	srcLon, err := util.StringToFloat64(r.URL.Query().Get("src_lon"))
+	if err != nil {
+		render.Render(w, r, ErrInvalidRequest(err))
+		return
+	}
+	dstLat, err := util.StringToFloat64(r.URL.Query().Get("dst_lat"))
+	if err != nil {
+		render.Render(w, r, ErrInvalidRequest(err))
+		return
+	}
+	dstLon, err := util.StringToFloat64(r.URL.Query().Get("dst_lon"))
+	if err != nil {
+		render.Render(w, r, ErrInvalidRequest(err))
+		return
+	}
+	streetAlternativeLat, err := util.StringToFloat64(r.URL.Query().Get("street_alternative_lat"))
+	if err != nil {
+		render.Render(w, r, ErrInvalidRequest(err))
+		return
+	}
+	streetAlternativeLon, err := util.StringToFloat64(r.URL.Query().Get("street_alternative_lon"))
+	if err != nil {
+		render.Render(w, r, ErrInvalidRequest(err))
+		return
+	}
+
+	data := &SortestPathAlternativeStreetRequest{
+		SrcLat:               srcLat,
+		SrcLon:               srcLon,
+		DstLat:               dstLat,
+		DstLon:               dstLon,
+		StreetAlternativeLat: streetAlternativeLat,
+		StreetAlternativeLon: streetAlternativeLon,
 	}
 
 	validate := validator.New()

@@ -248,7 +248,7 @@ func (rt *RouteAlgorithm) createPathXCHV(commonVertex int32, from, to int32,
 	dist := 0.0
 	v := commonVertex
 	if rt.ch.IsTrafficLight(v) {
-		eta += 3.0
+		eta += 1.5
 	}
 	ok := true
 
@@ -262,7 +262,7 @@ func (rt *RouteAlgorithm) createPathXCHV(commonVertex int32, from, to int32,
 		} else {
 
 			if cameFromf[v].NodeID != -1 && rt.ch.IsTrafficLight(cameFromf[v].NodeID) {
-				eta += 3.0
+				eta += 1.5
 			}
 			eta += cameFromf[v].Edge.Weight
 			dist += cameFromf[v].Edge.Dist
@@ -300,7 +300,7 @@ func (rt *RouteAlgorithm) createPathXCHV(commonVertex int32, from, to int32,
 		} else {
 
 			if cameFromb[v].NodeID != -1 && rt.ch.IsTrafficLight(cameFromb[v].NodeID) {
-				eta += 3.0
+				eta += 1.5
 			}
 			eta += cameFromb[v].Edge.Weight
 			dist += cameFromb[v].Edge.Dist
@@ -371,7 +371,7 @@ func (rt *RouteAlgorithm) unpackBackwardXCHV(edge datastructure.Edge, path *[]da
 
 	if !isShortcut {
 		if rt.ch.IsTrafficLight(edge.FromNodeID) {
-			*eta += 3.0
+			*eta += 1.5
 		}
 		*eta += edge.Weight
 		*dist += edge.Dist
@@ -425,7 +425,7 @@ func (rt *RouteAlgorithm) unpackForwardXCHV(edge datastructure.Edge, path *[]dat
 
 	if !isShortcut {
 		if rt.ch.IsTrafficLight(edge.FromNodeID) {
-			*eta += 3.0
+			*eta += 1.5
 		}
 		*eta += edge.Weight
 		*dist += edge.Dist

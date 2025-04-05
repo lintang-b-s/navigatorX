@@ -84,7 +84,7 @@ func NewEdgePlain(edgeID int32, weight, dist float64, toNodeID, fromNodeID int32
 func (gs *GraphStorage) SetRoundabout(edgeID int32, isRoundabout bool) {
 	index := int(math.Floor(float64(edgeID) / 32))
 	if len(gs.RoundaboutFlag) <= int(index) {
-		gs.RoundaboutFlag = append(gs.RoundaboutFlag, 0)
+		gs.RoundaboutFlag = append(gs.RoundaboutFlag, make([]int32, edgeID-int32(len(gs.RoundaboutFlag))+1)...)
 	}
 	if isRoundabout {
 		gs.RoundaboutFlag[index] |= 1 << (edgeID % 32)

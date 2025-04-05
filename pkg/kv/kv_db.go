@@ -55,7 +55,7 @@ func (k *KVDB) BuildH3IndexedEdges(ctx context.Context, graphStorage *datastruct
 		edgeLon := pointsInBetween[0].Lon
 
 		h3LatLon := h3.NewLatLng(edgeLat, edgeLon)
-		cell := h3.LatLngToCell(h3LatLon, 9)
+		cell := h3.LatLngToCell(h3LatLon, h3CellLevel)
 		smallStreet := datastructure.KVEdge{
 			CenterLoc:  [2]float64{edgeLat, edgeLon},
 			FromNodeID: roadSegment.FromNodeID,
@@ -154,73 +154,30 @@ func (k *KVDB) get(val, key []byte) ([]byte, error) {
 	return val, err
 }
 
+const (
+	searchRadiusInKM = 0.2
+	h3CellLevel      = 9
+)
+
 func (k *KVDB) GetNearestStreetsFromPointCoord(lat, lon float64) ([]datastructure.KVEdge, error) {
 	edges := []datastructure.KVEdge{}
 
-	home := h3.NewLatLng(lat, lon)
-	cell := h3.LatLngToCell(home, 9)
+	var (
+		err error
+	)
 
-	cellString := cell.String()
-
-	var val []byte
-	val, err := k.get(val, []byte(cellString))
-
+	edges, err = k.radiusSearch(lat, lon, searchRadiusInKM)
 	if err != nil {
 		return []datastructure.KVEdge{}, err
 	}
 
-	streets, err := loadEdges(val)
-	if err != nil {
-		return []datastructure.KVEdge{}, err
-	}
+	radius := searchRadiusInKM
 
-	edges = append(edges, streets...)
-
-	cells := kRingIndexesArea(lat, lon, 1)
-	if len(edges) == 0 {
-		for _, currCell := range cells {
-			if currCell == cell {
-				continue
-			}
-			currCellString := currCell.String()
-
-			var val []byte
-			val, err = k.get(val, []byte(currCellString))
-
-			if err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
-				return []datastructure.KVEdge{}, err
-			}
-
-			streets, err := loadEdges(val)
-			if err != nil {
-				return []datastructure.KVEdge{}, err
-			}
-			edges = append(edges, streets...)
-		}
-	}
-
-	for lev := 1; lev <= 10; lev++ {
-		if len(edges) == 0 {
-			cells := h3.GridDisk(cell, lev)
-			for _, currCell := range cells {
-				if currCell == cell {
-					continue
-				}
-				currCellString := currCell.String()
-				var val []byte
-				val, err = k.get(val, []byte(currCellString))
-
-				if err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
-					return []datastructure.KVEdge{}, err
-				}
-				streets, err := loadEdges(val)
-				if err != nil {
-					return []datastructure.KVEdge{}, err
-				}
-				edges = append(edges, streets...)
-			}
-		} else {
-			break
+	for len(edges) == 0 && radius < 1.0 {
+		radius += 0.05
+		edges, err = k.radiusSearch(lat, lon, radius)
+		if err != nil {
+			return []datastructure.KVEdge{}, err
 		}
 	}
 
@@ -232,9 +189,39 @@ func (k *KVDB) GetNearestStreetsFromPointCoord(lat, lon float64) ([]datastructur
 	return edges, nil
 }
 
+func (k *KVDB) radiusSearch(lat, lon float64, radius float64) ([]datastructure.KVEdge, error) {
+	var (
+		err      error
+		edges    []datastructure.KVEdge
+		segments []datastructure.KVEdge
+	)
+
+	cells := kRingIndexesArea(lat, lon, radius)
+	for _, currCell := range cells {
+
+		currCellString := currCell.String()
+
+		var val []byte
+		val, err = k.get(val, []byte(currCellString))
+
+		if err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
+			return []datastructure.KVEdge{}, err
+		}
+
+		if val != nil {
+			segments, err = loadEdges(val)
+			if err != nil {
+				return []datastructure.KVEdge{}, err
+			}
+		}
+		edges = append(edges, segments...)
+	}
+	return edges, nil
+}
+
 func kRingIndexesArea(lat, lon, searchRadiusKm float64) []h3.Cell {
 	home := h3.NewLatLng(lat, lon)
-	origin := h3.LatLngToCell(home, 9)
+	origin := h3.LatLngToCell(home, h3CellLevel)
 	originArea := h3.CellAreaKm2(origin)
 	searchArea := math.Pi * searchRadiusKm * searchRadiusKm
 

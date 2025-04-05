@@ -14,7 +14,7 @@ import (
 type ContractedGraph interface {
 	SnapLocationToRoadNetworkNodeH3(edges []datastructure.KVEdge, wantToSnap []float64) int32
 	SnapLocationToRoadNetworkNodeH3WithSccAnalysis(edgesFrom, edgesTo []datastructure.KVEdge,
-		wantToSnapFrom, wantToSnapTo []float64) (int32, int32)
+		wantToSnapFrom, wantToSnapTo []float64) (int32, int32, datastructure.Coordinate, datastructure.Coordinate, error)
 
 	GetNodeFirstOutEdges(nodeID int32) []int32
 	GetNodeFirstInEdges(nodeID int32) []int32
@@ -95,7 +95,7 @@ func (uc *NavigationService) ShortestPathETA(ctx context.Context, srcLat, srcLon
 		Lon: dstLon,
 	}
 
-	fromSurakartaNode, toSurakartaNode, err := uc.SnapLocToStreetNodeWithSccAnalysis(from.Lat, from.Lon, to.Lat, to.Lon)
+	fromSurakartaNode, toSurakartaNode, projectionFrom, projectionTo, err := uc.SnapLocToStreetNodeWithSccAnalysis(from.Lat, from.Lon, to.Lat, to.Lon)
 	if err != nil {
 		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, []datastructure.Edge{}, false,
 			server.WrapErrorf(err, server.ErrNotFound, fmt.Sprintf("no path found from %v,%v to %v,%v", from.Lat, from.Lon, to.Lat, to.Lon))
@@ -112,10 +112,9 @@ func (uc *NavigationService) ShortestPathETA(ctx context.Context, srcLat, srcLon
 
 	pN, ePath, eta, dist = uc.routing.ShortestPathBiDijkstraCH(fromSurakartaNode, toSurakartaNode)
 
-	if err != nil {
-		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, []datastructure.Edge{}, false,
-			server.WrapErrorf(err, server.ErrNotFound, fmt.Sprintf("no path found from %v,%v to %v,%v", from.Lat, from.Lon, to.Lat, to.Lon))
-	}
+	
+	pN = append([]datastructure.Coordinate{projectionFrom}, pN...)
+	pN = append(pN, projectionTo)
 	p := datastructure.CreatePolyline(pN)
 	if eta != -1 {
 		found = true
@@ -147,7 +146,7 @@ func (uc *NavigationService) ShortestPathWithAlternativeRoutes(ctx context.Conte
 		Lon: dstLon,
 	}
 
-	fromSurakartaNode, toSurakartaNode, err := uc.SnapLocToStreetNodeWithSccAnalysis(from.Lat, from.Lon, to.Lat, to.Lon)
+	fromSurakartaNode, toSurakartaNode, projectionFrom, projectionTo, err := uc.SnapLocToStreetNodeWithSccAnalysis(from.Lat, from.Lon, to.Lat, to.Lon)
 	if err != nil {
 		return make([]datastructure.AlternativeRouteInfo, 0), []string{}, [][]guidance.DrivingInstruction{},
 			server.WrapErrorf(err, server.ErrNotFound, "sorry!! the location you entered is not covered on my map :(, please use diferrent opensteetmap pbf file")
@@ -162,6 +161,9 @@ func (uc *NavigationService) ShortestPathWithAlternativeRoutes(ctx context.Conte
 
 	routePolylines := make([]string, 0, len(alternativeRoutes))
 	for _, route := range alternativeRoutes {
+
+		route.Path = append([]datastructure.Coordinate{projectionFrom}, route.Path...)
+		route.Path = append(route.Path, projectionTo)
 
 		routePolylines = append(routePolylines, datastructure.CreatePolyline(route.Path))
 	}
@@ -179,21 +181,24 @@ func (uc *NavigationService) ShortestPathWithAlternativeRoutes(ctx context.Conte
 	return alternativeRoutes, routePolylines, routeDrivingInstructions, nil
 }
 
-func (uc *NavigationService) SnapLocToStreetNodeWithSccAnalysis(fromLat, fromLon, toLat, toLon float64) (int32, int32, error) {
+func (uc *NavigationService) SnapLocToStreetNodeWithSccAnalysis(fromLat, fromLon, toLat, toLon float64) (int32, int32, datastructure.Coordinate, datastructure.Coordinate, error) {
 	edgesFrom, err := uc.KV.GetNearestStreetsFromPointCoord(fromLat, fromLon)
 	if err != nil {
-		return -1, -1, err
+		return -1, -1, datastructure.Coordinate{}, datastructure.Coordinate{}, err
 	}
 
 	edgesTo, err := uc.KV.GetNearestStreetsFromPointCoord(toLat, toLon)
 	if err != nil {
-		return -1, -1, err
+		return -1, -1, datastructure.Coordinate{}, datastructure.Coordinate{}, err
 	}
 
-	edgeFromID, edgeToID := uc.CH.SnapLocationToRoadNetworkNodeH3WithSccAnalysis(edgesFrom, edgesTo,
+	edgeFromID, edgeToID, projectionFrom, projectionTo, err := uc.CH.SnapLocationToRoadNetworkNodeH3WithSccAnalysis(edgesFrom, edgesTo,
 		[]float64{fromLat, fromLon}, []float64{toLat, toLon})
+	if err != nil {
+		return -1, -1, datastructure.Coordinate{}, datastructure.Coordinate{}, err
+	}
 
-	return edgeFromID, edgeToID, nil
+	return edgeFromID, edgeToID, projectionFrom, projectionTo, nil
 }
 
 func (uc *NavigationService) SnapLocToStreetNode(lat, lon float64) (int32, error) {

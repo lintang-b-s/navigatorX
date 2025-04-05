@@ -158,19 +158,6 @@ func (ife *InstructionsFromEdges) AddInstructionFromEdge(edge datastructure.Edge
 			ife.doublePrevOrientation = ife.prevOrientation
 			if ife.prevInstruction != nil {
 
-				outEdges := ife.contractedGraph.GetNodeFirstOutEdges(baseNode)
-
-				for _, e := range outEdges {
-					// add jumlah exit Point dari bundaran
-					edge := ife.contractedGraph.GetOutEdge(e)
-					eIsRoundabout := ife.contractedGraph.IsRoundabout(edge.EdgeID)
-
-					if (edge.ToNodeID != ife.prevNode) && !eIsRoundabout {
-						roundaboutInstruction.ExitNumber++
-						break
-					}
-				}
-
 				ife.prevOrientation = calcOrientation(prevNodeData.Lat, prevNodeData.Lon, baseNodeData.Lat, baseNodeData.Lon)
 
 			} else {
@@ -184,14 +171,18 @@ func (ife *InstructionsFromEdges) AddInstructionFromEdge(edge datastructure.Edge
 			ife.ways = append(ife.ways, ife.prevInstruction)
 		}
 
-		outgoingEdges := ife.contractedGraph.GetNodeFirstInEdges(adjNode)
+		outgoingEdges := ife.contractedGraph.GetNodeFirstOutEdges(adjNode)
 
 		for _, e := range outgoingEdges {
-
+			if ife.contractedGraph.IsShortcut(e) {
+				continue
+			}
 			eIsRoundabout := ife.contractedGraph.IsRoundabout(e)
 
 			if !eIsRoundabout {
 				// add jumlah exit Point dari bundaran
+				// exit point didapat dari outgoing edges (yang bukan roundabout) dari node yang terhubung di osm way roundabout
+				// example: https://www.google.com/maps/dir/'-7.75596,110.37666'/-7.7674052,110.3747602/@-7.7645774,110.3751945,18.42z/am=t/data=!4m7!4m6!1m3!2m2!1d110.37666!2d-7.75596!1m0!3e0?hl=id&entry=ttu&g_ep=EgoyMDI1MDQwMi4xIKXMDSoASAFQAw%3D%3D
 				roundaboutInstruction := ife.prevInstruction
 				roundaboutInstruction.Roundabout.ExitNumber++
 				break

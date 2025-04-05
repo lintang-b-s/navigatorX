@@ -140,6 +140,7 @@ func (instr *Instruction) GetTurnDescription() string {
 					description = fmt.Sprintf("%s to continue on %s", dir, streetName)
 				case "Keep right":
 					description = fmt.Sprintf("%s continue on %s", dir, streetName)
+
 				default:
 					description = fmt.Sprintf("%s onto %s", dir, streetName)
 
@@ -213,10 +214,8 @@ func getDirectionDescription(sign int, instruction Instruction) string {
 		}
 		roundaboutDir := "clockwise" // bundaran  di indo selalu clockwise
 
-		if instruction.GetName() == "" {
-			return fmt.Sprintf("At Roundabout, take the exit point %d %s", instruction.Roundabout.ExitNumber, roundaboutDir)
-		}
-		return fmt.Sprintf("At Roundabout, take the exit point %d %s onto %s", instruction.Roundabout.ExitNumber, roundaboutDir, instruction.GetName())
+		return fmt.Sprintf("At Roundabout, take the exit point %d %s", instruction.Roundabout.ExitNumber, roundaboutDir)
+
 	default:
 		return ""
 	}

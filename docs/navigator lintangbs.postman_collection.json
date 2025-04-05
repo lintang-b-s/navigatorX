@@ -42,51 +42,12 @@
 			]
 		},
 		{
-			"name": "shortestPath",
-			"request": {
-				"method": "POST",
-				"header": [],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n  \"src_lat\":  -7.550263588614922,\n    \"src_lon\":     110.78206617571915,\n    \"dst_lat\": -7.61951,\n    \"dst_lon\":    110.82390\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "http://localhost:5000/api/navigations/shortest-path",
-					"protocol": "http",
-					"host": [
-						"localhost"
-					],
-					"port": "5000",
-					"path": [
-						"api",
-						"navigations",
-						"shortest-path"
-					]
-				}
-			},
-			"response": []
-		},
-		{
 			"name": "shortestPath jogja",
 			"request": {
-				"method": "POST",
+				"method": "GET",
 				"header": [],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n  \"src_lat\":  -7.756451, \n    \"src_lon\":110.376608,\n    \"dst_lat\": -7.767762,\n    \"dst_lon\":  110.376881\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
 				"url": {
-					"raw": "http://localhost:5000/api/navigations/shortest-path",
+					"raw": "http://localhost:5000/api/navigations/shortest-path?src_lat=-7.756190&src_lon=110.376619&dst_lat=-7.767794&dst_lon=110.376511",
 					"protocol": "http",
 					"host": [
 						"localhost"
@@ -96,27 +57,36 @@
 						"api",
 						"navigations",
 						"shortest-path"
+					],
+					"query": [
+						{
+							"key": "src_lat",
+							"value": "-7.756190"
+						},
+						{
+							"key": "src_lon",
+							"value": "110.376619"
+						},
+						{
+							"key": "dst_lat",
+							"value": "-7.767794"
+						},
+						{
+							"key": "dst_lon",
+							"value": "110.376511"
+						}
 					]
 				}
 			},
 			"response": []
 		},
 		{
-			"name": "alternative routes 1",
+			"name": "shortestPath solo",
 			"request": {
-				"method": "POST",
+				"method": "GET",
 				"header": [],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n  \"src_lat\":  -7.550263588614922,\n    \"src_lon\":     110.78206617571915,\n    \"dst_lat\": -7.55929,\n    \"dst_lon\":    110.85385\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
 				"url": {
-					"raw": "http://localhost:5000/api/navigations/shortest-path-alternative-routes",
+					"raw": "http://localhost:5000/api/navigations/shortest-path?src_lat=-7.550263588614922&src_lon=110.78206617571915&dst_lat=-7.551320&dst_lon=110.810691",
 					"protocol": "http",
 					"host": [
 						"localhost"
@@ -125,7 +95,25 @@
 					"path": [
 						"api",
 						"navigations",
-						"shortest-path-alternative-routes"
+						"shortest-path"
+					],
+					"query": [
+						{
+							"key": "src_lat",
+							"value": "-7.550263588614922"
+						},
+						{
+							"key": "src_lon",
+							"value": "110.78206617571915"
+						},
+						{
+							"key": "dst_lat",
+							"value": "-7.551320"
+						},
+						{
+							"key": "dst_lon",
+							"value": "110.810691"
+						}
 					]
 				}
 			},
@@ -134,19 +122,10 @@
 		{
 			"name": "shortestPath Copy",
 			"request": {
-				"method": "POST",
+				"method": "GET",
 				"header": [],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n  \"src_lat\":  -7.550263588614922,\n    \"src_lon\":     110.78206617571915,\n    \"dst_lat\": -7.551320,\n    \"dst_lon\":   110.810691\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
 				"url": {
-					"raw": "http://localhost:5000/api/navigations/shortest-path",
+					"raw": "http://localhost:5000/api/navigations/shortest-path?src_lat=-7.75596&src_lon=110.37666&dst_lat=-7.76989&dst_lon=110.46581",
 					"protocol": "http",
 					"host": [
 						"localhost"
@@ -156,66 +135,24 @@
 						"api",
 						"navigations",
 						"shortest-path"
-					]
-				}
-			},
-			"response": []
-		},
-		{
-			"name": "alternative routes 2",
-			"request": {
-				"method": "POST",
-				"header": [],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n  \"src_lat\":  -7.75696, \n    \"src_lon\":  110.37668,\n    \"dst_lat\": -7.759619, \n    \"dst_lon\":   110.399085\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
-				"url": {
-					"raw": "http://localhost:5000/api/navigations/shortest-path-alternative-routes",
-					"protocol": "http",
-					"host": [
-						"localhost"
 					],
-					"port": "5000",
-					"path": [
-						"api",
-						"navigations",
-						"shortest-path-alternative-routes"
-					]
-				}
-			},
-			"response": []
-		},
-		{
-			"name": "shortestPath Copy",
-			"request": {
-				"method": "POST",
-				"header": [],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n  \"src_lat\":  -7.75596, \n    \"src_lon\":   110.37666,\n    \"dst_lat\": -7.76989, \n    \"dst_lon\":   110.46581\n}",
-					"options": {
-						"raw": {
-							"language": "json"
+					"query": [
+						{
+							"key": "src_lat",
+							"value": "-7.75596"
+						},
+						{
+							"key": "src_lon",
+							"value": "110.37666"
+						},
+						{
+							"key": "dst_lat",
+							"value": "-7.76989"
+						},
+						{
+							"key": "dst_lon",
+							"value": "110.46581"
 						}
-					}
-				},
-				"url": {
-					"raw": "http://localhost:5000/api/navigations/shortest-path",
-					"protocol": "http",
-					"host": [
-						"localhost"
-					],
-					"port": "5000",
-					"path": [
-						"api",
-						"navigations",
-						"shortest-path"
 					]
 				}
 			},
@@ -224,19 +161,10 @@
 		{
 			"name": "alternative routes 3",
 			"request": {
-				"method": "POST",
+				"method": "GET",
 				"header": [],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n  \"src_lat\":  -7.75596, \n    \"src_lon\":   110.37666,\n    \"dst_lat\": -7.76989, \n    \"dst_lon\":   110.46581\n}",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
 				"url": {
-					"raw": "http://localhost:5000/api/navigations/shortest-path-alternative-routes",
+					"raw": "http://localhost:5000/api/navigations/shortest-path-alternative-routes?src_lat=-7.75596&src_lon=110.37666&dst_lat=-7.554324&dst_lon=110.827275",
 					"protocol": "http",
 					"host": [
 						"localhost"
@@ -246,6 +174,24 @@
 						"api",
 						"navigations",
 						"shortest-path-alternative-routes"
+					],
+					"query": [
+						{
+							"key": "src_lat",
+							"value": "-7.75596"
+						},
+						{
+							"key": "src_lon",
+							"value": "110.37666"
+						},
+						{
+							"key": "dst_lat",
+							"value": "-7.554324"
+						},
+						{
+							"key": "dst_lon",
+							"value": "110.827275"
+						}
 					]
 				}
 			},
@@ -253,12 +199,15 @@
 		},
 		{
 			"name": "alternative routes 3 Copy",
+			"protocolProfileBehavior": {
+				"disableBodyPruning": true
+			},
 			"request": {
-				"method": "POST",
+				"method": "GET",
 				"header": [],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n  \"src_lat\":  -7.550263588614922,\n    \"src_lon\":     110.78206617571915,\n    \"dst_lat\":  -7.77133,\n    \"dst_lon\":    110.37743\n}",
+					"raw": "",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -266,7 +215,7 @@
 					}
 				},
 				"url": {
-					"raw": "http://localhost:5000/api/navigations/shortest-path-alternative-routes",
+					"raw": "http://localhost:5000/api/navigations/shortest-path-alternative-routes?src_lat=-7.75596&src_lon=110.37666&dst_lat=-7.567666796167702&dst_lon=110.81305350709503",
 					"protocol": "http",
 					"host": [
 						"localhost"
@@ -276,6 +225,24 @@
 						"api",
 						"navigations",
 						"shortest-path-alternative-routes"
+					],
+					"query": [
+						{
+							"key": "src_lat",
+							"value": "-7.75596"
+						},
+						{
+							"key": "src_lon",
+							"value": "110.37666"
+						},
+						{
+							"key": "dst_lat",
+							"value": "-7.567666796167702"
+						},
+						{
+							"key": "dst_lon",
+							"value": "110.81305350709503"
+						}
 					]
 				}
 			},
@@ -423,19 +390,10 @@
 		{
 			"name": "shortestPath grya alfaraz-pakuwon Copy",
 			"request": {
-				"method": "POST",
+				"method": "GET",
 				"header": [],
-				"body": {
-					"mode": "raw",
-					"raw": "{\n    \"src_lat\": -7.550261232598317,\n    \"src_lon\":    110.78210790296636, \n    \"street_alternative_lat\": -7.8409667827395815, \n    \"street_alternative_lon\":   110.3472473375829,\n      \"dst_lat\": -8.024431446370416,\n    \"dst_lon\":   110.32971396395838\n}\n\n",
-					"options": {
-						"raw": {
-							"language": "json"
-						}
-					}
-				},
 				"url": {
-					"raw": "http://localhost:5000/api/navigations/shortest-path-alternative-street",
+					"raw": "http://localhost:5000/api/navigations/shortest-path-alternative-street?src_lat=-7.550261232598317&src_lon=110.78210790296636&street_alternative_lat=-7.8409667827395815&street_alternative_lon=110.3472473375829&dst_lat=-8.024431446370416&dst_lon=110.32971396395838",
 					"protocol": "http",
 					"host": [
 						"localhost"
@@ -445,6 +403,32 @@
 						"api",
 						"navigations",
 						"shortest-path-alternative-street"
+					],
+					"query": [
+						{
+							"key": "src_lat",
+							"value": "-7.550261232598317"
+						},
+						{
+							"key": "src_lon",
+							"value": "110.78210790296636"
+						},
+						{
+							"key": "street_alternative_lat",
+							"value": "-7.8409667827395815"
+						},
+						{
+							"key": "street_alternative_lon",
+							"value": "110.3472473375829"
+						},
+						{
+							"key": "dst_lat",
+							"value": "-8.024431446370416"
+						},
+						{
+							"key": "dst_lon",
+							"value": "110.32971396395838"
+						}
 					]
 				}
 			},

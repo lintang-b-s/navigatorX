@@ -7,8 +7,6 @@ import (
 	"github.com/lintang-b-s/navigatorx/pkg/util"
 )
 
-
-
 func (rt *RouteAlgorithm) ShortestPathAStar(from, to int32) ([]datastructure.Coordinate, []datastructure.Edge, float64, float64) {
 	if from == to {
 		return []datastructure.Coordinate{}, []datastructure.Edge{}, 0, 0
@@ -48,7 +46,7 @@ func (rt *RouteAlgorithm) ShortestPathAStar(from, to int32) ([]datastructure.Coo
 			for cameFrom[currNode.ID].NodeID != -1 {
 
 				if rt.ch.IsTrafficLight(currNode.ID) {
-					etaTraffic += 3.0
+					etaTraffic += 1.5
 				}
 
 				pathCoords = append(pathCoords, datastructure.Coordinate{Lat: currNode.Lat, Lon: currNode.Lon})

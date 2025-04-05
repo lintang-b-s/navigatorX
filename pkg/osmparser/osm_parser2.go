@@ -34,6 +34,7 @@ type OsmParser struct {
 	nodeTag           map[int64]map[int]int
 	tagStringIdMap    util.IDMap
 	nodeIDMap         map[int64]int32
+	maxNodeID         int64
 }
 
 func NewOSMParserV2() *OsmParser {
@@ -108,6 +109,21 @@ var (
 		"unknown":          struct{}{},
 		"living_street":    struct{}{},
 		"private":          struct{}{},
+	}
+
+	//https://wiki.openstreetmap.org/wiki/Key:barrier
+	// for splitting street segment to 2 disconnected graph edge
+	// if the access tag of the barrier node is != "no" , we dont split the segment
+	// for example, at the barrier at the entrance to FMIPA UGM, where entry is only allowed after 16.00 WIB or before 8.00 wib. (https://www.openstreetmap.org/node/8837559088#map=19/-7.767125/110.375436&layers=N)
+	acceptedBarrierType = map[string]struct{}{
+		"block":         struct{}{},
+		"cycle_barrier": struct{}{},
+
+		"debris":        struct{}{},
+		"gate":          struct{}{},
+		"horse_stile":   struct{}{},
+		"planter":       struct{}{},
+		"barrier_board": struct{}{},
 	}
 )
 
@@ -228,14 +244,16 @@ func (p *OsmParser) Parse(mapFile string) ([]datastructure.CHNode, *datastructur
 				countNodes++
 				node := o.(*osm.Node)
 
+				p.maxNodeID = max(p.maxNodeID, int64(node.ID))
+
 				if _, ok := p.wayNodeMap[int64(node.ID)]; ok {
 					p.acceptedNodeMap[int64(node.ID)] = nodeCoord{
 						lat: node.Lat,
 						lon: node.Lon,
 					}
 				}
-
-				if node.Tags.Find("barrier") != "" ||
+				accessType := node.Tags.Find("access")
+				if _, ok := acceptedBarrierType[node.Tags.Find("barrier")]; ok && accessType == "no" ||
 					node.Tags.Find("ford") != "" {
 					p.barrierNodes[int64(node.ID)] = true
 				}
@@ -269,12 +287,13 @@ func (p *OsmParser) Parse(mapFile string) ([]datastructure.CHNode, *datastructur
 
 	for nodeID, nodeIDX := range p.nodeIDMap {
 		coord := p.acceptedNodeMap[nodeID]
-		if p.nodeTag[int64(nodeID)][p.tagStringIdMap.GetID(TRAFFIC_LIGHT)] == 1 {
-			processedNodes[nodeIDX] = datastructure.NewCHNode(coord.lat, coord.lon, 0, nodeIDX)
+
+		if val, ok := p.nodeTag[int64(nodeID)][p.tagStringIdMap.GetID(TRAFFIC_LIGHT)]; ok && val == 1 {
+
 			graphStorage.SetTrafficLight(nodeIDX)
-		} else {
-			processedNodes[nodeIDX] = datastructure.NewCHNode(coord.lat, coord.lon, 0, nodeIDX)
 		}
+		processedNodes[nodeIDX] = datastructure.NewCHNode(coord.lat, coord.lon, 0, nodeIDX)
+
 	}
 
 	log.Printf("total edges: %d", len(graphStorage.EdgeStorage))
@@ -333,7 +352,7 @@ func (p *OsmParser) processWay(way *osm.Way, graphStorage *datastructure.GraphSt
 			}
 		case "highway":
 			{
-				highwayTypeSpeed = RoadTypeMaxSpeed2(tag.Value)
+				highwayTypeSpeed = roadTypeMaxSpeed2(tag.Value)
 
 				if strings.Contains(tag.Value, "link") {
 					tempMap[ROAD_CLASS_LINK] = tag.Value
@@ -367,11 +386,8 @@ func (p *OsmParser) processWay(way *osm.Way, graphStorage *datastructure.GraphSt
 					}
 					maxSpeed = currSpeed * 1.852
 				} else {
-					currSpeed, err := strconv.ParseFloat(tag.Value, 64)
-					if err != nil {
-						return err
-					}
-					maxSpeed = currSpeed
+					// without unit
+					// dont use this
 				}
 			}
 
@@ -449,21 +465,43 @@ func (p *OsmParser) processSegment2(segment []node, tempMap map[string]string, s
 	waySegment := []node{}
 	for i := 0; i < len(segment); i++ {
 		nodeData := segment[i]
-		// if _, ok := p.barrierNodes[int64(nodeData.id)]; ok {
-		// 	p.barrierNodes[int64(nodeData.id)] = false
+		if _, ok := p.barrierNodes[int64(nodeData.id)]; ok {
 
-		// 	if len(waySegment) != 0 {
-		// 		waySegment = append(waySegment, nodeData)
-		// 		p.addEdge(waySegment, tempMap, speed, graphStorage, wayExtraInfoData, edgeSet)
-		// 		waySegment = []node{}
-		// 	}
-		// 	waySegment = append(waySegment, nodeData)
-		// } else {
-		waySegment = append(waySegment, nodeData)
-		// }
+			if len(waySegment) != 0 {
+				// if current node is a barrier
+				// add the barrier node and process the segment (add edge)
+				waySegment = append(waySegment, nodeData)
+				p.addEdge(waySegment, tempMap, speed, graphStorage, wayExtraInfoData, edgeSet)
+				waySegment = []node{}
+			}
+			// copy the barrier node but with different id so that previous edge (with barrier) not connected with the new edge
+
+			nodeData = p.copyNode(nodeData)
+			waySegment = append(waySegment, nodeData)
+
+		} else {
+			waySegment = append(waySegment, nodeData)
+		}
 	}
 	if len(waySegment) > 1 {
 		p.addEdge(waySegment, tempMap, speed, graphStorage, wayExtraInfoData, edgeSet)
+	}
+}
+
+func (p *OsmParser) copyNode(nodeData node) node {
+	// use the same coordinate but different id & and the newID is not used
+	newMaxID := p.maxNodeID + 1
+	p.acceptedNodeMap[newMaxID] = nodeCoord{
+		lat: nodeData.coord.lat,
+		lon: nodeData.coord.lon,
+	}
+	p.maxNodeID++
+	return node{
+		id: newMaxID,
+		coord: nodeCoord{
+			lat: nodeData.coord.lat,
+			lon: nodeData.coord.lon,
+		},
 	}
 }
 
@@ -487,6 +525,21 @@ func (p *OsmParser) addEdge(segment []node, tempMap map[string]string, speed flo
 	edgePoints := []datastructure.Coordinate{}
 	distance := 0.0
 	for i := 0; i < len(segment); i++ {
+		if i != 0 && i != len(segment)-1 && p.nodeTag[int64(segment[i].id)][p.tagStringIdMap.GetID(TRAFFIC_LIGHT)] == 1 {
+			distToFromNode := geo.CalculateHaversineDistance(from.coord.lat, from.coord.lon, segment[i].coord.lat, segment[i].coord.lon)
+			distToToNode := geo.CalculateHaversineDistance(to.coord.lat, to.coord.lon, segment[i].coord.lat, segment[i].coord.lon)
+			if distToFromNode < distToToNode {
+				if _, ok := p.nodeTag[int64(segment[0].id)]; !ok {
+					p.nodeTag[int64(segment[0].id)] = make(map[int]int)
+				}
+				p.nodeTag[int64(segment[0].id)][p.tagStringIdMap.GetID(TRAFFIC_LIGHT)] = 1
+			} else {
+				if _, ok := p.nodeTag[int64(segment[len(segment)-1].id)]; !ok {
+					p.nodeTag[int64(segment[len(segment)-1].id)] = make(map[int]int)
+				}
+				p.nodeTag[int64(segment[len(segment)-1].id)][p.tagStringIdMap.GetID(TRAFFIC_LIGHT)] = 1
+			}
+		}
 		edgePoints = append(edgePoints, datastructure.Coordinate{
 			Lat: segment[i].coord.lat,
 			Lon: segment[i].coord.lon,
@@ -499,7 +552,7 @@ func (p *OsmParser) addEdge(segment []node, tempMap map[string]string, speed flo
 	edgePoints = geo.RamerDouglasPeucker(edgePoints) // simplify edge geometry
 
 	isRoundabout := false
-	if val, ok := tempMap["junction"]; ok {
+	if val, ok := tempMap[JUNCTION]; ok {
 		if val == "roundabout" {
 			isRoundabout = true
 		}
@@ -630,7 +683,7 @@ func (p *OsmParser) addEdge(segment []node, tempMap map[string]string, speed flo
 	}
 }
 
-func RoadTypeMaxSpeed2(roadType string) float64 {
+func roadTypeMaxSpeed2(roadType string) float64 {
 	switch roadType {
 	case "motorway":
 		return 100
@@ -684,4 +737,11 @@ func acceptOsmWay(way *osm.Way) bool {
 		return true
 	}
 	return false
+}
+
+func max(a, b int64) int64 {
+	if a > b {
+		return a
+	}
+	return b
 }

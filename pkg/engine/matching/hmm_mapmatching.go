@@ -198,19 +198,12 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 			fromNode := hmm.ch.GetNode(gps[i].State[j].EdgeFromNodeID)
 			toNode := hmm.ch.GetNode(gps[i].State[j].EdgeToNodeID)
 
-			pointsInBetween := hmm.ch.GetEdgePointsInBetween(gps[i].State[j].EdgeID)
-			pos := geo.PointPositionBetweenLinePoints(gps[i].Observation.Lat,
-				gps[i].Observation.Lon, pointsInBetween) - 1
-
-			from := pointsInBetween[pos]
-			to := pointsInBetween[pos+1]
-
 			projection := geo.ProjectPointToLineCoord(datastructure.NewCoordinate(
-				from.Lat,
-				from.Lon,
+				fromNode.Lat,
+				fromNode.Lon,
 			), datastructure.NewCoordinate(
-				to.Lat,
-				to.Lon,
+				toNode.Lat,
+				toNode.Lon,
 			), datastructure.NewCoordinate(
 				gps[i].Observation.Lat,
 				gps[i].Observation.Lon,

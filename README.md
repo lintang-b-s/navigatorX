@@ -8,7 +8,7 @@ Simple Openstreetmap routing engine in go. This project uses Contraction Hierarc
 #### Only Preprocessing
 
 ```
-1. download the jogja & solo openstreetmap pbf file at: https://drive.google.com/file/d/1pEHN8wwUbB5XpuYMZm141fXQ_ZsIf4CO/view?usp=sharing
+1. download the jogja & solo openstreetmap pbf file at: https://drive.google.com/file/d/1NExZWDv9xueyDhaLeaeW0oDbt85rtvz2/view?usp=sharing
 Note: or you can also use another openstreetmap file with the osm.pbf format (https://download.geofabrik.de/)
 2.  put the download results into the root directory of this project
 3.  go mod tidy &&  mkdir bin
@@ -47,15 +47,7 @@ Make sure you have done the preprocessing stage above!
 ```
 1. wait until there is a log "server started at :5000".
 2. request ke shortest path (source=surakarta , destination=pantai parangtritis) [untuk data openstreetmap pada step setup]
-curl --location 'http://localhost:5000/api/navigations/shortest-path' \
---header 'Content-Type: application/json' \
---data '{
-  "src_lat":  -7.550263588614922,
-    "src_lon":     110.78206617571915,
-    "dst_lat": -8.024167150460844,
-    "dst_lon":   110.32986653162467
-}'
-
+curl --location 'http://localhost:5000/api/navigations/shortest-path?src_lat=-7.756190&src_lon=110.376619&dst_lat=-7.767794&dst_lon=110.376511'
 Note: Source & Destination Coordinates must be around Yogyakarta Province/Surakarta City/Klaten if using OpenStreetMap data in the setup step
 5. Copy the polyline string path of the response endpoint result to https://valhalla.github.io/demos/polyline . Check Unsescape '\'. The shortest route will appear on the map. :)
 ```
@@ -63,14 +55,7 @@ Note: Source & Destination Coordinates must be around Yogyakarta Province/Suraka
 ### Alternative Routes
 ```
 1.  wait until there is a log "server started at :5000".
-curl --location 'http://localhost:5000/api/navigations/shortest-path-alternative-routes' \
---header 'Content-Type: application/json' \
---data '{
-  "src_lat":  -7.75696, 
-    "src_lon":  110.37668,
-    "dst_lat": -7.759619, 
-    "dst_lon":   110.399085
-}'
+curl --location 'http://localhost:5000/api/navigations/shortest-path-alternative-routes?src_lat=-7.75596&src_lon=110.37666&dst_lat=-7.554324&dst_lon=110.827275' 
 ```
 
 
@@ -86,7 +71,7 @@ NOTES: If you want to use the shortest path feature, you have to re-do the prepr
 ```
 
 
-### Traveling Salesman Problem Using Simulated Annealing or Ant-Colony Optimization
+### Traveling Salesman Problem 
 
 What is the shortest (suboptimal) route to visit UGM, UNY, UPNV Jogja, UII Jogja, IAIN Surakarta, UNS, UMS, and ISI Surakarta campuses exactly once and return to the original campus location?
 
@@ -176,7 +161,7 @@ Note:  "cities_coord" must be a place around the province of Yogyakarta/Surakart
 3.  Copy the polyline string path of the response endpoint result to https://valhalla.github.io/demos/polyline . Check Unsescape '\'. The shortest (suboptimal) TSP route will be displayed on the map. :)
 ```
 
-### Rider-Driver Matchmaking Using Hungarian Algorithm
+### Rider-Driver Matchmaking 
 
 ```
 1. Wait until Contraction Hierarchies preprocessing is complete
@@ -414,16 +399,7 @@ Note:  "sources" and "targets" must be around the province of Yogyakarta/Surakar
 ```
 1. wait until there is a log "server started at :5000".
 2. request query shortest path w/ alternative street
-curl --location 'http://localhost:5000/api/navigations/shortest-path-alternative-street' \
---header 'Content-Type: application/json' \
---data '{
-    "src_lat": -7.550261232598317,
-    "src_lon":    110.78210790296636,
-    "street_alternative_lat": -7.8409667827395815,
-    "street_alternative_lon":   110.3472473375829,
-      "dst_lat": -8.024431446370416,
-    "dst_lon":   110.32971396395838
-}'
+http://localhost:5000/api/navigations/shortest-path-alternative-street?src_lat=-7.550261232598317&src_lon=110.78210790296636&street_alternative_lat=-7.8409667827395815&street_alternative_lon=110.3472473375829&dst_lat=-8.024431446370416&dst_lon=110.32971396395838
 
 Note:  "sources" and "targets" must be around the province of Yogyakarta/Surakarta/Klaten if using OpenStreetMap data in the setup step
 3. Copy the polyline string path of the response endpoint result to https://valhalla.github.io/demos/polyline . Check Unsescape '\'. The shortest route will appear on the map. :)
@@ -441,6 +417,7 @@ Note:  "sources" and "targets" must be around the province of Yogyakarta/Surakar
 
 ```
 -  R. Geisberger, P. Sanders, D. Schultes, and D. Delling, “Contraction Hierarchies: Faster and Simpler Hierarchical Routing in Road Networks,” in Experimental Algorithms, C. C. McGeoch, Ed., Berlin, Heidelberg: Springer, 2008, pp. 319–333. doi: 10.1007/978-3-540-68552-4_24.
+- I. Abraham, D. Delling, A. V. Goldberg, and R. F. Werneck, “Alternative Routes in Road Networks”.
 -   “Hidden Markov Map Matching Through Noise and Sparseness - Microsoft Research.” Accessed: Oct. 24, 2024. [Online]. Available: https://www.microsoft.com/en-us/research/publication/hidden-markov-map-matching-noise-sparseness/
 -  “Ant colony optimization | IEEE Journals & Magazine | IEEE Xplore.” Accessed: Dec. 08, 2024. [Online]. Available: https://ieeexplore-ieee-org.ezproxy.ugm.ac.id/document/4129846
 -  https://en.wikipedia.org/wiki/Hungarian_algorithm
