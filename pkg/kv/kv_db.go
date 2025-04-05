@@ -155,7 +155,7 @@ func (k *KVDB) get(val, key []byte) ([]byte, error) {
 }
 
 const (
-	searchRadiusInKM = 0.2
+	searchRadiusInKM = 0.15
 	h3CellLevel      = 9
 )
 
