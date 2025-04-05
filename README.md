@@ -1,6 +1,6 @@
 # navigatorx
 
-Simple Openstreetmap routing engine in go. This project uses Contraction Hierarchies to speed up shortest path queries by preprocessing the road network graph (adding many shortcut edges) and Bidirectional Dijsktra for shortest path queries. H3 is used as a nearest neighbor query. For route optimization, currently only TSP is supported, in the future VRP and its variants will be added. Currently it is still not possible to customize graph based on traffic data,but customization features will be added in the future.
+Openstreetmap routing engine in go. This project uses Contraction Hierarchies to speed up shortest path queries by preprocessing the road network graph (adding many shortcut edges) and Bidirectional Dijsktra for shortest path queries. H3 is used as a nearest neighbor query. 
 
 ## Quick Start
 
@@ -8,8 +8,8 @@ Simple Openstreetmap routing engine in go. This project uses Contraction Hierarc
 #### Only Preprocessing
 
 ```
-1. download the jogja & solo openstreetmap pbf file at: https://drive.google.com/file/d/1NExZWDv9xueyDhaLeaeW0oDbt85rtvz2/view?usp=sharing
-Note: or you can also use another openstreetmap file with the osm.pbf format (https://download.geofabrik.de/)
+1. download the example openstreetmap pbf file at the following link : https://drive.google.com/file/d/1NExZWDv9xueyDhaLeaeW0oDbt85rtvz2/view?usp=sharing
+Note: or you can also use another openstreetmap file with osm.pbf format (https://download.geofabrik.de/)
 2.  put the download results into the root directory of this project
 3.  go mod tidy &&  mkdir bin
 4. CGO_ENABLED=1  go build -o ./bin/navigatorx-preprocessing ./cmd/preprocessing
@@ -27,7 +27,6 @@ Make sure you have done the preprocessing stage above!
 ```
 1. CGO_ENABLED=1  go build -o ./bin/navigatorx-engine ./cmd/engine
 2. ./bin/navigatorx-engine
-(Minimum free RAM 1 GB for the  data above)
 ```
 
 
