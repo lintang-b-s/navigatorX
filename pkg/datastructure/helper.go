@@ -47,6 +47,7 @@ type State struct {
 	Dist            float64
 	EdgeID          int32
 	PointsInBetween []Coordinate
+	PointsIndex int
 	EdgeFromNodeID  int32
 	EdgeToNodeID    int32
 	EdgeWeight      float64

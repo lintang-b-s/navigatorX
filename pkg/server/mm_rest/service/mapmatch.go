@@ -60,11 +60,10 @@ func NewMapMatchingService(mapMatching Matching, rs RoadSnapper, kv KVDB, ch Con
 }
 
 const (
-	distThresold = 4.07
+	distThresold = 5.0
 )
 
-func (uc *MapMatchingService) MapMatch(ctx context.Context, gps []datastructure.Coordinate) (string,
-	[]datastructure.Coordinate, []datastructure.Edge, []datastructure.Coordinate, error) {
+func (uc *MapMatchingService) MapMatch(ctx context.Context, gps []datastructure.Coordinate) (string, []datastructure.Coordinate, []datastructure.Edge, []datastructure.Coordinate, error) {
 	hmmPair := []datastructure.StateObservationPair{}
 
 	stateID := 0
@@ -114,7 +113,7 @@ func (uc *MapMatchingService) MapMatch(ctx context.Context, gps []datastructure.
 
 	path, edges, obsPath := uc.mapMatching.MapMatch(hmmPair, stateID)
 
-	return datastructure.CreatePolyline(path), path, edges, obsPath, nil
+	return datastructure.CreatePolyline(path),path, edges, obsPath, nil
 }
 
 func (uc *MapMatchingService) NearestRoadSegmentsForMapMatching(lat, lon float64, obsID int) []*datastructure.State {

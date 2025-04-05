@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	maxVisitedNodes = 25 // prevState->nextState should be less than 25 node visit. idk
+	maxVisitedNodes = 20 // prevState->nextState should be less than 20 node visit. idk
 )
 
 // https://www.cs.princeton.edu/courses/archive/spr06/cos423/Handouts/GH05.pdf

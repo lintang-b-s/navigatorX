@@ -64,43 +64,44 @@ func (s *MapMatchingRequest) Bind(r *http.Request) error {
 //
 //	@Description	response body untuk map matching pakai hidden markov model
 type MapMatchingResponse struct {
-	Path  string `json:"path"`
-	Snaps []struct {
-		Coord       Coord              `json:"coordinates"`
+	Path         string  `json:"path"`
+	Coord        []Coord `json:"projection_coordinates"`
+	observations []struct {
 		Observation Coord              `json:"observation"`
 		Edge        datastructure.Edge `json:"edge"`
-	} `json:"snaps,omitempty"`
+	}
 }
 
 func RenderMapMatchingResponse(path string, coords []datastructure.Coordinate, edges []datastructure.Edge, obsPath []datastructure.Coordinate) *MapMatchingResponse {
-	snapsResp := []struct {
-		Coord       Coord `json:"coordinates"`
-		Observation Coord `json:"observation"`
-
-		Edge datastructure.Edge `json:"edge"`
+	snapsResp := []Coord{}
+	obervationResp := []struct {
+		Observation Coord              `json:"observation"`
+		Edge        datastructure.Edge `json:"edge"`
 	}{}
-	for i, c := range coords {
-		snapsResp = append(snapsResp, struct {
-			Coord       Coord "json:\"coordinates\""
-			Observation Coord "json:\"observation\""
-
-			Edge datastructure.Edge "json:\"edge\""
+	for i, c := range obsPath {
+		obervationResp = append(obervationResp, struct {
+			Observation Coord              `json:"observation"`
+			Edge        datastructure.Edge `json:"edge"`
 		}{
-			Coord{
+			Observation: Coord{
 				Lat: c.Lat,
+
 				Lon: c.Lon,
 			},
-			Coord{
-				Lat: obsPath[i].Lat,
-				Lon: obsPath[i].Lon,
-			},
-			edges[i],
+			Edge: edges[i],
+		})
+	}
+	for _, c := range coords {
+		snapsResp = append(snapsResp, Coord{
+			Lat: c.Lat,
+			Lon: c.Lon,
 		})
 	}
 
 	return &MapMatchingResponse{
-		Path:  path,
-		Snaps: snapsResp,
+		Path:         path,
+		Coord:        snapsResp,
+		observations: obervationResp,
 	}
 }
 

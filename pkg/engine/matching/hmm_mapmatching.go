@@ -116,18 +116,6 @@ func (hmm *HMMMapMatching) calculateTransitionProb(param concurrent.CalculateTra
 	prevState := param.PrevObservation.State[j]
 	currentState := param.Gps[i].State[k]
 
-	if prevState.EdgeToNodeID == currentState.EdgeFromNodeID {
-		projectionDist := geo.CalculateHaversineDistance(prevState.ProjectionLoc[0], prevState.ProjectionLoc[1],
-			currentState.ProjectionLoc[0], currentState.ProjectionLoc[1]) * 1000
-
-		transitionProb := computeTransitionLogProb(projectionDist,
-			linearDistance)
-
-		return newTransitionWithProb(prevState.StateID, currentState.StateID, transitionProb,
-			[]datastructure.Coordinate{datastructure.NewCoordinate(prevState.ProjectionLoc[0], prevState.ProjectionLoc[1])})
-
-	}
-
 	// if state is virtual node, then only consider the virtual edge
 	// if not, consider all edges of the state graph node
 	sourceEdgeFilter := func(edge datastructure.Edge) bool {
@@ -169,7 +157,16 @@ func (hmm *HMMMapMatching) calculateTransitionProb(param concurrent.CalculateTra
 	} else if prevState.EdgeID == currentState.EdgeID {
 
 		projectionDist := geo.CalculateHaversineDistance(prevState.ProjectionLoc[0], prevState.ProjectionLoc[1],
-			currentState.ProjectionLoc[0], currentState.ProjectionLoc[1]) * 1000
+			currentState.ProjectionLoc[0], currentState.ProjectionLoc[1]) * 1000 * 0.5
+
+		transitionProb := computeTransitionLogProb(projectionDist,
+			linearDistance)
+
+		return newTransitionWithProb(prevState.StateID, currentState.StateID, transitionProb,
+			[]datastructure.Coordinate{datastructure.NewCoordinate(prevState.ProjectionLoc[0], prevState.ProjectionLoc[1])})
+	} else if prevState.EdgeToNodeID == currentState.EdgeFromNodeID {
+		projectionDist := geo.CalculateHaversineDistance(prevState.ProjectionLoc[0], prevState.ProjectionLoc[1],
+			currentState.ProjectionLoc[0], currentState.ProjectionLoc[1]) * 1000 * 100
 
 		transitionProb := computeTransitionLogProb(projectionDist,
 			linearDistance)
@@ -198,13 +195,8 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 			fromNode := hmm.ch.GetNode(gps[i].State[j].EdgeFromNodeID)
 			toNode := hmm.ch.GetNode(gps[i].State[j].EdgeToNodeID)
 
-			projection := geo.ProjectPointToLineCoord(datastructure.NewCoordinate(
-				fromNode.Lat,
-				fromNode.Lon,
-			), datastructure.NewCoordinate(
-				toNode.Lat,
-				toNode.Lon,
-			), datastructure.NewCoordinate(
+			edge := hmm.ch.GetOutEdge(gps[i].State[j].EdgeID)
+			projection, _ := hmm.projectPointToEdgeGeometry(edge, datastructure.NewCoordinate(
 				gps[i].Observation.Lat,
 				gps[i].Observation.Lon,
 			))
@@ -352,14 +344,18 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 	}
 	solutions := make([]datastructure.Coordinate, 0)
 	solutionEdges := make([]datastructure.Edge, 0)
+	obsCoords := make([]datastructure.Coordinate, 0, len(gps))
 
-	for i := 1; i < len(statesPath); i++ {
+	for i := 0; i < len(statesPath); i++ {
 
 		projectionLoc := stateDataMap[statesPath[i]].ProjectionLoc
 		solutions = append(solutions, datastructure.Coordinate{
 			Lat: projectionLoc[0],
 			Lon: projectionLoc[1]})
-
+	
+		obsCoords = append(obsCoords, datastructure.NewCoordinate(
+			gps[stateDataMap[statesPath[i]].ObservationID].Observation.Lat,
+			gps[stateDataMap[statesPath[i]].ObservationID].Observation.Lon))
 		solutionEdges = append(solutionEdges, queryGraph.GetOutEdge(stateDataMap[statesPath[i]].EdgeID))
 	}
 
@@ -459,6 +455,8 @@ func (hmm *HMMMapMatching) splitEdges(gps []datastructure.StateObservationPair, 
 		prevNodeID := fromNode.ID
 		prevPositionInLinePoints := 0
 
+		prevIndexI := 0
+
 		// for every snap projection point, add virtual edge <prevNodeID, newProjectionNodeID>
 		for i := 0; i < len(edgeSnaps); i++ {
 
@@ -486,10 +484,16 @@ func (hmm *HMMMapMatching) splitEdges(gps []datastructure.StateObservationPair, 
 				edgeSnaps[i].ProjectionID = newNodeID
 
 				queryGraph.AddNode(newProjectionNode)
-			} else {
-				log.Printf("node already exist")
 			}
 
+			if i > 0 {
+				_, bestIndexI := hmm.projectPointToEdgeGeometry(edge, currSnapProjection)
+				
+				if bestIndexI > prevIndexI {
+					edgeSnaps[i].PointsInBetween = edgePointsInBetween[prevIndexI:bestIndexI]
+					prevIndexI = bestIndexI
+				}
+			}
 			// add virtual edge
 			hmm.addVirtualEdge(queryGraph, edge, prevNodeID, newNodeID,
 				prevPoint, currSnapProjection, prevPositionInLinePoints,
@@ -508,6 +512,32 @@ func (hmm *HMMMapMatching) splitEdges(gps []datastructure.StateObservationPair, 
 
 	}
 
+}
+
+func (hmm *HMMMapMatching) projectPointToEdgeGeometry(
+	edge datastructure.Edge, point datastructure.Coordinate) (datastructure.Coordinate, int) {
+	edgePoints := hmm.ch.GetEdgePointsInBetween(edge.EdgeID)
+
+	bestProjection := edgePoints[0]
+
+	bestIndex := 0
+	minDist := math.MaxFloat64
+	for i := 0; i < len(edgePoints)-1; i++ {
+		p1 := edgePoints[i]
+		p2 := edgePoints[i+1]
+
+		projection := geo.ProjectPointToLineCoord(p1, p2, point)
+		distance := geo.CalculateHaversineDistance(point.Lat, point.Lon,
+			projection.Lat, projection.Lon) * 1000
+
+		if distance < minDist {
+			minDist = distance
+			bestProjection = projection
+			bestIndex = i
+		}
+	}
+
+	return bestProjection, bestIndex
 }
 
 func removeUnsuedEdgesInOsmWay(queryGraph ContractedGraph, matchedEdge datastructure.Edge) {
