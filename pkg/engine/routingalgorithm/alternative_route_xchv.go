@@ -55,13 +55,16 @@ func (ar *AlternativeRouteXCHV) RunAlternativeRouteXCHV(from, to int32) ([]datas
 		}
 
 		// use stopping criteria from x-bdv
-		// prune any vertex u with dist(s, u) + dist(u, t) > (1 + epsilon)`(Opt).
+		// prune any vertex u with dist(s, u) + dist(u, t) > (1 + epsilon)l(Opt).
 		if camefromf[vnode].Dist+camefromb[vnode].Dist > (1+ar.epsilon)*bestDist {
 			continue
 		}
 
+		edgeF := ar.buildViaNodeEdges(camefromf, vnode)
+		edgeB := ar.buildViaNodeEdges(camefromb, vnode)
+		vEdges := append(edgeF, edgeB...)
 		// calculate approximate value of σ(v)
-		sharedDistanceWithOpt := ar.calculateDistanceShare(nodes, edges)
+		sharedDistanceWithOpt := ar.calculateDistanceShare(nodes, vEdges)
 
 		// for calculating plateau, we use camefrom from s-t shortest-path tree
 		plateau := ar.calculatePlateauContainingV(camefromf, camefromb, vnode)
@@ -146,6 +149,23 @@ func (ar *AlternativeRouteXCHV) RunAlternativeRouteXCHV(from, to int32) ([]datas
 	}
 
 	return alternativeRoutes, nil
+}
+
+func (ar *AlternativeRouteXCHV) buildViaNodeEdges(cameFrom map[int32]cameFromPairXCHV, viaNode int32) []datastructure.Edge {
+	edges := make([]datastructure.Edge, 0)
+
+	v := viaNode
+	val := cameFrom[v]
+	for val.NodeID != -1 {
+		edges = append(edges, datastructure.Edge{
+			FromNodeID: val.NodeID,
+			ToNodeID:   v,
+			Dist:       val.Dist,
+		})
+		v = val.NodeID
+		val = cameFrom[v]
+	}
+	return edges
 }
 
 func (ar *AlternativeRouteXCHV) calculateDistanceShare(nodesOne []datastructure.CHNode,

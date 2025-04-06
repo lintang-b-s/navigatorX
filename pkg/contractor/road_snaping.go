@@ -90,8 +90,8 @@ func (ch *ContractedGraph) SnapLocationToRoadNetworkNodeH3WithSccAnalysis(edgesF
 	sort.Sort(edgeSliceFrom)
 	sort.Sort(edgeSliceTo)
 
-	edgeSliceFrom.entries = edgeSliceFrom.entries[:k]
-	edgeSliceTo.entries = edgeSliceTo.entries[:k]
+	edgeSliceFrom.entries = edgeSliceFrom.entries[:min(len(edgeSliceFrom.entries), k)]
+	edgeSliceTo.entries = edgeSliceTo.entries[:min(len(edgeSliceTo.entries), k)]
 
 	var (
 		bestEdgeFrom datastructure.KVEdge
@@ -145,6 +145,13 @@ func (ch *ContractedGraph) SnapLocationToRoadNetworkNodeH3WithSccAnalysis(edgesF
 
 func snapObjectiveFunction(weight, i, j float64) float64 {
 	return weight * (1 / math.Pow(i+1, 3)) * (1 / math.Pow(j+1, 3))
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func (ch *ContractedGraph) SnapLocationToRoadNetworkNodeH3(edges []datastructure.KVEdge, wantToSnap []float64) int32 {
