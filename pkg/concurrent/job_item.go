@@ -1,6 +1,10 @@
 package concurrent
 
-import "github.com/lintang-b-s/navigatorx/pkg/datastructure"
+import (
+	"context"
+
+	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
+)
 
 type KVEdge struct {
 	CenterLoc           []float64 // [lat, lon]
@@ -47,8 +51,31 @@ func NewCalculateTransitionProbParam(prevObservation datastructure.StateObservat
 	}
 }
 
+type AlternativeRouteParam struct {
+	FromNodeID       int32
+	ToNodeID         int32
+	VNodeID          int32
+	OptNodes         []datastructure.CHNode
+	AlternativeRoute datastructure.AlternativeRouteInfo
+	OptDist          float64
+	Ctx              context.Context
+}
+
+func NewAlternativeRouteParam(fromNodeID, toNodeID, vNodeID int32, optNodes []datastructure.CHNode,
+	altRoute datastructure.AlternativeRouteInfo, optDist float64, ctx context.Context) AlternativeRouteParam {
+	return AlternativeRouteParam{
+		FromNodeID:       fromNodeID,
+		ToNodeID:         toNodeID,
+		VNodeID:          vNodeID,
+		OptNodes:         optNodes,
+		AlternativeRoute: altRoute,
+		OptDist:          optDist,
+		Ctx:              ctx,
+	}
+}
+
 type JobI interface {
-	[]int32 | SaveWayJobItem | []KVEdge | CalculateTransitionProbParam
+	[]int32 | SaveWayJobItem | []KVEdge | CalculateTransitionProbParam | AlternativeRouteParam
 }
 
 type Job[T JobI] struct {

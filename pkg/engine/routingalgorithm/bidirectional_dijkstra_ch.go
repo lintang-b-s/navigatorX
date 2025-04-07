@@ -5,6 +5,7 @@ import (
 
 	"github.com/lintang-b-s/navigatorx/pkg/contractor"
 	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
+	"github.com/lintang-b-s/navigatorx/pkg/geo"
 	"github.com/lintang-b-s/navigatorx/pkg/util"
 )
 
@@ -51,9 +52,6 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraCH(from, to int32) ([]datastruct
 
 	forwQ.Insert(fromNode)
 	backQ.Insert(toNode)
-
-	visitedF := make(map[int32]struct{})
-	visitedB := make(map[int32]struct{})
 
 	estimate := math.MaxFloat64
 
@@ -107,10 +105,6 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraCH(from, to int32) ([]datastruct
 
 					edge := rt.ch.GetOutEdge(arc)
 
-					if _, ok := visitedF[edge.ToNodeID]; ok {
-						continue
-					}
-
 					toNID := edge.ToNodeID
 					cost := edge.Weight
 
@@ -147,17 +141,11 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraCH(from, to int32) ([]datastruct
 					}
 				}
 
-				visitedF[node.Item] = struct{}{}
-
 			} else {
 
 				for _, arc := range rt.ch.GetNodeFirstInEdges(node.Item) {
 
 					edge := rt.ch.GetInEdge(arc)
-
-					if _, ok := visitedB[edge.ToNodeID]; ok {
-						continue
-					}
 
 					toNID := edge.ToNodeID
 					cost := edge.Weight
@@ -193,8 +181,6 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraCH(from, to int32) ([]datastruct
 						}
 					}
 				}
-
-				visitedB[node.Item] = struct{}{}
 
 			}
 
@@ -332,6 +318,8 @@ func (rt *RouteAlgorithm) createPath(commonVertex int32, from, to int32,
 	edgePath = append(edgePath, fedgePath...)
 
 	edgePath = append(edgePath, bEdgePath...)
+
+	path = geo.RamerDouglasPeucker(path)
 
 	return path, edgePath, eta, dist / 1000
 }

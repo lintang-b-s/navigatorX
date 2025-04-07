@@ -1,6 +1,7 @@
 package util
 
 import (
+	"context"
 	"math"
 	"strconv"
 	"strings"
@@ -136,4 +137,13 @@ var bitmask = []int32{
 	0b00011111111111111111111111111111, // 29 bits
 	0b00111111111111111111111111111111, // 30 bits
 	0b01111111111111111111111111111111, // 31 bits
+}
+
+func StopConcurrectOperation(ctx context.Context) bool {
+	select {
+	case <-ctx.Done():
+		return true
+	default:
+		return false
+	}
 }

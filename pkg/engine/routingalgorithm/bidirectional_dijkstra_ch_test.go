@@ -76,14 +76,18 @@ func NewGraph() *contractor.ContractedGraph {
 			edge,
 		)
 	}
+
 	streetDirections := make(map[string][2]bool)
 	nodes := []datastructure.CHNode{nodeP, nodeV, nodeQ, nodeW, nodeR, nodeF}
+	graphStorage.NodeTrafficLight = append(graphStorage.NodeTrafficLight, make([]int32, 6)...)
+	graphStorage.GlobalPoints = make([]datastructure.Coordinate, 10)
+	graphStorage.MapEdgeInfo = append(graphStorage.MapEdgeInfo, edgesExtraInfo...)
 	chGraph.InitCHGraph(nodes, graphStorage, streetDirections, util.NewIdMap())
 
 	return chGraph
 }
 
-func TestShortestPathBidirectionalDijkstra(t *testing.T) {
+func TestShortestPathBidirectionalDijkstraCH(t *testing.T) {
 	ch := NewGraph()
 	ch.Contraction()
 	rt := NewRouteAlgorithm(ch)

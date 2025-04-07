@@ -10,7 +10,6 @@ import (
 )
 
 type RouteAlgorithm interface {
-	ShortestPathAStar(int32, int32) ([]datastructure.Coordinate, []datastructure.Edge, float64, float64)
 	ShortestPathBiDijkstraCH(from, to int32) ([]datastructure.Coordinate, []datastructure.Edge, float64, float64)
 }
 
@@ -113,7 +112,7 @@ func (uc *MapMatchingService) MapMatch(ctx context.Context, gps []datastructure.
 
 	path, edges, obsPath := uc.mapMatching.MapMatch(hmmPair, stateID)
 
-	return datastructure.CreatePolyline(path),path, edges, obsPath, nil
+	return datastructure.CreatePolyline(path), path, edges, obsPath, nil
 }
 
 func (uc *MapMatchingService) NearestRoadSegmentsForMapMatching(lat, lon float64, obsID int) []*datastructure.State {

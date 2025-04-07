@@ -98,7 +98,7 @@ func main() {
 	hungarian := riderdrivermatching.NewHungarian(routingAlgorithm)
 
 	heuristic := heuristics.NewHeuristics(routingAlgorithm, ch)
-	alternativeRouter := routingalgorithm.NewAlternativeRouteXCHV(4, routingAlgorithm)
+	alternativeRouter := routingalgorithm.NewAlternativeRouteXCHV(3, routingAlgorithm)
 
 	navigatorSvc := service.NewNavigationService(ch, kvDB, hungarian, routingAlgorithm, heuristic, alternativeRouter)
 	recordMemProfile(memprofile, "service_init")

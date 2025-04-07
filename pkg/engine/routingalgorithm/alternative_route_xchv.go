@@ -1,10 +1,13 @@
 package routingalgorithm
 
 import (
+	"context"
 	"fmt"
 	"sort"
 
+	"github.com/lintang-b-s/navigatorx/pkg/concurrent"
 	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
+	"github.com/lintang-b-s/navigatorx/pkg/util"
 )
 
 // https://www.microsoft.com/en-us/research/publication/alternative-routes-in-road-networks/
@@ -92,63 +95,115 @@ func (ar *AlternativeRouteXCHV) RunAlternativeRouteXCHV(from, to int32) ([]datas
 	alternativeRoutes[0].Dist = bestDist
 	alternativeRoutes[0].Eta = bestEta
 
-	noPathFoundCount := 0
+	workers := concurrent.NewWorkerPool[concurrent.AlternativeRouteParam, admisibleTestResult](10,
+		len(potentialRoutes))
 
+	k := 1
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	for _, alternativeRoute := range potentialRoutes {
 		vnode := alternativeRoute.ViaNode
 
-		// calculate Pv (sv + vt shortest path) to obtain the actual values of l(v) and σ(v)
-		svNodes, svPath, svEdges, svEta, svDist, _, _, _ := ar.rt.ShortestPathBiDijkstraXCHV(from, vnode)
-		vtNodes, vtPath, vtEdges, vtEta, vtDist, _, _, _ := ar.rt.ShortestPathBiDijkstraXCHV(vnode, to)
-		if vtDist == -1 || svDist == -1 {
-			noPathFoundCount++
-			continue
+		workers.AddJob(concurrent.NewAlternativeRouteParam(
+			from, to, vnode, nodes, alternativeRoute, bestDist, ctx))
+	}
+
+	workers.Close()
+	workers.Start(ar.RunAdmisibleTestXCHV)
+
+	workers.Wait()
+
+	for admisibleTestResultItem := range workers.CollectResults() {
+		passAdmisibleTest := admisibleTestResultItem.pass
+		if passAdmisibleTest {
+			alternativeRoutes = append(alternativeRoutes, admisibleTestResultItem.alternativeRoute)
+			k++
 		}
-
-		pvEdges := append(svEdges, vtEdges...)
-		pvDist := svDist + vtDist
-		pvEta := svEta + vtEta
-
-		pvNodes := append(svNodes, vtNodes...)
-
-		// calculate actual value of σ(v)
-		sharedDistanceWithOpt := ar.calculateDistanceShare(nodes, pvEdges)
-
-		// check wether l(Pv \ Opt) < (1 + epsilon)l(Opt \ Pv)
-
-		lengthPvExcludeOpt := pvDist - sharedDistanceWithOpt
-		lengthOptExcludePv := bestDist - sharedDistanceWithOpt
-		if lengthPvExcludeOpt >= (1+ar.epsilon)*lengthOptExcludePv {
-			continue
+		if k >= ar.maxK {
+			return alternativeRoutes, nil
 		}
-
-		// check wether σ(v) < γ · l(Opt)
-		if sharedDistanceWithOpt/bestDist >= ar.gamma {
-			continue
-		}
-
-		edgeIDContainV := searchVNodeInedges(pvEdges, vnode)
-
-		// run a T-test with T = α · l(Pv \ Opt)
-		if !ar.tTest(lengthPvExcludeOpt, edgeIDContainV, pvEdges,
-			vnode) || edgeIDContainV == -1 {
-			continue
-		}
-
-		alternativeRoute.Eta = pvEta
-		alternativeRoute.Dist = pvDist
-		alternativeRoute.Nodes = pvNodes
-		alternativeRoute.Edges = pvEdges
-		alternativeRoute.Path = append(svPath, vtPath...)
-
-		alternativeRoutes = append(alternativeRoutes, alternativeRoute)
-		if len(alternativeRoutes) >= ar.maxK {
-			break
-		}
-
 	}
 
 	return alternativeRoutes, nil
+}
+
+func (ar *AlternativeRouteXCHV) RunAdmisibleTestXCHV(param concurrent.AlternativeRouteParam) admisibleTestResult {
+	from := param.FromNodeID
+	to := param.ToNodeID
+	vnode := param.VNodeID
+	optNodes := param.OptNodes
+	optDist := param.OptDist
+	alternativeRoute := param.AlternativeRoute
+	ctx := param.Ctx
+
+	if util.StopConcurrectOperation(ctx) {
+		return newAdmisibleTestResult(false, datastructure.AlternativeRouteInfo{})
+	}
+	// calculate Pv (sv + vt shortest path) to obtain the actual values of l(v) and σ(v)
+	svNodes, svPath, svEdges, svEta, svDist, _, _, _ := ar.rt.ShortestPathBiDijkstraXCHV(from, vnode)
+
+	if util.StopConcurrectOperation(ctx) {
+		return newAdmisibleTestResult(false, datastructure.AlternativeRouteInfo{})
+	}
+	vtNodes, vtPath, vtEdges, vtEta, vtDist, _, _, _ := ar.rt.ShortestPathBiDijkstraXCHV(vnode, to)
+
+	if util.StopConcurrectOperation(ctx) {
+		return newAdmisibleTestResult(false, datastructure.AlternativeRouteInfo{})
+	}
+	if vtDist == -1 || svDist == -1 {
+
+		return newAdmisibleTestResult(false, datastructure.AlternativeRouteInfo{})
+	}
+
+	pvEdges := append(svEdges, vtEdges...)
+	pvDist := svDist + vtDist
+	pvEta := svEta + vtEta
+
+	pvNodes := append(svNodes, vtNodes...)
+
+	// calculate actual value of σ(v)
+	sharedDistanceWithOpt := ar.calculateDistanceShare(optNodes, pvEdges)
+
+	// check wether l(Pv \ Opt) < (1 + epsilon)l(Opt \ Pv)
+
+	lengthPvExcludeOpt := pvDist - sharedDistanceWithOpt
+	lengthOptExcludePv := optDist - sharedDistanceWithOpt
+	if lengthPvExcludeOpt >= (1+ar.epsilon)*lengthOptExcludePv {
+		return newAdmisibleTestResult(false, datastructure.AlternativeRouteInfo{})
+	}
+
+	// check wether σ(v) < γ · l(Opt)
+	if sharedDistanceWithOpt/optDist >= ar.gamma {
+		return newAdmisibleTestResult(false, datastructure.AlternativeRouteInfo{})
+	}
+
+	edgeIDContainV := searchVNodeInedges(pvEdges, vnode)
+
+	// run a T-test with T = α · l(Pv \ Opt)
+	if !ar.tTest(lengthPvExcludeOpt, edgeIDContainV, pvEdges,
+		vnode) || edgeIDContainV == -1 {
+		return newAdmisibleTestResult(false, datastructure.AlternativeRouteInfo{})
+	}
+
+	alternativeRoute.Eta = pvEta
+	alternativeRoute.Dist = pvDist
+	alternativeRoute.Nodes = pvNodes
+	alternativeRoute.Edges = pvEdges
+	alternativeRoute.Path = append(svPath, vtPath...)
+
+	return newAdmisibleTestResult(true, alternativeRoute)
+}
+
+type admisibleTestResult struct {
+	pass             bool
+	alternativeRoute datastructure.AlternativeRouteInfo
+}
+
+func newAdmisibleTestResult(pass bool, alternativeRoute datastructure.AlternativeRouteInfo) admisibleTestResult {
+	return admisibleTestResult{
+		pass:             pass,
+		alternativeRoute: alternativeRoute,
+	}
 }
 
 func (ar *AlternativeRouteXCHV) buildViaNodeEdges(cameFrom map[int32]cameFromPairXCHV, viaNode int32) []datastructure.Edge {
@@ -251,10 +306,11 @@ func (ar *AlternativeRouteXCHV) tTest(lengthPvExcludeOpt float64, edgeIDContainV
 		xNode int32
 		yNode int32
 	)
+	T := ar.alpha * lengthPvExcludeOpt
 
 	distancef := 0.0
 	// Among all vertices in P1 that are at least T away from v, let x be the closest to v
-	for edgeIDContainV-1 >= 0 && distancef < lengthPvExcludeOpt {
+	for edgeIDContainV-1 >= 0 && distancef < T {
 		distancef += pvEdges[edgeIDContainV-1].Dist
 		xNode = pvEdges[edgeIDContainV-1].FromNodeID
 
@@ -263,7 +319,7 @@ func (ar *AlternativeRouteXCHV) tTest(lengthPvExcludeOpt float64, edgeIDContainV
 
 	distanceb := 0.0
 	// Among all vertices in P2 that are at least T away from v, let y be the closest to v
-	for edgeIDContainV < len(pvEdges) && distanceb < lengthPvExcludeOpt {
+	for edgeIDContainV < len(pvEdges) && distanceb < T {
 		distanceb += pvEdges[edgeIDContainV].Dist
 		yNode = pvEdges[edgeIDContainV].ToNodeID
 

@@ -51,6 +51,10 @@ Note: Source & Destination Coordinates must be around Yogyakarta Province/Suraka
 ```
 1.  wait until there is a log "server started at :5000".
 curl --location 'http://localhost:5000/api/navigations/shortest-path-alternative-routes?src_lat=-7.75596&src_lon=110.37666&dst_lat=-7.554324&dst_lon=110.827275'
+
+example 2:
+
+curl --location 'http://localhost:5000/api/navigations/shortest-path-alternative-routes?src_lat=-7.75596&src_lon=110.37666&dst_lat=-7.802027937861759&dst_lon=110.39751911597698'
 ```
 
 

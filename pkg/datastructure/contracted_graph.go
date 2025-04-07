@@ -160,7 +160,7 @@ func (gs *GraphStorage) GetPointsInbetween(edgeID int32) []Coordinate {
 	)
 	startIndex := edge.StartPointsIndex
 	endIndex := edge.EndPointsIndex
-	if startIndex < endIndex {
+	if startIndex <= endIndex {
 		edgePoints = gs.GlobalPoints[startIndex:endIndex]
 
 		return edgePoints

@@ -56,7 +56,6 @@ type ContractedGraph interface {
 }
 
 type RouteAlgorithm interface {
-	ShortestPathAStar(int32, int32) ([]datastructure.Coordinate, []datastructure.Edge, float64, float64)
 	ShortestPathBiDijkstraCH(from, to int32) ([]datastructure.Coordinate, []datastructure.Edge, float64, float64)
 	ShortestPathBiDijkstra(from, to int32, fromEdgeFilter, toEdgeFilter func(edge datastructure.Edge) bool) ([]datastructure.Coordinate, []datastructure.Edge,
 		float64, float64)
@@ -352,7 +351,7 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 		solutions = append(solutions, datastructure.Coordinate{
 			Lat: projectionLoc[0],
 			Lon: projectionLoc[1]})
-	
+
 		obsCoords = append(obsCoords, datastructure.NewCoordinate(
 			gps[stateDataMap[statesPath[i]].ObservationID].Observation.Lat,
 			gps[stateDataMap[statesPath[i]].ObservationID].Observation.Lon))
@@ -488,7 +487,7 @@ func (hmm *HMMMapMatching) splitEdges(gps []datastructure.StateObservationPair, 
 
 			if i > 0 {
 				_, bestIndexI := hmm.projectPointToEdgeGeometry(edge, currSnapProjection)
-				
+
 				if bestIndexI > prevIndexI {
 					edgeSnaps[i].PointsInBetween = edgePointsInBetween[prevIndexI:bestIndexI]
 					prevIndexI = bestIndexI

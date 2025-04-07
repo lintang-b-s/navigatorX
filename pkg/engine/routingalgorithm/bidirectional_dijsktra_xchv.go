@@ -14,6 +14,10 @@ type cameFromPairXCHV struct {
 	Dist   float64
 }
 
+const (
+	k = 3 //success rate 70% for p=2 alternative routes
+)
+
 func (rt *RouteAlgorithm) ShortestPathBiDijkstraXCHV(from, to int32) ([]datastructure.CHNode,
 	[]datastructure.Coordinate, []datastructure.Edge, float64, float64,
 	map[int32]cameFromPairXCHV, map[int32]cameFromPairXCHV, int32) {
@@ -38,9 +42,6 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraXCHV(from, to int32) ([]datastru
 
 	forwQ.Insert(fromNode)
 	backQ.Insert(toNode)
-
-	visitedF := make(map[int32]struct{})
-	visitedB := make(map[int32]struct{})
 
 	estimate := math.MaxFloat64
 
@@ -94,14 +95,10 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraXCHV(from, to int32) ([]datastru
 
 					edge := rt.ch.GetOutEdge(arc)
 
-					if _, ok := visitedF[edge.ToNodeID]; ok {
-						continue
-					}
-
 					toNID := edge.ToNodeID
 					cost := edge.Weight
 
-					if rt.ch.GetNode(node.Item).OrderPos < rt.ch.GetNode(toNID).OrderPos {
+					if rt.ch.GetNode(node.Item).OrderPos < rt.ch.GetNode(toNID).OrderPos || !rt.pruneRelaxedCH(cameFromf, node.Item, toNID) {
 						// upward graph
 						newCost := cost + df[node.Item]
 						newDist := edge.Dist + distf[node.Item]
@@ -140,22 +137,16 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraXCHV(from, to int32) ([]datastru
 					}
 				}
 
-				visitedF[node.Item] = struct{}{}
-
 			} else {
 
 				for _, arc := range rt.ch.GetNodeFirstInEdges(node.Item) {
 
 					edge := rt.ch.GetInEdge(arc)
 
-					if _, ok := visitedB[edge.ToNodeID]; ok {
-						continue
-					}
-
 					toNID := edge.ToNodeID
 					cost := edge.Weight
 
-					if rt.ch.GetNode(node.Item).OrderPos < rt.ch.GetNode(toNID).OrderPos {
+					if rt.ch.GetNode(node.Item).OrderPos < rt.ch.GetNode(toNID).OrderPos || !rt.pruneRelaxedCH(cameFromb, node.Item, toNID) {
 						// downward graph
 						newCost := cost + db[node.Item]
 
@@ -192,8 +183,6 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraXCHV(from, to int32) ([]datastru
 						}
 					}
 				}
-
-				visitedB[node.Item] = struct{}{}
 
 			}
 
@@ -234,6 +223,35 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraXCHV(from, to int32) ([]datastru
 	path, coordPath, edgePath, eta, dist := rt.createPathXCHV(bestCommonVertex, from, to, cameFromf, cameFromb,
 		cameFromFCopy, cameFromBCopy)
 	return path, coordPath, edgePath, eta, dist, cameFromf, cameFromb, bestCommonVertex
+}
+
+/*
+https://renatowerneck.wordpress.com/wp-content/uploads/2016/06/adgw13-alternatives.pdf
+5.3. Relaxed Contraction Hierarchies
+The details are as follows. During a query, let pi(u) be the ith ancestor of u in
+the search tree: p1(u) is u’s parent, and pi (u) is the parent of pi−1(u) (for i > 1).
+The k-relaxed variant of CHV prunes an edge (u, v) only if v precedes all vertices u,
+p1 (u), . . . , pk (u) in the CH order. If u has fewer than k ancestors, (u, v) is never pruned
+
+Return true if node edge (u,v) pruned, else return false
+*/
+func (rt *RouteAlgorithm) pruneRelaxedCH(cameFrom map[int32]cameFromPairXCHV, u int32, v int32) bool {
+	for counter := 1; counter <= k; counter++ {
+		if cameFrom[u].NodeID == -1 {
+			// u has fewer than k ancestors, so prune this edge (u,v)
+			return true
+		}
+		vOrder := rt.ch.GetNode(v).OrderPos
+		uOrder := rt.ch.GetNode(u).OrderPos
+		if vOrder > uOrder {
+			// v not precedes all vertices u in the ch order
+			return false
+		}
+		u = cameFrom[u].NodeID
+	}
+
+	// v precedes all u,p1(u),...pk(u) in ch order
+	return true
 }
 
 func (rt *RouteAlgorithm) createPathXCHV(commonVertex int32, from, to int32,

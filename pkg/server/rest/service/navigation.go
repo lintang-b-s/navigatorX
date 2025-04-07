@@ -43,7 +43,6 @@ type RoutingAlgorithm interface {
 	ShortestPathBiDijkstraCH(from, to int32) ([]datastructure.Coordinate, []datastructure.Edge, float64, float64)
 	ShortestPathManyToManyBiDijkstraWorkers(from []int32, to []int32) map[int32]map[int32]datastructure.SPSingleResultResult
 	CreateDistMatrix(spPair [][]int32) map[int32]map[int32]datastructure.SPSingleResultResult
-	ShortestPathAStar(from, to int32) ([]datastructure.Coordinate, []datastructure.Edge, float64, float64)
 }
 
 type AlternativeRouteXCHV interface {
@@ -112,7 +111,6 @@ func (uc *NavigationService) ShortestPathETA(ctx context.Context, srcLat, srcLon
 
 	pN, ePath, eta, dist = uc.routing.ShortestPathBiDijkstraCH(fromSurakartaNode, toSurakartaNode)
 
-	
 	pN = append([]datastructure.Coordinate{projectionFrom}, pN...)
 	pN = append(pN, projectionTo)
 	p := datastructure.CreatePolyline(pN)
