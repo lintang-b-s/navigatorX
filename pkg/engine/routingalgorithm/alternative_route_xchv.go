@@ -98,6 +98,8 @@ func (ar *AlternativeRouteXCHV) RunAlternativeRouteXCHV(from, to int32) ([]datas
 	workers := concurrent.NewWorkerPool[concurrent.AlternativeRouteParam, admisibleTestResult](10,
 		len(potentialRoutes))
 
+	duplicateRoutes := make(map[float64]struct{})
+
 	k := 1
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -116,6 +118,12 @@ func (ar *AlternativeRouteXCHV) RunAlternativeRouteXCHV(from, to int32) ([]datas
 	for admisibleTestResultItem := range workers.CollectResults() {
 		passAdmisibleTest := admisibleTestResultItem.pass
 		if passAdmisibleTest {
+
+			if _, ok := duplicateRoutes[admisibleTestResultItem.alternativeRoute.Eta]; ok {
+				continue
+			}
+			duplicateRoutes[admisibleTestResultItem.alternativeRoute.Eta] = struct{}{}
+
 			alternativeRoutes = append(alternativeRoutes, admisibleTestResultItem.alternativeRoute)
 			k++
 		}
