@@ -6,11 +6,16 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"sync"
 
 	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
+	"go.etcd.io/bbolt"
 
-	"github.com/dgraph-io/badger/v4"
 	"github.com/uber/h3-go/v4"
+)
+
+const (
+	H3_BOLTBUCKET = "h3-bucket"
 )
 
 var (
@@ -18,17 +23,18 @@ var (
 )
 
 type KVDB struct {
-	db *badger.DB
+	db *bbolt.DB
+	sync.Mutex
 }
 
-func NewKVDB(db *badger.DB) *KVDB {
-	return &KVDB{db}
+func NewKVDB(db *bbolt.DB) *KVDB {
+	return &KVDB{db, sync.Mutex{}}
 }
 
 func (k *KVDB) BuildH3IndexedEdges(ctx context.Context, graphStorage *datastructure.GraphStorage) error {
 	log.Printf("wait until loading contracted graph complete...")
 
-	log.Printf("creating & saving h3 indexed street to key-value db...")
+	log.Printf("creating & saving h3 indexed road segments to key-value db...")
 	kv := make(map[string][]datastructure.KVEdge)
 	for i := range graphStorage.EdgeStorage {
 		select {
@@ -56,13 +62,13 @@ func (k *KVDB) BuildH3IndexedEdges(ctx context.Context, graphStorage *datastruct
 
 		h3LatLon := h3.NewLatLng(edgeLat, edgeLon)
 		cell := h3.LatLngToCell(h3LatLon, h3CellLevel)
-		smallStreet := datastructure.KVEdge{
+		smallSegment := datastructure.KVEdge{
 			CenterLoc:  [2]float64{edgeLat, edgeLon},
 			FromNodeID: roadSegment.FromNodeID,
 			ToNodeID:   roadSegment.ToNodeID,
 		}
 
-		kv[cell.String()] = append(kv[cell.String()], smallStreet)
+		kv[cell.String()] = append(kv[cell.String()], smallSegment)
 
 	}
 
@@ -96,7 +102,7 @@ func (k *KVDB) BuildH3IndexedEdges(ctx context.Context, graphStorage *datastruct
 		}
 	}
 
-	log.Printf("creating & saving h3 indexed street to key-value db done...")
+	log.Printf("creating & saving h3 indexed street segment to key-value db done...")
 	return nil
 }
 
@@ -106,52 +112,44 @@ type batchData struct {
 }
 
 func (k *KVDB) saveBatchEdges(ctx context.Context, batchData []batchData) error {
-	batch := k.db.NewWriteBatch()
-	defer batch.Cancel()
+	k.Lock()
+	defer k.Unlock()
+	return k.db.Batch(func(tx *bbolt.Tx) error {
+		for _, data := range batchData {
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("context cancelled")
+			default:
+			}
 
-	for _, data := range batchData {
-		select {
-		case <-ctx.Done():
-			return fmt.Errorf("context cancelled")
-		default:
+			key := []byte(data.key)
+
+			val, err := encodeEdges(data.value)
+
+			if err != nil {
+				return err
+			}
+
+			bucket := tx.Bucket([]byte(H3_BOLTBUCKET))
+			if err := bucket.Put(key, val); err != nil {
+				return err
+			}
 		}
-
-		key := []byte(data.key)
-
-		val, err := encodeEdges(data.value)
-
-		if err != nil {
-			return err
-		}
-
-		if err := batch.Set(key, val); err != nil {
-			return err
-		}
-	}
-
-	if err := batch.Flush(); err != nil {
-		log.Printf("error saving edges: %v", err)
-		return err
-	}
-	log.Printf("saving %d edges done", len(batchData))
-	return nil
-}
-
-func (k *KVDB) get(val, key []byte) ([]byte, error) {
-	err := k.db.View(func(txn *badger.Txn) error {
-		item, err := txn.Get([]byte(key))
-		if err != nil {
-			return err
-		}
-
-		val, err = item.ValueCopy(nil)
-		if err != nil {
-			return err
-		}
-
 		return nil
 	})
-	return val, err
+
+}
+
+func (k *KVDB) get(key []byte) (node []byte, err error) {
+	k.db.View(func(tx *bbolt.Tx) error {
+		bucket := tx.Bucket([]byte(H3_BOLTBUCKET))
+		node = bucket.Get([]byte(key))
+		if node == nil {
+			return ErrEdgesNotFound
+		}
+		return nil
+	})
+	return
 }
 
 const (
@@ -159,7 +157,7 @@ const (
 	h3CellLevel      = 9
 )
 
-func (k *KVDB) GetNearestStreetsFromPointCoord(lat, lon float64) ([]datastructure.KVEdge, error) {
+func (k *KVDB) GetNearestRoadSegmentsFromPointCoord(lat, lon float64) ([]datastructure.KVEdge, error) {
 	edges := []datastructure.KVEdge{}
 
 	var (
@@ -167,7 +165,7 @@ func (k *KVDB) GetNearestStreetsFromPointCoord(lat, lon float64) ([]datastructur
 	)
 
 	edges, err = k.radiusSearch(lat, lon, searchRadiusInKM)
-	if err != nil {
+	if err != nil && !errors.Is(err, ErrEdgesNotFound) {
 		return []datastructure.KVEdge{}, err
 	}
 
@@ -176,7 +174,7 @@ func (k *KVDB) GetNearestStreetsFromPointCoord(lat, lon float64) ([]datastructur
 	for len(edges) == 0 && radius < 1.0 {
 		radius += 0.05
 		edges, err = k.radiusSearch(lat, lon, radius)
-		if err != nil {
+		if err != nil && !errors.Is(err, ErrEdgesNotFound) {
 			return []datastructure.KVEdge{}, err
 		}
 	}
@@ -191,7 +189,6 @@ func (k *KVDB) GetNearestStreetsFromPointCoord(lat, lon float64) ([]datastructur
 
 func (k *KVDB) radiusSearch(lat, lon float64, radius float64) ([]datastructure.KVEdge, error) {
 	var (
-		err      error
 		edges    []datastructure.KVEdge
 		segments []datastructure.KVEdge
 	)
@@ -201,10 +198,9 @@ func (k *KVDB) radiusSearch(lat, lon float64, radius float64) ([]datastructure.K
 
 		currCellString := currCell.String()
 
-		var val []byte
-		val, err = k.get(val, []byte(currCellString))
+		val, err := k.get([]byte(currCellString))
 
-		if err != nil && !errors.Is(err, badger.ErrKeyNotFound) {
+		if err != nil && !errors.Is(err, ErrEdgesNotFound) {
 			return []datastructure.KVEdge{}, err
 		}
 

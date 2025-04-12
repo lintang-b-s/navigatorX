@@ -14,7 +14,7 @@ type RouteAlgorithm interface {
 }
 
 type KVDB interface {
-	GetNearestStreetsFromPointCoord(lat, lon float64) ([]datastructure.KVEdge, error)
+	GetNearestRoadSegmentsFromPointCoord(lat, lon float64) ([]datastructure.KVEdge, error)
 }
 
 type Matching interface {
@@ -26,7 +26,7 @@ type RoadSnapper interface {
 	SnapToRoadsWithinRadius(p datastructure.Point, radius float64, k int) []datastructure.OSMObject
 }
 type ContractedGraph interface {
-	SnapLocationToRoadNetworkNodeH3(ways []datastructure.KVEdge, wantToSnap []float64) int32
+	SnapLocationToRoadSegmentNodeH3(ways []datastructure.KVEdge, wantToSnap []float64) int32
 
 	GetNodeFirstOutEdges(nodeID int32) []int32
 	GetNodeFirstInEdges(nodeID int32) []int32

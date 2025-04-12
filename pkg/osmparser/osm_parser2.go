@@ -115,15 +115,15 @@ var (
 	// for splitting street segment to 2 disconnected graph edge
 	// if the access tag of the barrier node is != "no" , we dont split the segment
 	// for example, at the barrier at the entrance to FMIPA UGM, where entry is only allowed after 16.00 WIB or before 8.00 wib. (https://www.openstreetmap.org/node/8837559088#map=19/-7.767125/110.375436&layers=N)
-	acceptedBarrierType = map[string]struct{}{
-		"block":         struct{}{},
-		"cycle_barrier": struct{}{},
 
-		"debris":        struct{}{},
-		"gate":          struct{}{},
-		"horse_stile":   struct{}{},
-		"planter":       struct{}{},
-		"barrier_board": struct{}{},
+	acceptedBarrierType = map[string]struct{}{
+		"bollard":    struct{}{},
+		"swing_gate": struct{}{},
+
+		"jersey_barrier": struct{}{},
+		"lift_gate":      struct{}{},
+		"block":          struct{}{},
+		"gate":           struct{}{},
 	}
 )
 
@@ -253,8 +253,9 @@ func (p *OsmParser) Parse(mapFile string) ([]datastructure.CHNode, *datastructur
 					}
 				}
 				accessType := node.Tags.Find("access")
-				if _, ok := acceptedBarrierType[node.Tags.Find("barrier")]; ok && accessType == "no" ||
-					node.Tags.Find("ford") != "" {
+				barrierType := node.Tags.Find("barrier")
+
+				if _, ok := acceptedBarrierType[barrierType]; ok && accessType == "no" && barrierType != "" {
 					p.barrierNodes[int64(node.ID)] = true
 				}
 

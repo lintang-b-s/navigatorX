@@ -22,9 +22,8 @@ export default () => {
     dst_lon:  randomRoute[3],
   };
 
-  const res = http.post(
-    "http://localhost:5000/api/navigations/shortest-path",
-    JSON.stringify(reqBody),
+  const res = http.get(
+    `http://localhost:5000/api/navigations/shortest-path?src_lat=${reqBody.src_lat}&src_lon=${reqBody.src_lon}&dst_lat=${reqBody.dst_lat}&dst_lon=${reqBody.dst_lon}`,
     {
       headers: {
         "Content-Type": "application/json",

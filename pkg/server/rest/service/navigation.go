@@ -12,8 +12,8 @@ import (
 )
 
 type ContractedGraph interface {
-	SnapLocationToRoadNetworkNodeH3(edges []datastructure.KVEdge, wantToSnap []float64) int32
-	SnapLocationToRoadNetworkNodeH3WithSccAnalysis(edgesFrom, edgesTo []datastructure.KVEdge,
+	SnapLocationToRoadSegmentNodeH3(edges []datastructure.KVEdge, wantToSnap []float64) int32
+	SnapLocationToRoadSegmentNodeH3WithSccAnalysis(edgesFrom, edgesTo []datastructure.KVEdge,
 		wantToSnapFrom, wantToSnapTo []float64) (int32, int32, datastructure.Coordinate, datastructure.Coordinate, error)
 
 	GetNodeFirstOutEdges(nodeID int32) []int32
@@ -50,7 +50,7 @@ type AlternativeRouteXCHV interface {
 }
 
 type KVDB interface {
-	GetNearestStreetsFromPointCoord(lat, lon float64) ([]datastructure.KVEdge, error)
+	GetNearestRoadSegmentsFromPointCoord(lat, lon float64) ([]datastructure.KVEdge, error)
 }
 
 type Heuristics interface {
@@ -94,7 +94,7 @@ func (uc *NavigationService) ShortestPathETA(ctx context.Context, srcLat, srcLon
 		Lon: dstLon,
 	}
 
-	fromSurakartaNode, toSurakartaNode, projectionFrom, projectionTo, err := uc.SnapLocToStreetNodeWithSccAnalysis(from.Lat, from.Lon, to.Lat, to.Lon)
+	fromSurakartaNode, toSurakartaNode, projectionFrom, projectionTo, err := uc.SnapLocToRoadSegmentNodeWithSccAnalysis(from.Lat, from.Lon, to.Lat, to.Lon)
 	if err != nil {
 		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, []datastructure.Edge{}, false,
 			server.WrapErrorf(err, server.ErrNotFound, fmt.Sprintf("no path found from %v,%v to %v,%v", from.Lat, from.Lon, to.Lat, to.Lon))
@@ -144,7 +144,7 @@ func (uc *NavigationService) ShortestPathWithAlternativeRoutes(ctx context.Conte
 		Lon: dstLon,
 	}
 
-	fromSurakartaNode, toSurakartaNode, projectionFrom, projectionTo, err := uc.SnapLocToStreetNodeWithSccAnalysis(from.Lat, from.Lon, to.Lat, to.Lon)
+	fromSurakartaNode, toSurakartaNode, projectionFrom, projectionTo, err := uc.SnapLocToRoadSegmentNodeWithSccAnalysis(from.Lat, from.Lon, to.Lat, to.Lon)
 	if err != nil {
 		return make([]datastructure.AlternativeRouteInfo, 0), []string{}, [][]guidance.DrivingInstruction{},
 			server.WrapErrorf(err, server.ErrNotFound, "sorry!! the location you entered is not covered on my map :(, please use diferrent opensteetmap pbf file")
@@ -179,18 +179,18 @@ func (uc *NavigationService) ShortestPathWithAlternativeRoutes(ctx context.Conte
 	return alternativeRoutes, routePolylines, routeDrivingInstructions, nil
 }
 
-func (uc *NavigationService) SnapLocToStreetNodeWithSccAnalysis(fromLat, fromLon, toLat, toLon float64) (int32, int32, datastructure.Coordinate, datastructure.Coordinate, error) {
-	edgesFrom, err := uc.KV.GetNearestStreetsFromPointCoord(fromLat, fromLon)
+func (uc *NavigationService) SnapLocToRoadSegmentNodeWithSccAnalysis(fromLat, fromLon, toLat, toLon float64) (int32, int32, datastructure.Coordinate, datastructure.Coordinate, error) {
+	edgesFrom, err := uc.KV.GetNearestRoadSegmentsFromPointCoord(fromLat, fromLon)
 	if err != nil {
 		return -1, -1, datastructure.Coordinate{}, datastructure.Coordinate{}, err
 	}
 
-	edgesTo, err := uc.KV.GetNearestStreetsFromPointCoord(toLat, toLon)
+	edgesTo, err := uc.KV.GetNearestRoadSegmentsFromPointCoord(toLat, toLon)
 	if err != nil {
 		return -1, -1, datastructure.Coordinate{}, datastructure.Coordinate{}, err
 	}
 
-	edgeFromID, edgeToID, projectionFrom, projectionTo, err := uc.CH.SnapLocationToRoadNetworkNodeH3WithSccAnalysis(edgesFrom, edgesTo,
+	edgeFromID, edgeToID, projectionFrom, projectionTo, err := uc.CH.SnapLocationToRoadSegmentNodeH3WithSccAnalysis(edgesFrom, edgesTo,
 		[]float64{fromLat, fromLon}, []float64{toLat, toLon})
 	if err != nil {
 		return -1, -1, datastructure.Coordinate{}, datastructure.Coordinate{}, err
@@ -199,12 +199,12 @@ func (uc *NavigationService) SnapLocToStreetNodeWithSccAnalysis(fromLat, fromLon
 	return edgeFromID, edgeToID, projectionFrom, projectionTo, nil
 }
 
-func (uc *NavigationService) SnapLocToStreetNode(lat, lon float64) (int32, error) {
-	edges, err := uc.KV.GetNearestStreetsFromPointCoord(lat, lon)
+func (uc *NavigationService) SnapLocToRoadSegmentNode(lat, lon float64) (int32, error) {
+	edges, err := uc.KV.GetNearestRoadSegmentsFromPointCoord(lat, lon)
 	if err != nil {
 		return 0, err
 	}
-	streetNodeID := uc.CH.SnapLocationToRoadNetworkNodeH3(edges, []float64{lat, lon})
+	streetNodeID := uc.CH.SnapLocationToRoadSegmentNodeH3(edges, []float64{lat, lon})
 
 	return streetNodeID, nil
 }
@@ -219,7 +219,6 @@ type ShortestPathResult struct {
 	IsCH    bool
 }
 
-// harusnya pakai algoritma di: https://renatowerneck.wordpress.com/wp-content/uploads/2016/06/adgw13-alternatives.pdf
 func (uc *NavigationService) ShortestPathAlternativeStreetETA(ctx context.Context, srcLat, srcLon float64,
 	alternativeStreetLat float64, alternativeStreetLon float64,
 	dstLat float64, dstLon float64) (string, float64, []guidance.DrivingInstruction, bool, []datastructure.Coordinate, float64, bool, error) {
@@ -240,17 +239,17 @@ func (uc *NavigationService) ShortestPathAlternativeStreetETA(ctx context.Contex
 	}
 
 	var err error
-	fromSurakartaNode, err := uc.SnapLocToStreetNode(from.Lat, from.Lon)
+	fromSurakartaNode, err := uc.SnapLocToRoadSegmentNode(from.Lat, from.Lon)
 	if err != nil {
 		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, false, server.WrapErrorf(err, server.ErrNotFound, "sorry!! the location you entered is not covered on my map :(, please use diferrent opensteetmap pbf file")
 	}
 
-	alternativeStreetSurakartaNode, err := uc.SnapLocToStreetNode(alternativeStreet.Lat, alternativeStreet.Lon)
+	alternativeStreetSurakartaNode, err := uc.SnapLocToRoadSegmentNode(alternativeStreet.Lat, alternativeStreet.Lon)
 	if err != nil {
 		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, false, server.WrapErrorf(err, server.ErrNotFound, "sorry!! the location you entered is not covered on my map :(, please use diferrent opensteetmap pbf file")
 	}
 
-	toSurakartaNode, err := uc.SnapLocToStreetNode(to.Lat, to.Lon)
+	toSurakartaNode, err := uc.SnapLocToRoadSegmentNode(to.Lat, to.Lon)
 	if err != nil {
 		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, false, server.WrapErrorf(err, server.ErrNotFound, "sorry!! the location you entered is not covered on my map :(, please use diferrent opensteetmap pbf file")
 	}
@@ -382,12 +381,12 @@ func (uc *NavigationService) ManyToManyQuery(ctx context.Context, sourcesLat, so
 	dests := []int32{}
 
 	for i := 0; i < len(sourcesLat); i++ {
-		srcNode, _ := uc.SnapLocToStreetNode(sourcesLat[i], sourcesLon[i])
+		srcNode, _ := uc.SnapLocToRoadSegmentNode(sourcesLat[i], sourcesLon[i])
 		sources = append(sources, srcNode)
 	}
 
 	for i := 0; i < len(destsLat); i++ {
-		dstNode, _ := uc.SnapLocToStreetNode(destsLat[i], destsLon[i])
+		dstNode, _ := uc.SnapLocToRoadSegmentNode(destsLat[i], destsLon[i])
 		dests = append(dests, dstNode)
 	}
 
@@ -432,7 +431,7 @@ func (uc *NavigationService) TravelingSalesmanProblemSimulatedAnneal(ctx context
 
 	citiesID := []int32{}
 	for i := 0; i < len(citiesLat); i++ {
-		cityNode, _ := uc.SnapLocToStreetNode(citiesLat[i], citiesLon[i])
+		cityNode, _ := uc.SnapLocToRoadSegmentNode(citiesLat[i], citiesLon[i])
 		citiesID = append(citiesID, cityNode)
 	}
 
@@ -456,7 +455,7 @@ func (uc *NavigationService) TravelingSalesmanProblemAntColonyOptimization(ctx c
 
 	citiesID := []int32{}
 	for i := 0; i < len(citiesLat); i++ {
-		cityNode, _ := uc.SnapLocToStreetNode(citiesLat[i], citiesLon[i])
+		cityNode, _ := uc.SnapLocToRoadSegmentNode(citiesLat[i], citiesLon[i])
 		citiesID = append(citiesID, cityNode)
 	}
 
@@ -564,7 +563,7 @@ func (uc *NavigationService) NodeFinder(srcLat, srcLon float64) (int32, error) {
 	}
 
 	var err error
-	fromSurakartaNode, err := uc.SnapLocToStreetNode(from.Lat, from.Lon)
+	fromSurakartaNode, err := uc.SnapLocToRoadSegmentNode(from.Lat, from.Lon)
 	if err != nil {
 		return 0, server.WrapErrorf(err, server.ErrNotFound, "sorry!! the location you entered is not covered on my map :(, please use diferrent opensteetmap pbf file")
 	}

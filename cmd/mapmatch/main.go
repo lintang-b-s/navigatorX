@@ -13,7 +13,8 @@ import (
 	"github.com/lintang-b-s/navigatorx/pkg/server/mm_rest/service"
 	"github.com/lintang-b-s/navigatorx/pkg/snap"
 
-	badger "github.com/dgraph-io/badger/v4"
+	bolt "go.etcd.io/bbolt"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -33,11 +34,20 @@ func main() {
 		log.Fatal(err)
 	}
 
-	db, err := badger.Open(badger.DefaultOptions("./navigatorx_db"))
+	db, err := bolt.Open("./navigatox.db", 0600, nil)
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
 	}
+	defer db.Close()
 
+	err = db.Update(func(tx *bolt.Tx) error {
+		_, err := tx.CreateBucketIfNotExists([]byte(kv.H3_BOLTBUCKET))
+		return err
+	})
+	if err != nil {
+		panic(err)
+	}
+	
 	kvDB := kv.NewKVDB(db)
 	defer kvDB.Close()
 

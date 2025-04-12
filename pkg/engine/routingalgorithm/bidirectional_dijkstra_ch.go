@@ -5,7 +5,6 @@ import (
 
 	"github.com/lintang-b-s/navigatorx/pkg/contractor"
 	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
-	"github.com/lintang-b-s/navigatorx/pkg/geo"
 	"github.com/lintang-b-s/navigatorx/pkg/util"
 )
 
@@ -25,6 +24,15 @@ type ContractedGraph interface {
 	IsShortcut(edgeID int32) bool
 	GetEdgePointsInBetween(edgeID int32) []datastructure.Coordinate
 	IsTrafficLight(nodeID int32) bool
+
+	GetStreetDirection(streetName int) [2]bool
+	GetStreetNameFromID(streetName int) string
+	GetRoadClassFromID(roadClass uint8) string
+	GetRoadClassLinkFromID(roadClassLink uint8) string
+
+	IsRoundabout(edgeID int32) bool
+
+	GetEdgeInfo(edgeID int32) datastructure.EdgeExtraInfo
 }
 
 type RouteAlgorithm struct {
@@ -319,8 +327,6 @@ func (rt *RouteAlgorithm) createPath(commonVertex int32, from, to int32,
 
 	edgePath = append(edgePath, bEdgePath...)
 
-	path = geo.RamerDouglasPeucker(path)
-
 	return path, edgePath, eta, dist / 1000
 }
 
@@ -425,4 +431,8 @@ func (rt *RouteAlgorithm) unpackForward(edge datastructure.Edge, path *[]datastr
 		rt.unpackForward(edgeTwo, path, ePath, eta, dist)
 
 	}
+}
+
+func (rt *RouteAlgorithm) GetGraph() ContractedGraph {
+	return rt.ch
 }

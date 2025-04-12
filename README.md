@@ -4,7 +4,6 @@ Openstreetmap routing engine in go. This project uses Contraction Hierarchies to
 
 ## Quick Start
 
-
 #### Only Preprocessing
 
 ```
@@ -41,9 +40,9 @@ Make sure you have done the preprocessing stage above!
 
 ```
 1. wait until there is a log "server started at :5000".
-2. request ke shortest path (source=surakarta , destination=pantai parangtritis) [untuk data openstreetmap pada step setup]
+2. request ke shortest path (source=surakarta , destination=fmipa ugm) [untuk file openstreetmap pbf pada step setup]
 curl --location 'http://localhost:5000/api/navigations/shortest-path?src_lat=-7.567496&src_lon=110.812011&dst_lat=-7.767794&dst_lon=110.376511'
-Note: Source & Destination Coordinates must be around Yogyakarta Province/Surakarta City/Klaten if using OpenStreetMap data in the setup step
+Note: Source & Destination Coordinates must be around Yogyakarta Province/Surakarta City/Klaten if using OpenStreetMap pb file in the setup step
 5. Copy the polyline string path of the response endpoint result to https://valhalla.github.io/demos/polyline . Check Unsescape '\'. The shortest route will appear on the map. :)
 ```
 

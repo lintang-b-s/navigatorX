@@ -14,10 +14,9 @@ import (
 	"github.com/lintang-b-s/navigatorx/pkg/contractor"
 	"github.com/lintang-b-s/navigatorx/pkg/kv"
 	"github.com/lintang-b-s/navigatorx/pkg/osmparser"
+	bolt "go.etcd.io/bbolt"
 
 	_ "net/http/pprof"
-
-	badger "github.com/dgraph-io/badger/v4"
 )
 
 var (
@@ -62,9 +61,18 @@ func main() {
 
 	ch := contractor.NewContractedGraph()
 
-	db, err := badger.Open(badger.DefaultOptions("./navigatorx_db"))
+	db, err := bolt.Open("./navigatox.db", 0600, nil)
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
+	}
+	defer db.Close()
+
+	err = db.Update(func(tx *bolt.Tx) error {
+		_, err := tx.CreateBucketIfNotExists([]byte(kv.H3_BOLTBUCKET))
+		return err
+	})
+	if err != nil {
+		panic(err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

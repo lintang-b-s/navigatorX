@@ -27,7 +27,7 @@ type ContractedGraph interface {
 	RemoveEdge(edgeID int32, fromNodeID int32, toNodeID int32)
 	AddNode(node datastructure.CHNode)
 
-	SnapLocationToRoadNetworkNodeH3(ways []datastructure.KVEdge, wantToSnap []float64) int32
+	SnapLocationToRoadSegmentNodeH3(ways []datastructure.KVEdge, wantToSnap []float64) int32
 
 	GetNodeFirstOutEdges(nodeID int32) []int32
 	GetNodeFirstInEdges(nodeID int32) []int32
@@ -61,7 +61,7 @@ type RouteAlgorithm interface {
 		float64, float64)
 }
 type kvdb interface {
-	GetNearestStreetsFromPointCoord(lat, lon float64) ([]datastructure.KVEdge, error)
+	GetNearestRoadSegmentsFromPointCoord(lat, lon float64) ([]datastructure.KVEdge, error)
 }
 
 type HMMMapMatching struct {

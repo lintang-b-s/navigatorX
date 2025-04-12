@@ -12,10 +12,11 @@ type cameFromPairXCHV struct {
 	Edge   datastructure.Edge
 	NodeID int32
 	Dist   float64
+	Weight float64
 }
 
 const (
-	k = 3 //success rate 70% for p=2 alternative routes
+	k = 2 //success rate 61.6% for p=2 alternative routes
 )
 
 func (rt *RouteAlgorithm) ShortestPathBiDijkstraXCHV(from, to int32) ([]datastructure.CHNode,
@@ -48,10 +49,10 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraXCHV(from, to int32) ([]datastru
 	bestCommonVertex := int32(0)
 
 	cameFromf := make(map[int32]cameFromPairXCHV)
-	cameFromf[from] = cameFromPairXCHV{datastructure.Edge{}, -1, 0}
+	cameFromf[from] = cameFromPairXCHV{datastructure.Edge{}, -1, 0, 0}
 
 	cameFromb := make(map[int32]cameFromPairXCHV)
-	cameFromb[to] = cameFromPairXCHV{datastructure.Edge{}, -1, 0}
+	cameFromb[to] = cameFromPairXCHV{datastructure.Edge{}, -1, 0, 0}
 
 	frontFinished := false
 	backFinished := false
@@ -98,7 +99,7 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraXCHV(from, to int32) ([]datastru
 					toNID := edge.ToNodeID
 					cost := edge.Weight
 
-					if rt.ch.GetNode(node.Item).OrderPos < rt.ch.GetNode(toNID).OrderPos || !rt.pruneRelaxedCH(cameFromf, node.Item, toNID) {
+					if !rt.pruneRelaxedCH(cameFromf, node.Item, toNID) {
 						// upward graph
 						newCost := cost + df[node.Item]
 						newDist := edge.Dist + distf[node.Item]
@@ -112,7 +113,7 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraXCHV(from, to int32) ([]datastru
 
 							neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
 							frontier.Insert(neighborNode)
-							cameFromf[toNID] = cameFromPairXCHV{edge, node.Item, newDist}
+							cameFromf[toNID] = cameFromPairXCHV{edge, node.Item, newDist, newCost}
 						} else if newCost < df[toNID] {
 							df[toNID] = newCost
 
@@ -121,7 +122,7 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraXCHV(from, to int32) ([]datastru
 							neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
 							frontier.DecreaseKey(neighborNode)
 
-							cameFromf[toNID] = cameFromPairXCHV{edge, node.Item, newDist}
+							cameFromf[toNID] = cameFromPairXCHV{edge, node.Item, newDist, newCost}
 						}
 
 						_, ok = db[toNID]
@@ -146,7 +147,7 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraXCHV(from, to int32) ([]datastru
 					toNID := edge.ToNodeID
 					cost := edge.Weight
 
-					if rt.ch.GetNode(node.Item).OrderPos < rt.ch.GetNode(toNID).OrderPos || !rt.pruneRelaxedCH(cameFromb, node.Item, toNID) {
+					if !rt.pruneRelaxedCH(cameFromb, node.Item, toNID) {
 						// downward graph
 						newCost := cost + db[node.Item]
 
@@ -159,7 +160,7 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraXCHV(from, to int32) ([]datastru
 
 							neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
 							frontier.Insert(neighborNode)
-							cameFromb[toNID] = cameFromPairXCHV{edge, node.Item, newDist}
+							cameFromb[toNID] = cameFromPairXCHV{edge, node.Item, newDist, newCost}
 						}
 						if newCost < db[toNID] {
 							db[toNID] = newCost
@@ -169,7 +170,7 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraXCHV(from, to int32) ([]datastru
 							neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
 							frontier.DecreaseKey(neighborNode)
 
-							cameFromb[toNID] = cameFromPairXCHV{edge, node.Item, newDist}
+							cameFromb[toNID] = cameFromPairXCHV{edge, node.Item, newDist, newCost}
 						}
 
 						_, ok = df[toNID]
@@ -236,18 +237,24 @@ p1 (u), . . . , pk (u) in the CH order. If u has fewer than k ancestors, (u, v) 
 Return true if node edge (u,v) pruned, else return false
 */
 func (rt *RouteAlgorithm) pruneRelaxedCH(cameFrom map[int32]cameFromPairXCHV, u int32, v int32) bool {
-	for counter := 1; counter <= k; counter++ {
+
+	if rt.ch.GetNode(v).OrderPos > rt.ch.GetNode(u).OrderPos {
+		// v not precedes u in the ch order
+		return false
+	}
+	vOrder := rt.ch.GetNode(v).OrderPos
+
+	for i := 1; i <= k; i++ {
 		if cameFrom[u].NodeID == -1 {
 			// u has fewer than k ancestors, so prune this edge (u,v)
 			return true
 		}
-		vOrder := rt.ch.GetNode(v).OrderPos
+		u = cameFrom[u].NodeID
 		uOrder := rt.ch.GetNode(u).OrderPos
 		if vOrder > uOrder {
-			// v not precedes all vertices u in the ch order
+			// v not precedes all vertices p1(u),p2(u),....,pk(u) in the ch order
 			return false
 		}
-		u = cameFrom[u].NodeID
 	}
 
 	// v precedes all u,p1(u),...pk(u) in ch order
@@ -406,7 +413,7 @@ func (rt *RouteAlgorithm) unpackBackwardXCHV(edge datastructure.Edge, path *[]da
 		*ePath = append(*ePath, edge)
 
 		// for calculating plateau we must update the camefrom to, because all edge in camefrom is a shorcut
-		cameFromf[edge.ToNodeID] = cameFromPairXCHV{edge, edge.FromNodeID, *dist}
+		cameFromf[edge.ToNodeID] = cameFromPairXCHV{edge, edge.FromNodeID, *dist, *eta}
 	} else {
 		var (
 			edgeTwo datastructure.Edge
@@ -458,7 +465,7 @@ func (rt *RouteAlgorithm) unpackForwardXCHV(edge datastructure.Edge, path *[]dat
 
 		*ePath = append(*ePath, edge)
 
-		cameFromb[edge.ToNodeID] = cameFromPairXCHV{edge, edge.FromNodeID, *dist}
+		cameFromb[edge.ToNodeID] = cameFromPairXCHV{edge, edge.FromNodeID, *dist, *eta}
 	} else {
 
 		var (

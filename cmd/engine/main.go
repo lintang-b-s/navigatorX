@@ -17,6 +17,7 @@ import (
 	"github.com/lintang-b-s/navigatorx/pkg/kv"
 	"github.com/lintang-b-s/navigatorx/pkg/server/rest"
 	"github.com/lintang-b-s/navigatorx/pkg/server/rest/service"
+	bolt "go.etcd.io/bbolt"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -27,8 +28,6 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
-
-	badger "github.com/dgraph-io/badger/v4"
 )
 
 var (
@@ -62,9 +61,18 @@ func main() {
 
 	recordMemProfile(memprofile, "load_contracted_graph")
 
-	db, err := badger.Open(badger.DefaultOptions("./navigatorx_db"))
+	db, err := bolt.Open("./navigatox.db", 0600, nil)
 	if err != nil {
-		log.Fatal(err)
+		panic(err)
+	}
+	defer db.Close()
+
+	err = db.Update(func(tx *bolt.Tx) error {
+		_, err := tx.CreateBucketIfNotExists([]byte(kv.H3_BOLTBUCKET))
+		return err
+	})
+	if err != nil {
+		panic(err)
 	}
 
 	kvDB := kv.NewKVDB(db)

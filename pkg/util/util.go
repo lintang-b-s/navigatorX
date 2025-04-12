@@ -139,7 +139,7 @@ var bitmask = []int32{
 	0b01111111111111111111111111111111, // 31 bits
 }
 
-func StopConcurrectOperation(ctx context.Context) bool {
+func StopConcurrentOperation(ctx context.Context) bool {
 	select {
 	case <-ctx.Done():
 		return true

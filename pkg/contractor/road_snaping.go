@@ -2,7 +2,6 @@ package contractor
 
 import (
 	"fmt"
-	"math"
 	"sort"
 
 	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
@@ -41,10 +40,10 @@ func (s edgeSlice) Less(i, j int) bool {
 }
 
 const (
-	k = 20
+	k = 30
 )
 
-func (ch *ContractedGraph) SnapLocationToRoadNetworkNodeH3WithSccAnalysis(edgesFrom, edgesTo []datastructure.KVEdge,
+func (ch *ContractedGraph) SnapLocationToRoadSegmentNodeH3WithSccAnalysis(edgesFrom, edgesTo []datastructure.KVEdge,
 	wantToSnapFrom, wantToSnapTo []float64) (int32, int32, datastructure.Coordinate, datastructure.Coordinate, error) {
 
 	// sort the edgeSlice by the perpendicular distance to the line
@@ -93,58 +92,23 @@ func (ch *ContractedGraph) SnapLocationToRoadNetworkNodeH3WithSccAnalysis(edgesF
 	edgeSliceFrom.entries = edgeSliceFrom.entries[:min(len(edgeSliceFrom.entries), k)]
 	edgeSliceTo.entries = edgeSliceTo.entries[:min(len(edgeSliceTo.entries), k)]
 
-	var (
-		bestEdgeFrom datastructure.KVEdge
-		bestEdgeTo   datastructure.KVEdge
-	)
-
-	edgePriorities := make([]edgePairWithPriority, 0, len(edgesFrom)*len(edgesTo))
-
 	for i, edgeFrom := range edgeSliceFrom.entries {
 		for j, edgeTo := range edgeSliceTo.entries {
 
 			fromSccID := ch.GetNodeSCCID(edgeFrom.ToNodeID)
 			toSccID := ch.GetNodeSCCID(edgeTo.FromNodeID)
-			if fromSccID == toSccID {
-				edgePriorities = append(edgePriorities, edgePairWithPriority{
-					edgeFrom:       edgeFrom,
-					edgeTo:         edgeTo,
-					priority:       snapObjectiveFunction(sameSccIDWeight, float64(i), float64(j)),
-					projectionFrom: edgeSliceFrom.projection[i],
-					projectionTo:   edgeSliceTo.projection[j],
-				})
-			} else if ch.IsCondensationGraphFromToConnected(edgeFrom.ToNodeID, edgeTo.FromNodeID) {
-				edgePriorities = append(edgePriorities, edgePairWithPriority{
-					edgeFrom:       edgeFrom,
-					edgeTo:         edgeTo,
-					priority:       snapObjectiveFunction(condensedGraphConnectedWeight, float64(i), float64(j)),
-					projectionFrom: edgeSliceFrom.projection[i],
-					projectionTo:   edgeSliceTo.projection[j],
-				})
+			if fromSccID == toSccID || ch.IsCondensationGraphFromToConnected(edgeFrom.ToNodeID, edgeTo.FromNodeID) {
+				bestEdgeFrom := edgeFrom
+				bestEdgeTo := edgeTo
+				bestProjectionFrom := projectionFrom[i]
+				bestProjectionTo := projectionTo[j]
+
+				return bestEdgeFrom.ToNodeID, bestEdgeTo.FromNodeID, bestProjectionFrom, bestProjectionTo, nil
 			}
 		}
 	}
 
-	if len(edgePriorities) == 0 {
-		return -1, -1, datastructure.Coordinate{}, datastructure.Coordinate{}, fmt.Errorf("no path found from %v,%v to %v,%v", wantToSnapFrom[0], wantToSnapFrom[1], wantToSnapTo[0], wantToSnapTo[1])
-	}
-
-	sort.Slice(edgePriorities, func(i, j int) bool {
-		a := edgePriorities[i]
-		b := edgePriorities[j]
-		return a.priority > b.priority
-	})
-
-	bestEdgeFrom = edgePriorities[0].edgeFrom
-	bestEdgeTo = edgePriorities[0].edgeTo
-	bestProjectionFrom := edgePriorities[0].projectionFrom
-	bestProjectionTo := edgePriorities[0].projectionTo
-
-	return bestEdgeFrom.ToNodeID, bestEdgeTo.FromNodeID, bestProjectionFrom, bestProjectionTo, nil
-}
-
-func snapObjectiveFunction(weight, i, j float64) float64 {
-	return weight * (1 / math.Pow(i+1, 3)) * (1 / math.Pow(j+1, 3))
+	return -1, -1, datastructure.Coordinate{}, datastructure.Coordinate{}, fmt.Errorf("no path found from %v,%v to %v,%v", wantToSnapFrom[0], wantToSnapFrom[1], wantToSnapTo[0], wantToSnapTo[1])
 }
 
 func min(a, b int) int {
@@ -154,7 +118,7 @@ func min(a, b int) int {
 	return b
 }
 
-func (ch *ContractedGraph) SnapLocationToRoadNetworkNodeH3(edges []datastructure.KVEdge, wantToSnap []float64) int32 {
+func (ch *ContractedGraph) SnapLocationToRoadSegmentNodeH3(edges []datastructure.KVEdge, wantToSnap []float64) int32 {
 	sort.Slice(edges, func(i, j int) bool {
 		a := edges[i]
 		b := edges[j]
