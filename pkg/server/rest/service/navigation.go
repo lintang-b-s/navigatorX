@@ -59,7 +59,7 @@ type Heuristics interface {
 }
 
 type InstructionsFromEdges interface {
-	GetDrivingInstructions(path []datastructure.Edge) ([]string, error)
+	GetDrivingDirections(path []datastructure.Edge) ([]string, error)
 }
 
 type Hungarian interface {
@@ -82,7 +82,7 @@ func NewNavigationService(contractedGraph ContractedGraph, kv KVDB, hung Hungari
 }
 
 func (uc *NavigationService) ShortestPathETA(ctx context.Context, srcLat, srcLon float64,
-	dstLat float64, dstLon float64) (string, float64, []guidance.DrivingInstruction, bool, []datastructure.Coordinate, float64,
+	dstLat float64, dstLon float64) (string, float64, []datastructure.DrivingDirection, bool, []datastructure.Coordinate, float64,
 	[]datastructure.Edge, bool, error) {
 
 	from := &datastructure.CHNode{
@@ -96,7 +96,7 @@ func (uc *NavigationService) ShortestPathETA(ctx context.Context, srcLat, srcLon
 
 	fromSurakartaNode, toSurakartaNode, projectionFrom, projectionTo, err := uc.SnapLocToRoadSegmentNodeWithSccAnalysis(from.Lat, from.Lon, to.Lat, to.Lon)
 	if err != nil {
-		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, []datastructure.Edge{}, false,
+		return "", 0, []datastructure.DrivingDirection{}, false, []datastructure.Coordinate{}, 0.0, []datastructure.Edge{}, false,
 			server.WrapErrorf(err, server.ErrNotFound, fmt.Sprintf("no path found from %v,%v to %v,%v", from.Lat, from.Lon, to.Lat, to.Lon))
 	}
 
@@ -119,22 +119,22 @@ func (uc *NavigationService) ShortestPathETA(ctx context.Context, srcLat, srcLon
 	}
 
 	if !found {
-		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, []datastructure.Edge{}, false, server.WrapErrorf(err, server.ErrNotFound, "sorry!! the location you entered is not covered on my map :(, please use diferrent opensteetmap pbf file")
+		return "", 0, []datastructure.DrivingDirection{}, false, []datastructure.Coordinate{}, 0.0, []datastructure.Edge{}, false, server.WrapErrorf(err, server.ErrNotFound, "sorry!! the location you entered is not covered on my map :(, please use diferrent opensteetmap pbf file")
 	}
 	var route []datastructure.Coordinate = make([]datastructure.Coordinate, 0)
 
 	drivingInstruction := guidance.NewInstructionsFromEdges(uc.CH)
-	instructions, err := drivingInstruction.GetDrivingInstructions(ePath)
+	instructions, err := drivingInstruction.GetDrivingDirections(ePath)
 
 	if err != nil {
-		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, []datastructure.Edge{}, false, server.WrapErrorf(err, server.ErrInternalServerError, "internal server error")
+		return "", 0, []datastructure.DrivingDirection{}, false, []datastructure.Coordinate{}, 0.0, []datastructure.Edge{}, false, server.WrapErrorf(err, server.ErrInternalServerError, "internal server error")
 	}
 
 	return p, dist, instructions, found, route, eta, ePath, true, nil
 }
 
 func (uc *NavigationService) ShortestPathWithAlternativeRoutes(ctx context.Context, srcLat, srcLon float64,
-	dstLat float64, dstLon float64) ([]datastructure.AlternativeRouteInfo, []string, [][]guidance.DrivingInstruction, error) {
+	dstLat float64, dstLon float64) ([]datastructure.AlternativeRouteInfo, []string, [][]datastructure.DrivingDirection, error) {
 	from := &datastructure.CHNode{
 		Lat: srcLat,
 		Lon: srcLon,
@@ -146,14 +146,14 @@ func (uc *NavigationService) ShortestPathWithAlternativeRoutes(ctx context.Conte
 
 	fromSurakartaNode, toSurakartaNode, projectionFrom, projectionTo, err := uc.SnapLocToRoadSegmentNodeWithSccAnalysis(from.Lat, from.Lon, to.Lat, to.Lon)
 	if err != nil {
-		return make([]datastructure.AlternativeRouteInfo, 0), []string{}, [][]guidance.DrivingInstruction{},
+		return make([]datastructure.AlternativeRouteInfo, 0), []string{}, [][]datastructure.DrivingDirection{},
 			server.WrapErrorf(err, server.ErrNotFound, "sorry!! the location you entered is not covered on my map :(, please use diferrent opensteetmap pbf file")
 
 	}
 
 	alternativeRoutes, err := uc.alternativeRouting.RunAlternativeRouteXCHV(fromSurakartaNode, toSurakartaNode)
 	if err != nil {
-		return make([]datastructure.AlternativeRouteInfo, 0), []string{}, [][]guidance.DrivingInstruction{},
+		return make([]datastructure.AlternativeRouteInfo, 0), []string{}, [][]datastructure.DrivingDirection{},
 			server.WrapErrorf(err, server.ErrNotFound, fmt.Sprintf("no path found from %v,%v to %v,%v", from.Lat, from.Lon, to.Lat, to.Lon))
 	}
 
@@ -166,14 +166,9 @@ func (uc *NavigationService) ShortestPathWithAlternativeRoutes(ctx context.Conte
 		routePolylines = append(routePolylines, datastructure.CreatePolyline(route.Path))
 	}
 
-	routeDrivingInstructions := make([][]guidance.DrivingInstruction, 0, len(alternativeRoutes))
+	routeDrivingInstructions := make([][]datastructure.DrivingDirection, 0, len(alternativeRoutes))
 	for _, route := range alternativeRoutes {
-		drivingInstruction := guidance.NewInstructionsFromEdges(uc.CH)
-		instructions, err := drivingInstruction.GetDrivingInstructions(route.Edges)
-		if err != nil {
-			return make([]datastructure.AlternativeRouteInfo, 0), []string{}, [][]guidance.DrivingInstruction{}, server.WrapErrorf(err, server.ErrInternalServerError, "internal server error")
-		}
-		routeDrivingInstructions = append(routeDrivingInstructions, instructions)
+		routeDrivingInstructions = append(routeDrivingInstructions, route.DrivingDirection)
 	}
 
 	return alternativeRoutes, routePolylines, routeDrivingInstructions, nil
@@ -221,7 +216,7 @@ type ShortestPathResult struct {
 
 func (uc *NavigationService) ShortestPathAlternativeStreetETA(ctx context.Context, srcLat, srcLon float64,
 	alternativeStreetLat float64, alternativeStreetLon float64,
-	dstLat float64, dstLon float64) (string, float64, []guidance.DrivingInstruction, bool, []datastructure.Coordinate, float64, bool, error) {
+	dstLat float64, dstLon float64) (string, float64, []datastructure.DrivingDirection, bool, []datastructure.Coordinate, float64, bool, error) {
 
 	from := &datastructure.CHNode{
 		Lat: srcLat,
@@ -241,17 +236,17 @@ func (uc *NavigationService) ShortestPathAlternativeStreetETA(ctx context.Contex
 	var err error
 	fromSurakartaNode, err := uc.SnapLocToRoadSegmentNode(from.Lat, from.Lon)
 	if err != nil {
-		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, false, server.WrapErrorf(err, server.ErrNotFound, "sorry!! the location you entered is not covered on my map :(, please use diferrent opensteetmap pbf file")
+		return "", 0, []datastructure.DrivingDirection{}, false, []datastructure.Coordinate{}, 0.0, false, server.WrapErrorf(err, server.ErrNotFound, "sorry!! the location you entered is not covered on my map :(, please use diferrent opensteetmap pbf file")
 	}
 
 	alternativeStreetSurakartaNode, err := uc.SnapLocToRoadSegmentNode(alternativeStreet.Lat, alternativeStreet.Lon)
 	if err != nil {
-		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, false, server.WrapErrorf(err, server.ErrNotFound, "sorry!! the location you entered is not covered on my map :(, please use diferrent opensteetmap pbf file")
+		return "", 0, []datastructure.DrivingDirection{}, false, []datastructure.Coordinate{}, 0.0, false, server.WrapErrorf(err, server.ErrNotFound, "sorry!! the location you entered is not covered on my map :(, please use diferrent opensteetmap pbf file")
 	}
 
 	toSurakartaNode, err := uc.SnapLocToRoadSegmentNode(to.Lat, to.Lon)
 	if err != nil {
-		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, false, server.WrapErrorf(err, server.ErrNotFound, "sorry!! the location you entered is not covered on my map :(, please use diferrent opensteetmap pbf file")
+		return "", 0, []datastructure.DrivingDirection{}, false, []datastructure.Coordinate{}, 0.0, false, server.WrapErrorf(err, server.ErrNotFound, "sorry!! the location you entered is not covered on my map :(, please use diferrent opensteetmap pbf file")
 	}
 
 	// concurrently find the shortest path dari fromSurakartaNode ke alternativeStreetSurakartaNode
@@ -355,7 +350,7 @@ func (uc *NavigationService) ShortestPathAlternativeStreetETA(ctx context.Contex
 	isCH := paths[0].IsCH
 	// eta satuannya minute
 	if !found {
-		return "", 0, []guidance.DrivingInstruction{}, false, []datastructure.Coordinate{}, 0.0, false, server.WrapErrorf(err, server.ErrNotFound, "sorry!! the location you entered is not covered on my map :(, please use diferrent opensteetmap pbf file")
+		return "", 0, []datastructure.DrivingDirection{}, false, []datastructure.Coordinate{}, 0.0, false, server.WrapErrorf(err, server.ErrNotFound, "sorry!! the location you entered is not covered on my map :(, please use diferrent opensteetmap pbf file")
 	}
 	var route []datastructure.Coordinate = make([]datastructure.Coordinate, 0)
 
@@ -363,7 +358,7 @@ func (uc *NavigationService) ShortestPathAlternativeStreetETA(ctx context.Contex
 	navPaths = datastructure.CreatePolyline(concatedPathsCH)
 
 	drivingInstruction := guidance.NewInstructionsFromEdges(uc.CH)
-	instructions, err := drivingInstruction.GetDrivingInstructions(concatedEdgesCH)
+	instructions, err := drivingInstruction.GetDrivingDirections(concatedEdgesCH)
 
 	return navPaths, dist, instructions, found, route, eta, isCH, nil
 }
@@ -373,7 +368,7 @@ type TargetResult struct {
 	Path                string
 	Dist                float64
 	ETA                 float64
-	DrivingInstructions []guidance.DrivingInstruction
+	DrivingInstructions []datastructure.DrivingDirection
 }
 
 func (uc *NavigationService) ManyToManyQuery(ctx context.Context, sourcesLat, sourcesLon, destsLat, destsLon []float64) (map[datastructure.Coordinate][]TargetResult, error) {
@@ -406,7 +401,7 @@ func (uc *NavigationService) ManyToManyQuery(ctx context.Context, sourcesLat, so
 			currETA := scMap[src][dest].Eta
 			curEdgePath := scMap[src][dest].EdgePath
 			drivingInstruction := guidance.NewInstructionsFromEdges(uc.CH)
-			instructions, err := drivingInstruction.GetDrivingInstructions(curEdgePath)
+			instructions, err := drivingInstruction.GetDrivingDirections(curEdgePath)
 			if err != nil {
 				return manyToManyRes, server.WrapErrorf(err, server.ErrInternalServerError, "internal server error")
 			}
@@ -427,7 +422,7 @@ func (uc *NavigationService) ManyToManyQuery(ctx context.Context, sourcesLat, so
 	return manyToManyRes, nil
 }
 
-func (uc *NavigationService) TravelingSalesmanProblemSimulatedAnneal(ctx context.Context, citiesLat []float64, citiesLon []float64) ([]datastructure.Coordinate, []guidance.DrivingInstruction, string, float64, float64, error) {
+func (uc *NavigationService) TravelingSalesmanProblemSimulatedAnneal(ctx context.Context, citiesLat []float64, citiesLon []float64) ([]datastructure.Coordinate, []datastructure.DrivingDirection, string, float64, float64, error) {
 
 	citiesID := []int32{}
 	for i := 0; i < len(citiesLat); i++ {
@@ -444,14 +439,14 @@ func (uc *NavigationService) TravelingSalesmanProblemSimulatedAnneal(ctx context
 		})
 	}
 	drivingInstruction := guidance.NewInstructionsFromEdges(uc.CH)
-	instructions, err := drivingInstruction.GetDrivingInstructions(tspEdgePath)
+	instructions, err := drivingInstruction.GetDrivingDirections(tspEdgePath)
 	if err != nil {
-		return []datastructure.Coordinate{}, []guidance.DrivingInstruction{}, "", 0, 0, server.WrapErrorf(err, server.ErrInternalServerError, "internal server error")
+		return []datastructure.Coordinate{}, []datastructure.DrivingDirection{}, "", 0, 0, server.WrapErrorf(err, server.ErrInternalServerError, "internal server error")
 	}
 	return cititesTour, instructions, datastructure.CreatePolyline(tspTourNodes), bestETA, bestDistance, nil
 }
 
-func (uc *NavigationService) TravelingSalesmanProblemAntColonyOptimization(ctx context.Context, citiesLat []float64, citiesLon []float64) ([]datastructure.Coordinate, []guidance.DrivingInstruction, string, float64, float64, error) {
+func (uc *NavigationService) TravelingSalesmanProblemAntColonyOptimization(ctx context.Context, citiesLat []float64, citiesLon []float64) ([]datastructure.Coordinate, []datastructure.DrivingDirection, string, float64, float64, error) {
 
 	citiesID := []int32{}
 	for i := 0; i < len(citiesLat); i++ {
@@ -468,9 +463,9 @@ func (uc *NavigationService) TravelingSalesmanProblemAntColonyOptimization(ctx c
 		})
 	}
 	drivingInstruction := guidance.NewInstructionsFromEdges(uc.CH)
-	instructions, err := drivingInstruction.GetDrivingInstructions(tspEdgePath)
+	instructions, err := drivingInstruction.GetDrivingDirections(tspEdgePath)
 	if err != nil {
-		return []datastructure.Coordinate{}, []guidance.DrivingInstruction{}, "", 0, 0, server.WrapErrorf(err, server.ErrInternalServerError, "internal server error")
+		return []datastructure.Coordinate{}, []datastructure.DrivingDirection{}, "", 0, 0, server.WrapErrorf(err, server.ErrInternalServerError, "internal server error")
 	}
 	return cititesTour, instructions, datastructure.CreatePolyline(tspTourNodes), bestETA, bestDistance, nil
 }
@@ -479,7 +474,7 @@ type MatchedRiderDriver struct {
 	Driver              string
 	Rider               string
 	ETA                 float64
-	DrivingInstructions []guidance.DrivingInstruction
+	DrivingInstructions []datastructure.DrivingDirection
 }
 
 type UserStreetNode struct {
@@ -547,9 +542,9 @@ func (uc *NavigationService) WeightedBipartiteMatching(ctx context.Context, ride
 	for rider, driver := range matchInt {
 
 		riderName, driverName := riderNodes[rider].Username, driverNodes[driver].Username
-		var instructions = []guidance.DrivingInstruction{}
+		var instructions = []datastructure.DrivingDirection{}
 		drivingInstruction := guidance.NewInstructionsFromEdges(uc.CH)
-		instructions, _ = drivingInstruction.GetDrivingInstructions(distMatPair[riderNodes[rider].StreetNodeID][driverNodes[driver].StreetNodeID].EdgePath)
+		instructions, _ = drivingInstruction.GetDrivingDirections(distMatPair[riderNodes[rider].StreetNodeID][driverNodes[driver].StreetNodeID].EdgePath)
 
 		matched = append(matched, MatchedRiderDriver{driverName, riderName, distMatrix[rider][driver], instructions})
 	}

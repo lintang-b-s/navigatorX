@@ -313,27 +313,27 @@ func getTurnDirection(prevLatitude, prevLongitude, latitude, longitude, prevOrie
 	deltaDegree := absDelta * (180 / math.Pi)
 	if deltaDegree < 12 {
 		// 12°
-		return CONTINUE_ON_STREET
+		return datastructure.CONTINUE_ON_STREET
 	} else if deltaDegree < 40 {
 
 		if delta < 0 {
-			return (TURN_SLIGHT_LEFT)
+			return (datastructure.TURN_SLIGHT_LEFT)
 		} else {
-			return (TURN_SLIGHT_RIGHT)
+			return (datastructure.TURN_SLIGHT_RIGHT)
 		}
 	} else if deltaDegree < 105 {
 
 		if delta < 0 {
-			return (TURN_LEFT)
+			return (datastructure.TURN_LEFT)
 		} else {
-			return (TURN_RIGHT)
+			return (datastructure.TURN_RIGHT)
 		}
 
 	} else if delta < 0 {
-		return (TURN_SHARP_LEFT)
+		return (datastructure.TURN_SHARP_LEFT)
 
 	} else {
-		return (TURN_SHARP_RIGHT)
+		return (datastructure.TURN_SHARP_RIGHT)
 
 	}
 }

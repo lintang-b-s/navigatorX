@@ -52,25 +52,28 @@ func NewCalculateTransitionProbParam(prevObservation datastructure.StateObservat
 }
 
 type AlternativeRouteParam struct {
-	FromNodeID       int32
-	ToNodeID         int32
-	VNodeID          int32
-	OptNodes         []datastructure.CHNode
-	AlternativeRoute datastructure.AlternativeRouteInfo
-	OptDist          float64
-	Ctx              context.Context
+	FromNodeID        int32
+	ToNodeID          int32
+	VNodeID           int32
+	OptNodes          []datastructure.CHNode
+	AlternativeRoute  datastructure.AlternativeRouteInfo
+	OptDist           float64
+	Ctx               context.Context
+	AlternativeRoutes *[]datastructure.AlternativeRouteInfo
 }
 
 func NewAlternativeRouteParam(fromNodeID, toNodeID, vNodeID int32, optNodes []datastructure.CHNode,
-	altRoute datastructure.AlternativeRouteInfo, optDist float64, ctx context.Context) AlternativeRouteParam {
+	altRoute datastructure.AlternativeRouteInfo, optDist float64, ctx context.Context,
+	alts *[]datastructure.AlternativeRouteInfo) AlternativeRouteParam {
 	return AlternativeRouteParam{
-		FromNodeID:       fromNodeID,
-		ToNodeID:         toNodeID,
-		VNodeID:          vNodeID,
-		OptNodes:         optNodes,
-		AlternativeRoute: altRoute,
-		OptDist:          optDist,
-		Ctx:              ctx,
+		FromNodeID:        fromNodeID,
+		ToNodeID:          toNodeID,
+		VNodeID:           vNodeID,
+		OptNodes:          optNodes,
+		AlternativeRoute:  altRoute,
+		OptDist:           optDist,
+		Ctx:               ctx,
+		AlternativeRoutes: alts,
 	}
 }
 

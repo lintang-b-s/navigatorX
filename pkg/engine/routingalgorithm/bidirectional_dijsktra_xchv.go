@@ -54,158 +54,31 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraXCHV(from, to int32) ([]datastru
 	cameFromb := make(map[int32]cameFromPairXCHV)
 	cameFromb[to] = cameFromPairXCHV{datastructure.Edge{}, -1, 0, 0}
 
-	frontFinished := false
-	backFinished := false
+	forwardProcessed := make(map[int32]struct{})
+	backwardProcessed := make(map[int32]struct{})
+	isForward := true
 
-	frontier := forwQ
-	otherFrontier := backQ
-	turnF := true
-	for {
-		if frontier.Size() == 0 {
-			frontFinished = true
-		}
-		if otherFrontier.Size() == 0 {
-			backFinished = true
-		}
+	// https://publikationen.bibliothek.kit.edu/1000028701/142973925 (algorithm 1)
+	for forwQ.Size() != 0 && backQ.Size() != 0 && estimate > min(forwQ.GetMinRank(), backQ.GetMinRank()) {
 
-		if frontFinished && backFinished {
-			// stop pencarian jika kedua priority queue kosong
-			break
-		}
-
-		ff := *frontier
-		if ff.Size() == 0 {
-			return []datastructure.CHNode{}, []datastructure.Coordinate{}, []datastructure.Edge{}, -1, -1, nil, nil, -1
-		}
-		smallestFront, _ := ff.GetMin()
-		if smallestFront.Rank >= estimate {
-			// bidirectional search di stop ketika smallest node saat ini costnya >=  cost current best candidate path.
-			if turnF {
-				frontFinished = true
-			} else {
-				backFinished = true
+		if isForward {
+			if backQ.Size() != 0 {
+				isForward = false
 			}
 		} else {
-			node, _ := frontier.ExtractMin()
-			if node.Rank >= estimate {
-				break
+			if forwQ.Size() != 0 {
+				isForward = true
 			}
-			if turnF {
-
-				for _, arc := range rt.ch.GetNodeFirstOutEdges(node.Item) {
-
-					edge := rt.ch.GetOutEdge(arc)
-
-					toNID := edge.ToNodeID
-					cost := edge.Weight
-
-					if !rt.pruneRelaxedCH(cameFromf, node.Item, toNID) {
-						// upward graph
-						newCost := cost + df[node.Item]
-						newDist := edge.Dist + distf[node.Item]
-
-						_, ok := df[toNID]
-
-						if !ok {
-							df[toNID] = newCost
-
-							distf[toNID] = newDist
-
-							neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
-							frontier.Insert(neighborNode)
-							cameFromf[toNID] = cameFromPairXCHV{edge, node.Item, newDist, newCost}
-						} else if newCost < df[toNID] {
-							df[toNID] = newCost
-
-							distf[toNID] = newDist
-
-							neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
-							frontier.DecreaseKey(neighborNode)
-
-							cameFromf[toNID] = cameFromPairXCHV{edge, node.Item, newDist, newCost}
-						}
-
-						_, ok = db[toNID]
-						if ok {
-							pathDistance := newCost + db[toNID]
-							if pathDistance < estimate {
-								// jika toNID visited di backward search & d(s,toNID) + d(t,toNID) < cost best candidate path, maka update best candidate path
-								estimate = pathDistance
-								bestCommonVertex = edge.ToNodeID
-
-							}
-						}
-					}
-				}
-
-			} else {
-
-				for _, arc := range rt.ch.GetNodeFirstInEdges(node.Item) {
-
-					edge := rt.ch.GetInEdge(arc)
-
-					toNID := edge.ToNodeID
-					cost := edge.Weight
-
-					if !rt.pruneRelaxedCH(cameFromb, node.Item, toNID) {
-						// downward graph
-						newCost := cost + db[node.Item]
-
-						newDist := edge.Dist + distb[node.Item]
-						_, ok := db[toNID]
-						if !ok {
-							db[toNID] = newCost
-
-							distb[toNID] = newDist
-
-							neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
-							frontier.Insert(neighborNode)
-							cameFromb[toNID] = cameFromPairXCHV{edge, node.Item, newDist, newCost}
-						}
-						if newCost < db[toNID] {
-							db[toNID] = newCost
-
-							distb[toNID] = newDist
-
-							neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
-							frontier.DecreaseKey(neighborNode)
-
-							cameFromb[toNID] = cameFromPairXCHV{edge, node.Item, newDist, newCost}
-						}
-
-						_, ok = df[toNID]
-						if ok {
-							pathDistance := newCost + df[toNID]
-							if pathDistance < estimate {
-								estimate = pathDistance
-								bestCommonVertex = edge.ToNodeID
-
-							}
-						}
-					}
-				}
-
-			}
-
 		}
 
-		otherFinished := false
+		if isForward {
 
-		if turnF {
-			if backFinished {
-				otherFinished = true
-			}
+			rt.searchXCHV(forwQ, df, db, cameFromf, cameFromb, isForward,
+				forwardProcessed, backwardProcessed, &estimate, &bestCommonVertex, distf, distb)
 		} else {
-			if frontFinished {
-				otherFinished = true
-			}
 
-		}
-		if !otherFinished {
-			tmpFrontier := frontier
-			frontier = otherFrontier
-			otherFrontier = tmpFrontier
-			turnF = !turnF
+			rt.searchXCHV(backQ, df, db, cameFromf, cameFromb, isForward,
+				forwardProcessed, backwardProcessed, &estimate, &bestCommonVertex, distf, distb)
 		}
 	}
 
@@ -224,6 +97,109 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraXCHV(from, to int32) ([]datastru
 	path, coordPath, edgePath, eta, dist := rt.createPathXCHV(bestCommonVertex, from, to, cameFromf, cameFromb,
 		cameFromFCopy, cameFromBCopy)
 	return path, coordPath, edgePath, eta, dist, cameFromf, cameFromb, bestCommonVertex
+}
+
+func (rt *RouteAlgorithm) searchXCHV(frontier *contractor.MinHeap[int32], df, db map[int32]float64,
+	cameFromf, cameFromb map[int32]cameFromPairXCHV, turnF bool, forwardProcessed, backwardProcessed map[int32]struct{},
+	estimate *float64, bestCommonVertex *int32, distf, distb map[int32]float64) {
+	node, _ := frontier.ExtractMin()
+	if turnF {
+
+		for _, arc := range rt.ch.GetNodeFirstOutEdges(node.Item) {
+
+			edge := rt.ch.GetOutEdge(arc)
+
+			toNID := edge.ToNodeID
+			cost := edge.Weight
+
+			if !rt.pruneRelaxedCH(cameFromf, node.Item, toNID) {
+				// upward graph
+				newCost := cost + df[node.Item]
+				newDist := edge.Dist + distf[node.Item]
+
+				_, ok := df[toNID]
+
+				if !ok {
+					df[toNID] = newCost
+
+					distf[toNID] = newDist
+
+					neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
+					frontier.Insert(neighborNode)
+					cameFromf[toNID] = cameFromPairXCHV{edge, node.Item, newDist, newCost}
+				} else if newCost < df[toNID] {
+					df[toNID] = newCost
+
+					distf[toNID] = newDist
+
+					neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
+					frontier.DecreaseKey(neighborNode)
+
+					cameFromf[toNID] = cameFromPairXCHV{edge, node.Item, newDist, newCost}
+				}
+
+			}
+		}
+
+		forwardProcessed[node.Item] = struct{}{}
+
+		_, ok := backwardProcessed[node.Item]
+		if ok {
+			pathDistance := df[node.Item] + db[node.Item]
+			if pathDistance < *estimate {
+				*estimate = pathDistance
+				*bestCommonVertex = node.Item
+			}
+		}
+
+	} else {
+
+		for _, arc := range rt.ch.GetNodeFirstInEdges(node.Item) {
+
+			edge := rt.ch.GetInEdge(arc)
+
+			toNID := edge.ToNodeID
+			cost := edge.Weight
+
+			if !rt.pruneRelaxedCH(cameFromb, node.Item, toNID) {
+				// downward graph
+				newCost := cost + db[node.Item]
+
+				newDist := edge.Dist + distb[node.Item]
+				_, ok := db[toNID]
+				if !ok {
+					db[toNID] = newCost
+
+					distb[toNID] = newDist
+
+					neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
+					frontier.Insert(neighborNode)
+					cameFromb[toNID] = cameFromPairXCHV{edge, node.Item, newDist, newCost}
+				}
+				if newCost < db[toNID] {
+					db[toNID] = newCost
+
+					distb[toNID] = newDist
+
+					neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
+					frontier.DecreaseKey(neighborNode)
+
+					cameFromb[toNID] = cameFromPairXCHV{edge, node.Item, newDist, newCost}
+				}
+
+			}
+		}
+
+		backwardProcessed[node.Item] = struct{}{}
+		_, ok := forwardProcessed[node.Item]
+		if ok {
+			pathDistance := df[node.Item] + db[node.Item]
+			if pathDistance < *estimate {
+				*estimate = pathDistance
+				*bestCommonVertex = node.Item
+			}
+		}
+	}
 }
 
 /*

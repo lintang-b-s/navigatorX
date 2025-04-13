@@ -56,10 +56,11 @@ func NewCoordinates(lat, lon []float64) []Coordinate {
 }
 
 type AlternativeRouteInfo struct {
-	Nodes          []CHNode
-	Path           []Coordinate
-	Edges          []Edge
-	ObjectiveValue float64
+	Nodes            []CHNode
+	Path             []Coordinate
+	Edges            []Edge
+	ObjectiveValue   float64
+	DrivingDirection []DrivingDirection
 
 	Eta     float64
 	Dist    float64

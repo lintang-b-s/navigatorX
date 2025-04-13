@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/lintang-b-s/navigatorx/pkg/concurrent"
 	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
@@ -14,6 +15,11 @@ import (
 // https://renatowerneck.wordpress.com/wp-content/uploads/2016/06/adgw13-alternatives.pdf
 
 // X-CHV
+
+const (
+	alternativeRouteCalcTimeout = 100
+	npath                       = 5000
+)
 
 type RouteAlgorithmI interface {
 	ShortestPathBiDijkstraXCHV(from, to int32) ([]datastructure.CHNode,
@@ -95,17 +101,17 @@ func (ar *AlternativeRouteXCHV) RunAlternativeRouteXCHV(from, to int32) ([]datas
 	alternativeRoutes[0].Dist = bestDist
 	alternativeRoutes[0].Eta = bestEta
 
-	workers := concurrent.NewWorkerPool[concurrent.AlternativeRouteParam, admisibleTestResult](8,
+	workers := concurrent.NewWorkerPool[concurrent.AlternativeRouteParam, admisibleTestResult](5,
 		len(potentialRoutes))
 
 	k := 1
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), alternativeRouteCalcTimeout*time.Millisecond)
 	defer cancel()
 	for _, alternativeRoute := range potentialRoutes {
 		vnode := alternativeRoute.ViaNode
 
 		workers.AddJob(concurrent.NewAlternativeRouteParam(
-			from, to, vnode, nodes, alternativeRoute, bestDist, ctx))
+			from, to, vnode, nodes, alternativeRoute, bestDist, ctx, &alternativeRoutes))
 	}
 
 	workers.Close()
@@ -113,36 +119,38 @@ func (ar *AlternativeRouteXCHV) RunAlternativeRouteXCHV(from, to int32) ([]datas
 
 	workers.Wait()
 
-	duplicateRoutes := make(map[string]struct{})
-	bestRouteDirection, err := ar.createDrivingInstructionKey(bestRoute)
-	if err != nil {
-		return []datastructure.AlternativeRouteInfo{}, err
-	}
-	duplicateRoutes[bestRouteDirection] = struct{}{}
+	drivingInstruction := guidance.NewInstructionsFromEdges(ar.rt.GetGraph())
+	alternativeRoutes[0].DrivingDirection, _ = drivingInstruction.GetDrivingDirections(alternativeRoutes[0].Edges)
+
+	altRoutePaths := make([]map[int32]struct{}, 0, len(potentialRoutes))
 
 	for admisibleTestResultItem := range workers.CollectResults() {
 		passAdmisibleTest := admisibleTestResultItem.pass
 		if passAdmisibleTest {
 
-			alternativeRouteDirection, err := ar.createDrivingInstructionKey(admisibleTestResultItem.alternativeRoute)
-			if err != nil {
-				return []datastructure.AlternativeRouteInfo{}, err
-			}
-
-			if _, ok := duplicateRoutes[alternativeRouteDirection]; ok {
+			skipAltRoute, routeNMap := ar.isAlternativeRouteDuplicate(admisibleTestResultItem, altRoutePaths)
+			if skipAltRoute {
 				continue
 			}
-			duplicateRoutes[alternativeRouteDirection] = struct{}{}
+
+			altRoutePaths = append(altRoutePaths, routeNMap)
 
 			alternativeRoutes = append(alternativeRoutes, admisibleTestResultItem.alternativeRoute)
 			k++
 		}
 		if k >= ar.maxK {
-			return alternativeRoutes, nil
+			break
 		}
 	}
 
 	return alternativeRoutes, nil
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 func (ar *AlternativeRouteXCHV) RunAdmisibleTestXCHV(param concurrent.AlternativeRouteParam) admisibleTestResult {
@@ -207,6 +215,10 @@ func (ar *AlternativeRouteXCHV) RunAdmisibleTestXCHV(param concurrent.Alternativ
 	alternativeRoute.Dist = pvDist
 	alternativeRoute.Nodes = pvNodes
 	alternativeRoute.Edges = pvEdges
+
+	drivingInstruction := guidance.NewInstructionsFromEdges(ar.rt.GetGraph())
+	alternativeRoute.DrivingDirection, _ = drivingInstruction.GetDrivingDirections(alternativeRoute.Edges)
+
 	alternativeRoute.Path = append(svPath, vtPath...)
 
 	return newAdmisibleTestResult(true, alternativeRoute)
@@ -363,16 +375,31 @@ func searchVNodeInedges(edges []datastructure.Edge, nodeID int32) int {
 	return -1
 }
 
-func (ar *AlternativeRouteXCHV) createDrivingInstructionKey(route datastructure.AlternativeRouteInfo) (string, error) {
+func (ar *AlternativeRouteXCHV) isAlternativeRouteDuplicate(admisibleTestResultItem admisibleTestResult,
+	altRoutePaths []map[int32]struct{}) (bool, map[int32]struct{}) {
+	n := minInt(len(admisibleTestResultItem.alternativeRoute.Nodes), npath)
 
-	drivingInstruction := guidance.NewInstructionsFromEdges(ar.rt.GetGraph())
-	instructions, err := drivingInstruction.GetDrivingInstructions(route.Edges)
-	if err != nil {
-		return "", err
+	routeNNodes := admisibleTestResultItem.alternativeRoute.Nodes[:n]
+	routeNPath := make([]int32, n)
+	routeNMap := make(map[int32]struct{})
+	for i := 0; i < n; i++ {
+		routeNPath[i] = routeNNodes[i].ID
+		routeNMap[routeNNodes[i].ID] = struct{}{}
 	}
-	instructionKey := ""
-	for _, instruction := range instructions {
-		instructionKey += fmt.Sprintf("%s ", instruction.Instruction)
+
+	for _, otherRoute := range altRoutePaths {
+		sameCount := 0
+		minN := minInt(len(otherRoute), len(admisibleTestResultItem.alternativeRoute.Nodes))
+		for i := 0; i < minN; i++ {
+			if _, ok := otherRoute[routeNPath[i]]; ok {
+				sameCount++
+			}
+		}
+
+		if float64(sameCount)/float64(len(otherRoute)) >= 0.8 {
+			return true, make(map[int32]struct{})
+		}
 	}
-	return instructionKey, nil
+
+	return false, routeNMap
 }

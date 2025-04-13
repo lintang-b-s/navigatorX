@@ -697,7 +697,7 @@ func roadTypeMaxSpeed2(roadType string) float64 {
 	case "tertiary":
 		return 50
 	case "unclassified":
-		return 30
+		return 40
 	case "residential":
 		return 30
 	case "service":

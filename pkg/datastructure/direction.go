@@ -1,11 +1,10 @@
-package guidance
+package datastructure
 
 import (
 	"fmt"
-	"math"
 	"strings"
 
-	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
+	"github.com/lintang-b-s/navigatorx/pkg/util"
 )
 
 const (
@@ -30,7 +29,7 @@ const (
 )
 
 type Instruction struct {
-	Point        datastructure.Coordinate
+	Point        Coordinate
 	RawName      bool
 	Sign         int
 	Name         string
@@ -41,9 +40,7 @@ type Instruction struct {
 	Roundabout   RoundaboutInstruction
 }
 
-type InstructOption func(Instruction) Instruction
-
-func NewInstruction(sign int, name string, p datastructure.Coordinate, isRoundAbout bool) Instruction {
+func NewInstruction(sign int, name string, p Coordinate, isRoundAbout bool) Instruction {
 	var roundabout RoundaboutInstruction
 	var ins Instruction
 	if isRoundAbout {
@@ -74,7 +71,7 @@ func NewInstruction(sign int, name string, p datastructure.Coordinate, isRoundAb
 	return ins
 }
 
-func NewInstructionWithRoundabout(sign int, name string, p datastructure.Coordinate, isRoundAbout bool, roundabout RoundaboutInstruction) Instruction {
+func NewInstructionWithRoundabout(sign int, name string, p Coordinate, isRoundAbout bool, roundabout RoundaboutInstruction) Instruction {
 	ins := Instruction{
 		Sign:         sign,
 		Name:         name,
@@ -243,7 +240,20 @@ func NewRoundaboutInstruction(options ...Option) RoundaboutInstruction {
 	return roundabout
 }
 
-func Round(val float64, places int) float64 {
-	shift := math.Pow(10, float64(places))
-	return math.Round(val*shift) / shift
+type DrivingDirection struct {
+	Instruction string
+	Point       Coordinate
+	StreetName  string
+	ETA         float64
+	Distance    float64
+}
+
+func NewDrivingDirection(ins Instruction, description string, prevETA, prevDist float64) DrivingDirection {
+	return DrivingDirection{
+		Instruction: description,
+		Point:       ins.Point,
+		StreetName:  ins.Name,
+		ETA:         util.RoundFloat(prevETA, 2),
+		Distance:    util.RoundFloat(prevDist, 2),
+	}
 }

@@ -27,14 +27,14 @@ type ContractedGraph interface {
 
 type InstructionsFromEdges struct {
 	contractedGraph       ContractedGraph
-	ways                  []*Instruction
+	ways                  []*datastructure.Instruction
 	prevEdge              datastructure.Edge
 	prevEdgeInfo          datastructure.EdgeExtraInfo
 	edgeInfo              datastructure.EdgeExtraInfo
 	prevNode              int32   // previous Node (base node prevEdge)
 	prevOrientation       float64 // orientasi/selisih bearing antara prevEdge dengan currentEdge
 	doublePrevOrientation float64 // orientasi/selisih bearing antara prevEdge dengan prevPrevEdge
-	prevInstruction       *Instruction
+	prevInstruction       *datastructure.Instruction
 	prevInRoundabout      bool   // apakah sebelumnya di roundabout (bundaran)
 	doublePrevStreetName  string // streetname prevPrevEdge
 	doublePrevNode        int32
@@ -43,14 +43,14 @@ type InstructionsFromEdges struct {
 func NewInstructionsFromEdges(contractedGraph ContractedGraph) *InstructionsFromEdges {
 	return &InstructionsFromEdges{
 		contractedGraph:       contractedGraph,
-		ways:                  make([]*Instruction, 0),
+		ways:                  make([]*datastructure.Instruction, 0),
 		prevNode:              -1,
 		prevInRoundabout:      false,
 		doublePrevOrientation: 0,
 	}
 }
 
-func GetTurnDescriptions(instructions []*Instruction) ([]string, error) {
+func GetTurnDescriptions(instructions []*datastructure.Instruction) ([]string, error) {
 	var turnDescriptions []string
 	for _, instr := range instructions {
 		desc := instr.GetTurnDescription()
@@ -59,26 +59,8 @@ func GetTurnDescriptions(instructions []*Instruction) ([]string, error) {
 	return turnDescriptions, nil
 }
 
-type DrivingInstruction struct {
-	Instruction string
-	Point       datastructure.Coordinate
-	StreetName  string
-	ETA         float64
-	Distance    float64
-}
-
-func NewDrivingInstruction(ins Instruction, description string, prevETA, prevDist float64) DrivingInstruction {
-	return DrivingInstruction{
-		Instruction: description,
-		Point:       ins.Point,
-		StreetName:  ins.Name,
-		ETA:         Round(prevETA, 2),
-		Distance:    Round(prevDist, 2),
-	}
-}
-
-func (ife *InstructionsFromEdges) GetDrivingInstructions(path []datastructure.Edge) ([]DrivingInstruction, error) {
-	drivingInstructions := make([]DrivingInstruction, 0)
+func (ife *InstructionsFromEdges) GetDrivingDirections(path []datastructure.Edge) ([]datastructure.DrivingDirection, error) {
+	drivingInstructions := make([]datastructure.DrivingDirection, 0)
 	if len(path) == 0 {
 
 		return drivingInstructions, errors.New("path is empty")
@@ -102,7 +84,7 @@ func (ife *InstructionsFromEdges) GetDrivingInstructions(path []datastructure.Ed
 	prevETA := 0.0
 	prevDist := 0.0
 	for i, _ := range ife.ways {
-		drivingInstructions = append(drivingInstructions, NewDrivingInstruction(*ife.ways[i], drivingInstructionsDesc[i], prevETA, prevDist))
+		drivingInstructions = append(drivingInstructions, datastructure.NewDrivingDirection(*ife.ways[i], drivingInstructionsDesc[i], prevETA, prevDist))
 		prevETA = ife.ways[i].Time
 		prevDist = ife.ways[i].Distance
 	}
@@ -137,9 +119,9 @@ func (ife *InstructionsFromEdges) AddInstructionFromEdge(edge datastructure.Edge
 
 	if ife.prevInstruction == nil && !isRoundabout {
 		// start point dari shortetest path & bukan bundaran (roundabout)
-		sign := START
+		sign := datastructure.START
 		point := datastructure.NewCoordinate(baseNodeData.Lat, baseNodeData.Lon)
-		newIns := NewInstruction(sign, name, point, false)
+		newIns := datastructure.NewInstruction(sign, name, point, false)
 		ife.prevInstruction = &newIns
 
 		baseEdgeNode := ife.contractedGraph.GetNode(baseNode)
@@ -152,9 +134,9 @@ func (ife *InstructionsFromEdges) AddInstructionFromEdge(edge datastructure.Edge
 	} else if isRoundabout {
 		// current edge bundaran
 		if !ife.prevInRoundabout {
-			sign := USE_ROUNDABOUT
+			sign := datastructure.USE_ROUNDABOUT
 			point := datastructure.NewCoordinate(baseNodeData.Lat, baseNodeData.Lon)
-			roundaboutInstruction := NewRoundaboutInstruction()
+			roundaboutInstruction := datastructure.NewRoundaboutInstruction()
 			ife.doublePrevOrientation = ife.prevOrientation
 			if ife.prevInstruction != nil {
 
@@ -165,7 +147,7 @@ func (ife *InstructionsFromEdges) AddInstructionFromEdge(edge datastructure.Edge
 				ife.prevOrientation = calcOrientation(baseNodeData.Lat, baseNodeData.Lon, latitude, longitude)
 			}
 
-			prevIns := NewInstructionWithRoundabout(sign, name, point, true, roundaboutInstruction)
+			prevIns := datastructure.NewInstructionWithRoundabout(sign, name, point, true, roundaboutInstruction)
 			ife.prevInstruction = &prevIns
 
 			ife.ways = append(ife.ways, ife.prevInstruction)
@@ -202,7 +184,7 @@ func (ife *InstructionsFromEdges) AddInstructionFromEdge(edge datastructure.Edge
 		if err != nil {
 			return err
 		}
-		if sign != IGNORE {
+		if sign != datastructure.IGNORE {
 			isUTurn, uTurnType := ife.CheckUTurn(sign, name, edge) // check apakah U-TURN, kalau iya, prevInstruction sebelumnya (sign == RIGHTTURN) ganti ke U-Turn
 			if isUTurn {
 				ife.prevInstruction.Sign = uTurnType
@@ -210,7 +192,7 @@ func (ife *InstructionsFromEdges) AddInstructionFromEdge(edge datastructure.Edge
 			} else {
 				// bukan U-turn -> continue/right/left
 				point := datastructure.NewCoordinate(baseNodeData.Lat, baseNodeData.Lon)
-				prevIns := NewInstruction(sign, name, point, false)
+				prevIns := datastructure.NewInstruction(sign, name, point, false)
 				ife.prevInstruction = &prevIns
 				ife.doublePrevOrientation = ife.prevOrientation
 				ife.doublePrevStreetName = ife.contractedGraph.GetStreetNameFromID(prevEdgeExtraInfo.StreetName)
@@ -257,11 +239,11 @@ jika dari A->B belok kanan, dan dari B->C belok kanan, dan delta bearing antara 
 */ // nolint: gofmt
 func (ife *InstructionsFromEdges) CheckUTurn(sign int, name string, edge datastructure.Edge) (bool, int) {
 	isUTurn := false
-	uTurnType := U_TURN_UNKNOWN
+	uTurnType := datastructure.U_TURN_UNKNOWN
 
 	if ife.doublePrevOrientation != 0 && (sign > 0) == (ife.prevInstruction.Sign > 0) &&
-		(abs(sign) == TURN_SLIGHT_RIGHT || abs(sign) == TURN_RIGHT || abs(sign) == TURN_SHARP_RIGHT) &&
-		(abs(ife.prevInstruction.Sign) == TURN_SLIGHT_RIGHT || abs(ife.prevInstruction.Sign) == TURN_RIGHT || abs(ife.prevInstruction.Sign) == TURN_SHARP_RIGHT) &&
+		(abs(sign) == datastructure.TURN_SLIGHT_RIGHT || abs(sign) == datastructure.TURN_RIGHT || abs(sign) == datastructure.TURN_SHARP_RIGHT) &&
+		(abs(ife.prevInstruction.Sign) == datastructure.TURN_SLIGHT_RIGHT || abs(ife.prevInstruction.Sign) == datastructure.TURN_RIGHT || abs(ife.prevInstruction.Sign) == datastructure.TURN_SHARP_RIGHT) &&
 		isSameName(ife.doublePrevStreetName, name) {
 		node := ife.contractedGraph.GetNode(edge.ToNodeID)
 		pointLat, pointLon := node.Lat, node.Lon
@@ -272,9 +254,9 @@ func (ife *InstructionsFromEdges) CheckUTurn(sign int, name string, edge datastr
 		if diffAngle > 155 && diffAngle < 205 {
 			isUTurn = true
 			if sign < 0 {
-				uTurnType = U_TURN_LEFT
+				uTurnType = datastructure.U_TURN_LEFT
 			} else {
-				uTurnType = U_TURN_RIGHT
+				uTurnType = datastructure.U_TURN_RIGHT
 			}
 		}
 	}
@@ -294,9 +276,9 @@ func (ife *InstructionsFromEdges) Finish() error {
 
 	node := ife.contractedGraph.GetNode(ife.prevEdge.ToNodeID)
 	point := datastructure.NewCoordinate(node.Lat, node.Lon)
-	finishInstruction := NewInstruction(FINISH, ife.contractedGraph.GetStreetNameFromID(prevEdgeExtraInfo.StreetName), point, false)
+	finishInstruction := datastructure.NewInstruction(datastructure.FINISH, ife.contractedGraph.GetStreetNameFromID(prevEdgeExtraInfo.StreetName), point, false)
 	finishInstruction.ExtraInfo["heading"] = BearingTo(doublePrevNode.Lat, doublePrevNode.Lon, baseNodeData.Lat, baseNodeData.Lon)
-	newIns := NewInstruction(finishInstruction.Sign, finishInstruction.Name, finishInstruction.Point, false)
+	newIns := datastructure.NewInstruction(finishInstruction.Sign, finishInstruction.Name, finishInstruction.Point, false)
 	ife.ways = append(ife.ways, &newIns)
 
 	return nil
@@ -345,7 +327,7 @@ func (ife *InstructionsFromEdges) GetTurnSign(edge datastructure.Edge, baseNode,
 
 			return sign, nil
 		}
-		return IGNORE, nil
+		return datastructure.IGNORE, nil
 	}
 
 	prevEdgeExtraInfo := ife.prevEdgeInfo
@@ -356,7 +338,7 @@ func (ife *InstructionsFromEdges) GetTurnSign(edge datastructure.Edge, baseNode,
 	if math.Abs(float64(sign)) > 1 {
 		if (isSameName(name, prevEdgeStreetName)) ||
 			isStreetMerged || isStreetSplit {
-			return IGNORE, nil
+			return datastructure.IGNORE, nil
 		}
 		return sign, nil
 	}
@@ -389,7 +371,7 @@ func (ife *InstructionsFromEdges) GetTurnSign(edge datastructure.Edge, baseNode,
 			if isMajorRoad(roadClass) {
 				if (roadClass == prevRoadClass && link == prevLink) && (otherRoadClass != prevRoadClass || otherLink != prevLink) {
 					// current road class == major road class && prevRoadClass sama dg current edge roadClass
-					return IGNORE, nil
+					return datastructure.IGNORE, nil
 				}
 			}
 
@@ -397,12 +379,12 @@ func (ife *InstructionsFromEdges) GetTurnSign(edge datastructure.Edge, baseNode,
 
 			if math.Abs(prevCurrEdgeOrientationDiff)*(180/math.Pi) < 6 && math.Abs(prevOtherEdgeOrientation)*(180/math.Pi) > 8.6 && isSameName(name, prevEdgeStreetName) {
 				// bearing difference antara prevEdge dan currentEDge < 6° (CONTINUE Direction), Edge otherContinueEdge > 8.6 (TURN SLIGHT or more direction). Nama prevEdge street == current Street
-				return CONTINUE_ON_STREET, nil
+				return datastructure.CONTINUE_ON_STREET, nil
 			}
 
 			if roadClass == "residential" || prevRoadClass == "residential" || (roadClass == "unclassified" && prevRoadClass == "unclassified") {
 				// skip roadclass residential untuk mengurangi instructions.
-				return IGNORE, nil
+				return datastructure.IGNORE, nil
 			}
 
 			/*
@@ -413,9 +395,9 @@ func (ife *InstructionsFromEdges) GetTurnSign(edge datastructure.Edge, baseNode,
 						-----otherContinueEdge---
 			*/ // nolint: gofmt
 			if prevCurrEdgeOrientationDiff > prevOtherEdgeOrientation {
-				return KEEP_RIGHT, nil
+				return datastructure.KEEP_RIGHT, nil
 			} else {
-				return KEEP_LEFT, nil
+				return datastructure.KEEP_LEFT, nil
 			}
 		}
 	}
@@ -424,10 +406,10 @@ func (ife *InstructionsFromEdges) GetTurnSign(edge datastructure.Edge, baseNode,
 		(math.Abs(prevCurrEdgeOrientationDiff)*(180/math.Pi) > 34 || ok) {
 		return sign, err
 	} else if err != nil {
-		return IGNORE, err
+		return datastructure.IGNORE, err
 	}
 
-	return IGNORE, nil
+	return datastructure.IGNORE, nil
 }
 
 func isMajorRoad(roadClass string) bool {

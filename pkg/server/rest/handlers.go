@@ -7,7 +7,6 @@ import (
 	"net/http"
 
 	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
-	"github.com/lintang-b-s/navigatorx/pkg/guidance"
 	"github.com/lintang-b-s/navigatorx/pkg/server"
 	"github.com/lintang-b-s/navigatorx/pkg/server/rest/service"
 	"github.com/lintang-b-s/navigatorx/pkg/util"
@@ -22,21 +21,21 @@ import (
 
 type NavigationService interface {
 	ShortestPathETA(ctx context.Context, srcLat, srcLon float64,
-		dstLat float64, dstLon float64) (string, float64, []guidance.DrivingInstruction, bool, []datastructure.Coordinate, float64,
+		dstLat float64, dstLon float64) (string, float64, []datastructure.DrivingDirection, bool, []datastructure.Coordinate, float64,
 		[]datastructure.Edge, bool, error)
 
 	ShortestPathWithAlternativeRoutes(ctx context.Context, srcLat, srcLon float64,
-		dstLat float64, dstLon float64) ([]datastructure.AlternativeRouteInfo, []string, [][]guidance.DrivingInstruction, error)
+		dstLat float64, dstLon float64) ([]datastructure.AlternativeRouteInfo, []string, [][]datastructure.DrivingDirection, error)
 
 	ShortestPathAlternativeStreetETA(ctx context.Context, srcLat, srcLon float64,
 		alternativeStreetLat float64, alternativeStreetLon float64,
-		dstLat float64, dstLon float64) (string, float64, []guidance.DrivingInstruction, bool, []datastructure.Coordinate, float64, bool, error)
+		dstLat float64, dstLon float64) (string, float64, []datastructure.DrivingDirection, bool, []datastructure.Coordinate, float64, bool, error)
 
 	ManyToManyQuery(ctx context.Context, sourcesLat, sourcesLon, destsLat, destsLon []float64) (map[datastructure.Coordinate][]service.TargetResult, error)
 
-	TravelingSalesmanProblemSimulatedAnneal(ctx context.Context, citiesLat []float64, citiesLon []float64) ([]datastructure.Coordinate, []guidance.DrivingInstruction, string, float64, float64, error)
+	TravelingSalesmanProblemSimulatedAnneal(ctx context.Context, citiesLat []float64, citiesLon []float64) ([]datastructure.Coordinate, []datastructure.DrivingDirection, string, float64, float64, error)
 	WeightedBipartiteMatching(ctx context.Context, riderLatLon map[string][]float64, driverLatLon map[string][]float64) (matched []service.MatchedRiderDriver, totEta float64, err error)
-	TravelingSalesmanProblemAntColonyOptimization(ctx context.Context, citiesLat []float64, citiesLon []float64) ([]datastructure.Coordinate, []guidance.DrivingInstruction, string, float64, float64, error)
+	TravelingSalesmanProblemAntColonyOptimization(ctx context.Context, citiesLat []float64, citiesLon []float64) ([]datastructure.Coordinate, []datastructure.DrivingDirection, string, float64, float64, error)
 }
 
 type NavigationHandler struct {
@@ -101,16 +100,16 @@ func (s *SortestPathAlternativeStreetRequest) Bind(r *http.Request) error {
 //
 //	@Description	response body untuk shortest path query antara 2 tempat di openstreetmap
 type ShortestPathResponse struct {
-	Path        string                        `json:"path"`
-	Dist        float64                       `json:"distance,omitempty"`
-	ETA         float64                       `json:"ETA"`
-	Navigations []guidance.DrivingInstruction `json:"navigations"`
-	Found       bool                          `json:"found"`
-	Route       []datastructure.Coordinate    `json:"route,omitempty"`
-	Alg         string                        `json:"algorithm"`
+	Path        string                           `json:"path"`
+	Dist        float64                          `json:"distance,omitempty"`
+	ETA         float64                          `json:"ETA"`
+	Navigations []datastructure.DrivingDirection `json:"driving_directions"`
+	Found       bool                             `json:"found"`
+	Route       []datastructure.Coordinate       `json:"route,omitempty"`
+	Alg         string                           `json:"algorithm"`
 }
 
-func NewShortestPathResponse(path string, distance float64, navs []guidance.DrivingInstruction, eta float64, route []datastructure.Coordinate, found bool,
+func NewShortestPathResponse(path string, distance float64, navs []datastructure.DrivingDirection, eta float64, route []datastructure.Coordinate, found bool,
 	edgePath []datastructure.Edge, isCH bool) *ShortestPathResponse {
 
 	alg := "Contraction Hieararchies + Bidirectional Dijkstra"
@@ -197,7 +196,7 @@ type ShortestPathWithAlternativeRoutesResponse struct {
 }
 
 func NewShortestPathWithAlternativeRoutesResponse(routes []datastructure.AlternativeRouteInfo,
-	routePolylines []string, routeDrivingInstruction [][]guidance.DrivingInstruction) *ShortestPathWithAlternativeRoutesResponse {
+	routePolylines []string, routeDrivingInstruction [][]datastructure.DrivingDirection) *ShortestPathWithAlternativeRoutesResponse {
 
 	alg := "Contraction Hieararchies + Bidirectional Dijkstra"
 
@@ -390,11 +389,11 @@ type NodeRes struct {
 //
 //	@Description	model untuk destinations di query shortest path many to many
 type TargetRes struct {
-	Target             NodeRes                       `json:"target"`
-	Path               string                        `json:"path"`
-	Dist               float64                       `json:"distance"`
-	ETA                float64                       `json:"ETA"`
-	DrivingInstruction []guidance.DrivingInstruction `json:"navigations"`
+	Target             NodeRes                          `json:"target"`
+	Path               string                           `json:"path"`
+	Dist               float64                          `json:"distance"`
+	ETA                float64                          `json:"ETA"`
+	DrivingInstruction []datastructure.DrivingDirection `json:"driving_directions"`
 }
 
 // SrcTargetPair model info
@@ -509,11 +508,11 @@ func (s *TravelingSalesmanProblemRequest) Bind(r *http.Request) error {
 //
 //	@Description	response body untuk traveling salesman problem query
 type TravelingSalesmanProblemResponse struct {
-	Path                  string                        `json:"path"`
-	Dist                  float64                       `json:"distance"`
-	ETA                   float64                       `json:"ETA"`
-	Cities                []datastructure.Coordinate    `json:"cities_order"`
-	TSPDrivingInstruction []guidance.DrivingInstruction `json:"navigations"`
+	Path                  string                           `json:"path"`
+	Dist                  float64                          `json:"distance"`
+	ETA                   float64                          `json:"ETA"`
+	Cities                []datastructure.Coordinate       `json:"cities_order"`
+	TSPDrivingInstruction []datastructure.DrivingDirection `json:"driving_directions"`
 }
 
 // TravelingSalesmanProblemSimulatedAnnealing
@@ -606,7 +605,7 @@ func (h *NavigationHandler) TravelingSalesmanProblemAntColonyOptimization(w http
 	render.JSON(w, r, RenderTravelingSalesmanProblemResponse(path, dist, eta, tspTourNodes, tspPath))
 }
 
-func RenderTravelingSalesmanProblemResponse(path string, dist float64, eta float64, cities []datastructure.Coordinate, tspPath []guidance.DrivingInstruction) *TravelingSalesmanProblemResponse {
+func RenderTravelingSalesmanProblemResponse(path string, dist float64, eta float64, cities []datastructure.Coordinate, tspPath []datastructure.DrivingDirection) *TravelingSalesmanProblemResponse {
 	return &TravelingSalesmanProblemResponse{
 		Path:   path,
 		Dist:   dist,

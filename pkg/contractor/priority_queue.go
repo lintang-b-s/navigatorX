@@ -91,6 +91,10 @@ func (h *MinHeap[T]) GetMin() (PriorityQueueNode[T], error) {
 	return h.heap[0], nil
 }
 
+func (h *MinHeap[T]) GetMinRank() float64 {
+	return h.heap[0].Rank
+}
+
 // insert item baru
 func (h *MinHeap[T]) Insert(key PriorityQueueNode[T]) {
 	h.heap = append(h.heap, key)
@@ -145,7 +149,6 @@ func (h *MinHeap[T]) DecreaseKey(item PriorityQueueNode[T]) error {
 	return nil
 }
 
-
-func(h *MinHeap[T]) GetItem(item T) PriorityQueueNode[T] {
+func (h *MinHeap[T]) GetItem(item T) PriorityQueueNode[T] {
 	return h.heap[h.pos[item]]
 }
