@@ -109,6 +109,7 @@ var (
 		"unknown":          struct{}{},
 		"living_street":    struct{}{},
 		"private":          struct{}{},
+		"motorroad":        struct{}{},
 	}
 
 	//https://wiki.openstreetmap.org/wiki/Key:barrier
@@ -323,7 +324,7 @@ func (p *OsmParser) processWay(way *osm.Way, graphStorage *datastructure.GraphSt
 
 	wayExtraInfoData := wayExtraInfo{}
 	okvf, okmvf, okvb, okmvb := getReversedOneWay(way)
-	if val := way.Tags.Find("oneway"); val != "" || okvf || okmvf || okvb || okmvb {
+	if val := way.Tags.Find("oneway"); val == "yes" || val == "-1" || okvf || okmvf || okvb || okmvb {
 		wayExtraInfoData.oneWay = true
 	}
 
@@ -713,13 +714,15 @@ func roadTypeMaxSpeed2(roadType string) float64 {
 	case "tertiary_link":
 		return 40
 	case "living_street":
-		return 10
+		return 5
 	case "road":
 		return 20
 	case "track":
 		return 15
+	case "motorroad":
+		return 90
 	default:
-		return 40
+		return 30
 	}
 }
 

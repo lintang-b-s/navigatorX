@@ -101,7 +101,7 @@ func (ar *AlternativeRouteXCHV) RunAlternativeRouteXCHV(from, to int32) ([]datas
 	alternativeRoutes[0].Dist = bestDist
 	alternativeRoutes[0].Eta = bestEta
 
-	workers := concurrent.NewWorkerPool[concurrent.AlternativeRouteParam, admisibleTestResult](5,
+	workers := concurrent.NewWorkerPool[concurrent.AlternativeRouteParam, admisibleTestResult](4,
 		len(potentialRoutes))
 
 	k := 1
@@ -396,7 +396,7 @@ func (ar *AlternativeRouteXCHV) isAlternativeRouteDuplicate(admisibleTestResultI
 			}
 		}
 
-		if float64(sameCount)/float64(len(otherRoute)) >= 0.8 {
+		if float64(sameCount)/float64(len(otherRoute)) >= 0.98 {
 			return true, make(map[int32]struct{})
 		}
 	}

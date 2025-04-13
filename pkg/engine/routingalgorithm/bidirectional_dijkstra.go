@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	maxVisitedNodes = 20 // prevState->nextState should be less than 20 node visit. idk
+	maxVisitedNodes = 30 // prevState->nextState should be less than 20 node visit. idk
 )
 
 func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32, fromEdgeFilter, toEdgeFilter func(edge datastructure.Edge) bool) ([]datastructure.Coordinate, []datastructure.Edge,
@@ -41,183 +41,29 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32, fromEdgeFilter,
 	cameFromb := make(map[int32]cameFromPair)
 	cameFromb[to] = cameFromPair{datastructure.Edge{}, -1}
 
-	visitedF := make(map[int32]struct{})
-	visitedB := make(map[int32]struct{})
-
-	frontFinished := false
-	backFinished := false
+	forwardProcessed := make(map[int32]struct{})
+	backwardProcessed := make(map[int32]struct{})
 
 	visitedCount := 0
-	frontier := forwQ
-	otherFrontier := backQ
-	turnF := true
-	for visitedCount < maxVisitedNodes {
-		if frontier.Size() == 0 {
-			frontFinished = true
-		}
-		if otherFrontier.Size() == 0 {
-			backFinished = true
-		}
 
-		if frontFinished && backFinished {
-			// stop search if both front and back search finished  (forw and backw priority queue empty)
-			break
-		}
 
-		ff := *frontier
-		if ff.Size() == 0 {
-			return []datastructure.Coordinate{}, []datastructure.Edge{}, -1, -1
-		}
-		smallestFront, _ := ff.GetMin()
-		if smallestFront.Rank >= estimate {
-			// bidirectional search di stop ketika smallest node saat ini costnya >=  cost current best candidate path.
-			if turnF {
-				frontFinished = true
-			} else {
-				backFinished = true
-			}
-		} else {
-			node, _ := frontier.ExtractMin()
-			if node.Rank >= estimate {
-				break
-			}
+	for visitedCount < maxVisitedNodes && (forwQ.Size() != 0 && backQ.Size() != 0) {
 
-			if turnF {
+		u, _ := forwQ.ExtractMin()
+		v, _ := backQ.ExtractMin()
 
-				for _, arc := range rt.ch.GetNodeFirstOutEdges(node.Item) {
+		rt.searchPlain(forwQ, df, db, cameFromf, cameFromb, true,
+			forwardProcessed, backwardProcessed, &estimate, &bestCommonVertex, fromEdgeFilter,
+			toEdgeFilter, u)
 
-					edge := rt.ch.GetOutEdge(arc)
-					if _, ok := visitedF[edge.ToNodeID]; ok {
-						continue
-					}
-
-					if !fromEdgeFilter(edge) {
-						// if the source node is virtual node,  must start the search from outgoing virtual edge of source node.
-						continue
-					} else {
-						fromEdgeFilter = func(_ datastructure.Edge) bool {
-							return true
-						}
-					}
-					toNID := edge.ToNodeID
-					cost := edge.Weight
-
-					// upward graph
-					newCost := cost + df[node.Item]
-					_, ok := df[toNID]
-					// relax edge
-					if !ok {
-						df[toNID] = newCost
-
-						neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
-						frontier.Insert(neighborNode)
-						cameFromf[toNID] = cameFromPair{edge, node.Item}
-					} else if newCost < df[toNID] {
-						df[toNID] = newCost
-
-						neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
-						frontier.DecreaseKey(neighborNode)
-
-						cameFromf[toNID] = cameFromPair{edge, node.Item}
-					}
-
-					_, ok = db[toNID]
-					if ok {
-						pathDistance := newCost + db[toNID]
-						if pathDistance < estimate {
-							// If µ > ds(v) + `(v, w) + dt(w),
-							//we have found a shorter path than those seen before, so
-							// we update µ and its path accordingly.
-							estimate = pathDistance
-							bestCommonVertex = edge.ToNodeID
-
-						}
-					}
-
-				}
-
-				visitedF[node.Item] = struct{}{}
-
-			} else {
-
-				for _, arc := range rt.ch.GetNodeFirstInEdges(node.Item) {
-
-					edge := rt.ch.GetInEdge(arc)
-					if _, ok := visitedB[edge.ToNodeID]; ok {
-						continue
-					}
-
-					if !toEdgeFilter(edge) {
-						// if the target node node is virtual node,  must start the search from incoming virtual edge of target node.
-						continue
-					} else {
-						toEdgeFilter = func(_ datastructure.Edge) bool {
-							return true
-						}
-					}
-					toNID := edge.ToNodeID
-					cost := edge.Weight
-
-					// downward graph
-					newCost := cost + db[node.Item]
-					_, ok := db[toNID]
-					if !ok {
-						db[toNID] = newCost
-
-						neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
-						frontier.Insert(neighborNode)
-						cameFromb[toNID] = cameFromPair{edge, node.Item}
-					}
-					if newCost < db[toNID] {
-						db[toNID] = newCost
-
-						neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
-						frontier.DecreaseKey(neighborNode)
-
-						cameFromb[toNID] = cameFromPair{edge, node.Item}
-					}
-
-					_, ok = df[toNID]
-					if ok {
-						pathDistance := newCost + df[toNID]
-						if pathDistance < estimate {
-							// If µ > ds(v) + `(v, w) + dt(w),
-							//we have found a shorter path than those seen before, so
-							// we update µ and its path accordingly
-							estimate = pathDistance
-							bestCommonVertex = edge.ToNodeID
-
-						}
-
-					}
-				}
-
-				visitedB[node.Item] = struct{}{}
-
-			}
-
-		}
+		forwardProcessed[u.Item] = struct{}{}
+		rt.searchPlain(backQ, df, db, cameFromf, cameFromb, false,
+			forwardProcessed, backwardProcessed, &estimate, &bestCommonVertex, fromEdgeFilter,
+			toEdgeFilter, v)
+			
+		backwardProcessed[v.Item] = struct{}{}
 
 		visitedCount++
-
-		otherFinished := false
-
-		if turnF {
-			if backFinished {
-				otherFinished = true
-			}
-		} else {
-			if frontFinished {
-				otherFinished = true
-			}
-
-		}
-		if !otherFinished {
-			tmpFrontier := frontier
-			frontier = otherFrontier
-			otherFrontier = tmpFrontier
-			turnF = !turnF
-		}
 	}
 
 	if estimate == math.MaxFloat64 || visitedCount >= maxVisitedNodes {
@@ -226,6 +72,112 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32, fromEdgeFilter,
 
 	path, edgePath, eta, dist := rt.createPathPlain(bestCommonVertex, from, to, cameFromf, cameFromb)
 	return path, edgePath, eta, dist
+}
+
+func (rt *RouteAlgorithm) searchPlain(frontier *contractor.MinHeap[int32], df, db map[int32]float64,
+	cameFromf, cameFromb map[int32]cameFromPair, turnF bool, forwardProcessed, backwardProcessed map[int32]struct{},
+	estimate *float64, bestCommonVertex *int32, fromEdgeFilter, toEdgeFilter func(edge datastructure.Edge) bool, node contractor.PriorityQueueNode[int32]) {
+	if turnF {
+
+		for _, arc := range rt.ch.GetNodeFirstOutEdges(node.Item) {
+
+			edge := rt.ch.GetOutEdge(arc)
+			if _, ok := forwardProcessed[edge.ToNodeID]; ok {
+				continue
+			}
+
+			if !fromEdgeFilter(edge) {
+				// if the source node is virtual node,  must start the search from outgoing virtual edge of source node.
+				continue
+			} else {
+				fromEdgeFilter = func(_ datastructure.Edge) bool {
+					return true
+				}
+			}
+			toNID := edge.ToNodeID
+			cost := edge.Weight
+
+			// upward graph
+			newCost := cost + df[node.Item]
+			_, ok := df[toNID]
+			// relax edge
+			if !ok {
+				df[toNID] = newCost
+
+				neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
+				frontier.Insert(neighborNode)
+				cameFromf[toNID] = cameFromPair{edge, node.Item}
+			} else if newCost < df[toNID] {
+				df[toNID] = newCost
+
+				neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
+				frontier.DecreaseKey(neighborNode)
+
+				cameFromf[toNID] = cameFromPair{edge, node.Item}
+			}
+
+			_, ok = backwardProcessed[toNID]
+			if ok {
+				pathDistance := newCost + db[toNID]
+				if pathDistance < *estimate {
+					*estimate = pathDistance
+					*bestCommonVertex = node.Item
+				}
+			}
+		}
+
+	} else {
+
+		for _, arc := range rt.ch.GetNodeFirstInEdges(node.Item) {
+
+			edge := rt.ch.GetInEdge(arc)
+			if _, ok := backwardProcessed[edge.ToNodeID]; ok {
+				continue
+			}
+
+			if !toEdgeFilter(edge) {
+				// if the target node node is virtual node,  must start the search from incoming virtual edge of target node.
+				continue
+			} else {
+				toEdgeFilter = func(_ datastructure.Edge) bool {
+					return true
+				}
+			}
+			toNID := edge.ToNodeID
+			cost := edge.Weight
+
+			// downward graph
+			newCost := cost + db[node.Item]
+			_, ok := db[toNID]
+			if !ok {
+				db[toNID] = newCost
+
+				neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
+				frontier.Insert(neighborNode)
+				cameFromb[toNID] = cameFromPair{edge, node.Item}
+			}
+			if newCost < db[toNID] {
+				db[toNID] = newCost
+
+				neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
+				frontier.DecreaseKey(neighborNode)
+
+				cameFromb[toNID] = cameFromPair{edge, node.Item}
+			}
+
+			_, ok = forwardProcessed[toNID]
+			if ok {
+				pathDistance := newCost + df[toNID]
+				if pathDistance < *estimate {
+					*estimate = pathDistance
+					*bestCommonVertex = node.Item
+				}
+			}
+
+		}
+
+	}
+
 }
 
 func (rt *RouteAlgorithm) createPathPlain(commonVertex int32, from, to int32,
@@ -240,7 +192,7 @@ func (rt *RouteAlgorithm) createPathPlain(commonVertex int32, from, to int32,
 		eta += 1.5
 	}
 	ok := true
-	for ok && v != -1 {
+	for ok && cameFromf[v].NodeID != -1 {
 
 		if cameFromf[v].NodeID != -1 && rt.ch.IsTrafficLight(cameFromf[v].NodeID) {
 			eta += 1.5
@@ -253,7 +205,7 @@ func (rt *RouteAlgorithm) createPathPlain(commonVertex int32, from, to int32,
 
 		}
 
-		nodeV := rt.ch.GetNode(v)
+		nodeV := rt.ch.GetNode(cameFromf[v].NodeID)
 
 		fPath = append(fPath, datastructure.NewCoordinate(nodeV.Lat, nodeV.Lon))
 
@@ -266,7 +218,7 @@ func (rt *RouteAlgorithm) createPathPlain(commonVertex int32, from, to int32,
 	bEdgePath := make([]datastructure.Edge, 0)
 	v = commonVertex
 	ok = true
-	for ok && v != -1 {
+	for ok && cameFromb[v].NodeID != -1 {
 
 		if cameFromb[v].NodeID != -1 && rt.ch.IsTrafficLight(cameFromb[v].NodeID) {
 			eta += 1.5
@@ -279,7 +231,7 @@ func (rt *RouteAlgorithm) createPathPlain(commonVertex int32, from, to int32,
 
 		}
 
-		nodeV := rt.ch.GetNode(v)
+		nodeV := rt.ch.GetNode(cameFromb[v].NodeID)
 
 		bPath = append(bPath, datastructure.NewCoordinate(nodeV.Lat, nodeV.Lon))
 
@@ -288,9 +240,11 @@ func (rt *RouteAlgorithm) createPathPlain(commonVertex int32, from, to int32,
 	}
 
 	fPath = util.ReverseG(fPath)
-	fPath = fPath[:len(fPath)-1]
+
 	path := make([]datastructure.Coordinate, 0)
 	path = append(path, fPath...)
+	vianode := rt.ch.GetNode(commonVertex)
+	path = append(path, datastructure.NewCoordinate(vianode.Lat, vianode.Lon))
 	path = append(path, bPath...)
 
 	edgePath := make([]datastructure.Edge, 0)

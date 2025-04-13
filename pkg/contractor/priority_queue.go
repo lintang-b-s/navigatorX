@@ -2,6 +2,7 @@ package contractor
 
 import (
 	"errors"
+	"math"
 )
 
 type Item interface {
@@ -92,6 +93,9 @@ func (h *MinHeap[T]) GetMin() (PriorityQueueNode[T], error) {
 }
 
 func (h *MinHeap[T]) GetMinRank() float64 {
+	if h.isEmpty() {
+		return math.MaxFloat64
+	}
 	return h.heap[0].Rank
 }
 

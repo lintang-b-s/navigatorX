@@ -59,7 +59,7 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraXCHV(from, to int32) ([]datastru
 	isForward := true
 
 	// https://publikationen.bibliothek.kit.edu/1000028701/142973925 (algorithm 1)
-	for forwQ.Size() != 0 && backQ.Size() != 0 && estimate > min(forwQ.GetMinRank(), backQ.GetMinRank()) {
+	for (forwQ.Size() != 0 || backQ.Size() != 0) && estimate > min(forwQ.GetMinRank(), backQ.GetMinRank()) {
 
 		if isForward {
 			if backQ.Size() != 0 {
@@ -253,7 +253,7 @@ func (rt *RouteAlgorithm) createPathXCHV(commonVertex int32, from, to int32,
 	}
 	ok := true
 
-	for ok && v != -1 {
+	for ok && cameFromf[v].NodeID != -1 {
 		isShortcut := rt.ch.IsShortcut(cameFromf[v].Edge.EdgeID)
 
 		if isShortcut {
@@ -275,7 +275,7 @@ func (rt *RouteAlgorithm) createPathXCHV(commonVertex int32, from, to int32,
 				pointsInBetween = util.ReverseG(pointsInBetween)
 			}
 
-			nodeV := rt.ch.GetNode(v)
+			nodeV := rt.ch.GetNode(cameFromf[v].NodeID)
 
 			fPath = append(fPath, nodeV)
 			// fCoordPath = append(fCoordPath, datastructure.NewCoordinate(nodeV.Lat, nodeV.Lon))
@@ -290,7 +290,7 @@ func (rt *RouteAlgorithm) createPathXCHV(commonVertex int32, from, to int32,
 	bEdgePath := make([]datastructure.Edge, 0)
 	v = commonVertex
 	ok = true
-	for ok && v != -1 {
+	for ok && cameFromb[v].NodeID != -1 {
 
 		isShortcut := rt.ch.IsShortcut(cameFromb[v].Edge.EdgeID)
 		if isShortcut {
@@ -313,7 +313,7 @@ func (rt *RouteAlgorithm) createPathXCHV(commonVertex int32, from, to int32,
 				pointsInBetween = rt.ch.GetEdgePointsInBetween(cameFromb[v].Edge.EdgeID)
 			}
 
-			nodeV := rt.ch.GetNode(v)
+			nodeV := rt.ch.GetNode(cameFromb[v].NodeID)
 
 			bPath = append(bPath, nodeV)
 			bCoordPath = append(bCoordPath, datastructure.NewCoordinate(nodeV.Lat, nodeV.Lon))
@@ -325,23 +325,17 @@ func (rt *RouteAlgorithm) createPathXCHV(commonVertex int32, from, to int32,
 	}
 
 	fPath = util.ReverseG(fPath)
-	fCoordPath = util.ReverseG(fCoordPath)
-	if bPath[0].ID != commonVertex {
-		fPath = append(fPath, rt.ch.GetNode(commonVertex))
-	}
-
-	commonVertexN := rt.ch.GetNode(commonVertex)
-	if bCoordPath[0].Lat != commonVertexN.Lat && bCoordPath[0].Lon != commonVertexN.Lon &&
-		fCoordPath[len(fCoordPath)-1].Lat != commonVertexN.Lat && fCoordPath[len(fCoordPath)-1].Lon != commonVertexN.Lon {
-		fCoordPath = append(fCoordPath, datastructure.NewCoordinate(commonVertexN.Lat, commonVertexN.Lon))
-	}
-
 	path := make([]datastructure.CHNode, 0)
 	path = append(path, fPath...)
+	vianode := rt.ch.GetNode(commonVertex)
+	path = append(path, vianode)
 	path = append(path, bPath...)
+
+	fCoordPath = util.ReverseG(fCoordPath)
 
 	coordPath := make([]datastructure.Coordinate, 0)
 	coordPath = append(coordPath, fCoordPath...)
+	coordPath = append(coordPath, datastructure.NewCoordinate(vianode.Lat, vianode.Lon))
 	coordPath = append(coordPath, bCoordPath...)
 
 	edgePath := make([]datastructure.Edge, 0)
