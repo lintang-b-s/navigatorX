@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/lintang-b-s/navigatorx/pkg/concurrent"
 	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
+	"github.com/lintang-b-s/navigatorx/pkg/geo"
 	"github.com/lintang-b-s/navigatorx/pkg/guidance"
 	"github.com/lintang-b-s/navigatorx/pkg/util"
 )
@@ -17,12 +19,13 @@ import (
 // X-CHV
 
 const (
+	workersNum                  = 4
 	alternativeRouteCalcTimeout = 100
 	npath                       = 5000
 )
 
 type RouteAlgorithmI interface {
-	ShortestPathBiDijkstraXCHV(from, to int32) ([]datastructure.CHNode,
+	ShortestPathBiDijkstraXCHV(from, to int32, k int, pruneRadius bool, lOpt float64) ([]datastructure.CHNode,
 		[]datastructure.Coordinate, []datastructure.Edge, float64, float64,
 		map[int32]cameFromPairXCHV, map[int32]cameFromPairXCHV, int32)
 	GetGraph() ContractedGraph
@@ -51,12 +54,25 @@ func NewAlternativeRouteXCHV(k int, rt RouteAlgorithmI) *AlternativeRouteXCHV {
 }
 
 func (ar *AlternativeRouteXCHV) RunAlternativeRouteXCHV(from, to int32) ([]datastructure.AlternativeRouteInfo, error) {
-	// first run the shortest path (s,t)
-	nodes, path, edges, bestEta, bestDist, camefromf, camefromb, _ := ar.rt.ShortestPathBiDijkstraXCHV(from, to)
+	fromNode := ar.rt.GetGraph().GetNode(from)
+	toNode := ar.rt.GetGraph().GetNode(to)
+	fromToDist := geo.CalculateHaversineDistance(fromNode.Lat, fromNode.Lon, toNode.Lat, toNode.Lon)
+	relaxedCHK := 2
+	if fromToDist >= 20 {
+		// for better alternative routes quality (longer routes tends to have many good vianodes)
+		relaxedCHK = 1
+	}
+	// first run the shortest path (s,t) to get l(Opt)
+	optNodes, path, edges, bestEta, bestDist, _, _, _ := ar.rt.ShortestPathBiDijkstraXCHV(from, to, relaxedCHK, false, 0)
 
 	if bestEta == -1 {
 		return []datastructure.AlternativeRouteInfo{}, fmt.Errorf("no path found from %d to %d", from, to)
 	}
+
+	// run bidirectional dijkstra . with each search
+	// stopping when its radius is greater than (1 + epsilon)l(Opt); we also prune any vertex u with
+	// dist(s, u) + dist(u, t) > (1 + epsilon)l(Opt).
+	appNodes, _, _, _, _, camefromf, camefromb, _ := ar.rt.ShortestPathBiDijkstraXCHV(from, to, relaxedCHK, true, bestEta)
 
 	potentialRoutes := make([]datastructure.AlternativeRouteInfo, 0)
 	for vnode := range camefromf {
@@ -76,11 +92,13 @@ func (ar *AlternativeRouteXCHV) RunAlternativeRouteXCHV(from, to int32) ([]datas
 		edgeB := ar.buildViaNodeEdges(camefromb, vnode)
 		vEdges := append(edgeF, edgeB...)
 		// calculate approximate value of σ(v)
-		sharedDistanceWithOpt := ar.calculateDistanceShare(nodes, vEdges)
+		sharedDistanceWithOpt := ar.calculateDistanceShare(appNodes, vEdges)
 
 		objectiveValue := ar.calculateObjectiveFunctionValue(camefromf[vnode].Dist+camefromb[vnode].Dist,
 			sharedDistanceWithOpt)
+
 		alternativeRoute := datastructure.NewAlternativeRouteInfo(objectiveValue, vnode)
+		alternativeRoute.Dist = camefromf[vnode].Dist + camefromb[vnode].Dist
 
 		potentialRoutes = append(potentialRoutes, alternativeRoute)
 	}
@@ -94,14 +112,14 @@ func (ar *AlternativeRouteXCHV) RunAlternativeRouteXCHV(from, to int32) ([]datas
 	// append best shortest path to alternative routes
 
 	bestRoute := datastructure.NewAlternativeRouteInfo(bestDist, -1)
-	bestRoute.Nodes = nodes
+	bestRoute.Nodes = optNodes
 	bestRoute.Edges = edges
 	bestRoute.Path = path
 	alternativeRoutes = append(alternativeRoutes, bestRoute)
 	alternativeRoutes[0].Dist = bestDist
 	alternativeRoutes[0].Eta = bestEta
 
-	workers := concurrent.NewWorkerPool[concurrent.AlternativeRouteParam, admisibleTestResult](4,
+	workers := concurrent.NewWorkerPool[concurrent.AlternativeRouteParam, admisibleTestResult](workersNum,
 		len(potentialRoutes))
 
 	k := 1
@@ -111,7 +129,7 @@ func (ar *AlternativeRouteXCHV) RunAlternativeRouteXCHV(from, to int32) ([]datas
 		vnode := alternativeRoute.ViaNode
 
 		workers.AddJob(concurrent.NewAlternativeRouteParam(
-			from, to, vnode, nodes, alternativeRoute, bestDist, ctx, &alternativeRoutes))
+			from, to, vnode, optNodes, alternativeRoute, bestDist, ctx, &alternativeRoutes))
 	}
 
 	workers.Close()
@@ -165,13 +183,36 @@ func (ar *AlternativeRouteXCHV) RunAdmisibleTestXCHV(param concurrent.Alternativ
 	if util.StopConcurrentOperation(ctx) {
 		return newAdmisibleTestResult(false, datastructure.AlternativeRouteInfo{})
 	}
-	// calculate Pv (sv + vt shortest path) to obtain the actual values of l(v) and σ(v)
-	svNodes, svPath, svEdges, svEta, svDist, _, _, _ := ar.rt.ShortestPathBiDijkstraXCHV(from, vnode)
 
-	if util.StopConcurrentOperation(ctx) {
-		return newAdmisibleTestResult(false, datastructure.AlternativeRouteInfo{})
-	}
-	vtNodes, vtPath, vtEdges, vtEta, vtDist, _, _, _ := ar.rt.ShortestPathBiDijkstraXCHV(vnode, to)
+	var (
+		svNodes []datastructure.CHNode
+		svPath  []datastructure.Coordinate
+		svEdges []datastructure.Edge
+		svEta   float64
+		svDist  float64
+
+		vtNodes []datastructure.CHNode
+		vtPath  []datastructure.Coordinate
+		vtEdges []datastructure.Edge
+		vtEta   float64
+		vtDist  float64
+	)
+
+	// calculate Pv (sv + vt shortest path) to obtain the actual values of l(v) and σ(v)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		svNodes, svPath, svEdges, svEta, svDist, _, _, _ = ar.rt.ShortestPathBiDijkstraXCHV(from, vnode, 0, false, 0)
+	}()
+
+	go func() {
+		defer wg.Done()
+		vtNodes, vtPath, vtEdges, vtEta, vtDist, _, _, _ = ar.rt.ShortestPathBiDijkstraXCHV(vnode, to, 0, false, 0)
+
+	}()
+
+	wg.Wait()
 
 	if util.StopConcurrentOperation(ctx) {
 		return newAdmisibleTestResult(false, datastructure.AlternativeRouteInfo{})
@@ -354,7 +395,7 @@ func (ar *AlternativeRouteXCHV) tTest(lengthPvExcludeOpt float64, edgeIDContainV
 
 	// v pass the T-test if shortest path from x to y contains v
 
-	nodes, _, _, _, _, _, _, _ := ar.rt.ShortestPathBiDijkstraXCHV(xNode, yNode)
+	nodes, _, _, _, _, _, _, _ := ar.rt.ShortestPathBiDijkstraXCHV(xNode, yNode, 0, false, 0)
 
 	for _, node := range nodes {
 		if node.ID == vNode {

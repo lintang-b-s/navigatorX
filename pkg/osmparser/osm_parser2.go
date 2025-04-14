@@ -528,6 +528,7 @@ func (p *OsmParser) addEdge(segment []node, tempMap map[string]string, speed flo
 	distance := 0.0
 	for i := 0; i < len(segment); i++ {
 		if i != 0 && i != len(segment)-1 && p.nodeTag[int64(segment[i].id)][p.tagStringIdMap.GetID(TRAFFIC_LIGHT)] == 1 {
+
 			distToFromNode := geo.CalculateHaversineDistance(from.coord.lat, from.coord.lon, segment[i].coord.lat, segment[i].coord.lon)
 			distToToNode := geo.CalculateHaversineDistance(to.coord.lat, to.coord.lon, segment[i].coord.lat, segment[i].coord.lon)
 			if distToFromNode < distToToNode {

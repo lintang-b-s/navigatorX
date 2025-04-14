@@ -16,10 +16,10 @@ type cameFromPairXCHV struct {
 }
 
 const (
-	k = 2 //success rate 61.6% for p=2 alternative routes
+	epsilon = 0.25
 )
 
-func (rt *RouteAlgorithm) ShortestPathBiDijkstraXCHV(from, to int32) ([]datastructure.CHNode,
+func (rt *RouteAlgorithm) ShortestPathBiDijkstraXCHV(from, to int32, k int, pruneRadius bool, lOpt float64) ([]datastructure.CHNode,
 	[]datastructure.Coordinate, []datastructure.Edge, float64, float64,
 	map[int32]cameFromPairXCHV, map[int32]cameFromPairXCHV, int32) {
 	if from == to {
@@ -58,27 +58,34 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraXCHV(from, to int32) ([]datastru
 	backwardProcessed := make(map[int32]struct{})
 	isForward := true
 
-	// https://publikationen.bibliothek.kit.edu/1000028701/142973925 (algorithm 1)
-	for (forwQ.Size() != 0 || backQ.Size() != 0) && estimate > min(forwQ.GetMinRank(), backQ.GetMinRank()) {
+	stopSearchForward := false
+	stopSearchBackward := false
 
-		if isForward {
+	// https://publikationen.bibliothek.kit.edu/1000028701/142973925 (algorithm 1)
+	for (forwQ.Size() != 0 || backQ.Size() != 0) && estimate > min(forwQ.GetMinRank(), backQ.GetMinRank()) &&
+		(!stopSearchForward || !stopSearchBackward) {
+
+		if isForward && !stopSearchBackward {
 			if backQ.Size() != 0 {
 				isForward = false
 			}
-		} else {
+		} else if !stopSearchForward  {
 			if forwQ.Size() != 0 {
 				isForward = true
 			}
 		}
 
-		if isForward {
 
-			rt.searchXCHV(forwQ, df, db, cameFromf, cameFromb, isForward,
-				forwardProcessed, backwardProcessed, &estimate, &bestCommonVertex, distf, distb)
-		} else {
 
-			rt.searchXCHV(backQ, df, db, cameFromf, cameFromb, isForward,
-				forwardProcessed, backwardProcessed, &estimate, &bestCommonVertex, distf, distb)
+		if isForward  {
+
+			stopSearchForward = rt.searchXCHV(forwQ, df, db, cameFromf, cameFromb, isForward,
+				forwardProcessed, backwardProcessed, &estimate, &bestCommonVertex, distf, distb, k, lOpt, pruneRadius)
+
+		} else   {
+
+			stopSearchBackward = rt.searchXCHV(backQ, df, db, cameFromf, cameFromb, isForward,
+				forwardProcessed, backwardProcessed, &estimate, &bestCommonVertex, distf, distb, k, lOpt, pruneRadius)
 		}
 	}
 
@@ -101,8 +108,17 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraXCHV(from, to int32) ([]datastru
 
 func (rt *RouteAlgorithm) searchXCHV(frontier *contractor.MinHeap[int32], df, db map[int32]float64,
 	cameFromf, cameFromb map[int32]cameFromPairXCHV, turnF bool, forwardProcessed, backwardProcessed map[int32]struct{},
-	estimate *float64, bestCommonVertex *int32, distf, distb map[int32]float64) {
+	estimate *float64, bestCommonVertex *int32, distf, distb map[int32]float64, k int, lOpt float64, pruneRadius bool) bool {
 	node, _ := frontier.ExtractMin()
+
+	if pruneRadius && node.Rank > (1+epsilon)*lOpt {
+		return true
+	}
+
+	if rt.pruneBD(node.Rank, lOpt, pruneRadius, db, node.Item) {
+		return false
+	}
+
 	if turnF {
 
 		for _, arc := range rt.ch.GetNodeFirstOutEdges(node.Item) {
@@ -112,10 +128,11 @@ func (rt *RouteAlgorithm) searchXCHV(frontier *contractor.MinHeap[int32], df, db
 			toNID := edge.ToNodeID
 			cost := edge.Weight
 
-			if !rt.pruneRelaxedCH(cameFromf, node.Item, toNID) {
-				// upward graph
-				newCost := cost + df[node.Item]
-				newDist := edge.Dist + distf[node.Item]
+			// upward graph
+			newCost := cost + df[node.Item]
+			newDist := edge.Dist + distf[node.Item]
+
+			if !rt.pruneRelaxedCH(cameFromf, node.Item, toNID, k) {
 
 				_, ok := df[toNID]
 
@@ -161,11 +178,12 @@ func (rt *RouteAlgorithm) searchXCHV(frontier *contractor.MinHeap[int32], df, db
 			toNID := edge.ToNodeID
 			cost := edge.Weight
 
-			if !rt.pruneRelaxedCH(cameFromb, node.Item, toNID) {
-				// downward graph
-				newCost := cost + db[node.Item]
+			// downward graph
+			newCost := cost + db[node.Item]
+			newDist := edge.Dist + distb[node.Item]
 
-				newDist := edge.Dist + distb[node.Item]
+			if !rt.pruneRelaxedCH(cameFromb, node.Item, toNID, k) {
+
 				_, ok := db[toNID]
 				if !ok {
 					db[toNID] = newCost
@@ -200,6 +218,19 @@ func (rt *RouteAlgorithm) searchXCHV(frontier *contractor.MinHeap[int32], df, db
 			}
 		}
 	}
+
+	return false
+}
+
+func (rt *RouteAlgorithm) pruneBD(newEta, lOpt float64, pruneRadius bool, db map[int32]float64, u int32) bool {
+
+	if pruneRadius {
+		distVFromTo, ok := db[u]
+		if ok && newEta+distVFromTo > (1+epsilon)*lOpt {
+			return true
+		}
+	}
+	return false
 }
 
 /*
@@ -212,7 +243,8 @@ p1 (u), . . . , pk (u) in the CH order. If u has fewer than k ancestors, (u, v) 
 
 Return true if node edge (u,v) pruned, else return false
 */
-func (rt *RouteAlgorithm) pruneRelaxedCH(cameFrom map[int32]cameFromPairXCHV, u int32, v int32) bool {
+func (rt *RouteAlgorithm) pruneRelaxedCH(cameFrom map[int32]cameFromPairXCHV, u int32, v int32, k int,
+) bool {
 
 	if rt.ch.GetNode(v).OrderPos > rt.ch.GetNode(u).OrderPos {
 		// v not precedes u in the ch order
@@ -249,7 +281,7 @@ func (rt *RouteAlgorithm) createPathXCHV(commonVertex int32, from, to int32,
 	dist := 0.0
 	v := commonVertex
 	if rt.ch.IsTrafficLight(v) {
-		eta += 1.5
+		eta += trafficLightAdditionalWeight
 	}
 	ok := true
 
@@ -263,7 +295,7 @@ func (rt *RouteAlgorithm) createPathXCHV(commonVertex int32, from, to int32,
 		} else {
 
 			if cameFromf[v].NodeID != -1 && rt.ch.IsTrafficLight(cameFromf[v].NodeID) {
-				eta += 1.5
+				eta += trafficLightAdditionalWeight
 			}
 			eta += cameFromf[v].Edge.Weight
 			dist += cameFromf[v].Edge.Dist
@@ -278,8 +310,8 @@ func (rt *RouteAlgorithm) createPathXCHV(commonVertex int32, from, to int32,
 			nodeV := rt.ch.GetNode(cameFromf[v].NodeID)
 
 			fPath = append(fPath, nodeV)
-			// fCoordPath = append(fCoordPath, datastructure.NewCoordinate(nodeV.Lat, nodeV.Lon))
 			fCoordPath = append(fCoordPath, pointsInBetween...)
+			fCoordPath = append(fCoordPath, datastructure.NewCoordinate(nodeV.Lat, nodeV.Lon))
 		}
 		_, ok = cameFromf[v]
 		v = cameFromf[v].NodeID
@@ -301,7 +333,7 @@ func (rt *RouteAlgorithm) createPathXCHV(commonVertex int32, from, to int32,
 		} else {
 
 			if cameFromb[v].NodeID != -1 && rt.ch.IsTrafficLight(cameFromb[v].NodeID) {
-				eta += 1.5
+				eta += trafficLightAdditionalWeight
 			}
 			eta += cameFromb[v].Edge.Weight
 			dist += cameFromb[v].Edge.Dist
@@ -316,9 +348,8 @@ func (rt *RouteAlgorithm) createPathXCHV(commonVertex int32, from, to int32,
 			nodeV := rt.ch.GetNode(cameFromb[v].NodeID)
 
 			bPath = append(bPath, nodeV)
-			bCoordPath = append(bCoordPath, datastructure.NewCoordinate(nodeV.Lat, nodeV.Lon))
 			bCoordPath = append(bCoordPath, pointsInBetween...)
-
+			bCoordPath = append(bCoordPath, datastructure.NewCoordinate(nodeV.Lat, nodeV.Lon))
 		}
 		_, ok = cameFromb[v]
 		v = cameFromb[v].NodeID
@@ -366,7 +397,7 @@ func (rt *RouteAlgorithm) unpackBackwardXCHV(edge datastructure.Edge, path *[]da
 
 	if !isShortcut {
 		if rt.ch.IsTrafficLight(edge.FromNodeID) {
-			*eta += 1.5
+			*eta += trafficLightAdditionalWeight
 		}
 		*eta += edge.Weight
 		*dist += edge.Dist
@@ -420,7 +451,7 @@ func (rt *RouteAlgorithm) unpackForwardXCHV(edge datastructure.Edge, path *[]dat
 
 	if !isShortcut {
 		if rt.ch.IsTrafficLight(edge.FromNodeID) {
-			*eta += 1.5
+			*eta += trafficLightAdditionalWeight
 		}
 		*eta += edge.Weight
 		*dist += edge.Dist

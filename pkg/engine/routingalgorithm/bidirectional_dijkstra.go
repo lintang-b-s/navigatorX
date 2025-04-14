@@ -46,7 +46,6 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32, fromEdgeFilter,
 
 	visitedCount := 0
 
-
 	for visitedCount < maxVisitedNodes && (forwQ.Size() != 0 && backQ.Size() != 0) {
 
 		u, _ := forwQ.ExtractMin()
@@ -60,8 +59,12 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstra(from, to int32, fromEdgeFilter,
 		rt.searchPlain(backQ, df, db, cameFromf, cameFromb, false,
 			forwardProcessed, backwardProcessed, &estimate, &bestCommonVertex, fromEdgeFilter,
 			toEdgeFilter, v)
-			
+
 		backwardProcessed[v.Item] = struct{}{}
+
+		if df[u.Item]+db[v.Item] >= estimate {
+			break
+		}
 
 		visitedCount++
 	}
@@ -189,13 +192,13 @@ func (rt *RouteAlgorithm) createPathPlain(commonVertex int32, from, to int32,
 	dist := 0.0
 	v := commonVertex
 	if rt.ch.IsTrafficLight(v) {
-		eta += 1.5
+		eta += trafficLightAdditionalWeight
 	}
 	ok := true
 	for ok && cameFromf[v].NodeID != -1 {
 
 		if cameFromf[v].NodeID != -1 && rt.ch.IsTrafficLight(cameFromf[v].NodeID) {
-			eta += 1.5
+			eta += trafficLightAdditionalWeight
 		}
 		eta += cameFromf[v].Edge.Weight
 		dist += cameFromf[v].Edge.Dist
@@ -221,7 +224,7 @@ func (rt *RouteAlgorithm) createPathPlain(commonVertex int32, from, to int32,
 	for ok && cameFromb[v].NodeID != -1 {
 
 		if cameFromb[v].NodeID != -1 && rt.ch.IsTrafficLight(cameFromb[v].NodeID) {
-			eta += 1.5
+			eta += trafficLightAdditionalWeight
 		}
 		eta += cameFromb[v].Edge.Weight
 		dist += cameFromb[v].Edge.Dist

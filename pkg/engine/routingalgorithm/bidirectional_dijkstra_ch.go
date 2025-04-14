@@ -8,6 +8,10 @@ import (
 	"github.com/lintang-b-s/navigatorx/pkg/util"
 )
 
+const (
+	trafficLightAdditionalWeight = 1.2
+)
+
 type cameFromPair struct {
 	Edge   datastructure.Edge
 	NodeID int32
@@ -215,7 +219,7 @@ func (rt *RouteAlgorithm) createPath(commonVertex int32, from, to int32,
 	dist := 0.0
 	v := commonVertex
 	if rt.ch.IsTrafficLight(v) {
-		eta += 1.5
+		eta += trafficLightAdditionalWeight
 	}
 	ok := true
 	for ok && cameFromf[v].NodeID != -1 {
@@ -227,7 +231,7 @@ func (rt *RouteAlgorithm) createPath(commonVertex int32, from, to int32,
 		} else {
 
 			if cameFromf[v].NodeID != -1 && rt.ch.IsTrafficLight(cameFromf[v].NodeID) {
-				eta += 1.5
+				eta += trafficLightAdditionalWeight
 			}
 			eta += cameFromf[v].Edge.Weight
 			dist += cameFromf[v].Edge.Dist
@@ -242,8 +246,9 @@ func (rt *RouteAlgorithm) createPath(commonVertex int32, from, to int32,
 
 			nodeV := rt.ch.GetNode(cameFromf[v].NodeID)
 
-			fPath = append(fPath, datastructure.NewCoordinate(nodeV.Lat, nodeV.Lon))
 			fPath = append(fPath, pointsInBetween...)
+			fPath = append(fPath, datastructure.NewCoordinate(nodeV.Lat, nodeV.Lon))
+
 		}
 		_, ok = cameFromf[v]
 		v = cameFromf[v].NodeID
@@ -264,7 +269,7 @@ func (rt *RouteAlgorithm) createPath(commonVertex int32, from, to int32,
 		} else {
 
 			if cameFromb[v].NodeID != -1 && rt.ch.IsTrafficLight(cameFromb[v].NodeID) {
-				eta += 1.5
+				eta += trafficLightAdditionalWeight
 			}
 			eta += cameFromb[v].Edge.Weight
 			dist += cameFromb[v].Edge.Dist
@@ -277,8 +282,8 @@ func (rt *RouteAlgorithm) createPath(commonVertex int32, from, to int32,
 
 			nodeV := rt.ch.GetNode(cameFromb[v].NodeID)
 
-			bPath = append(bPath, datastructure.NewCoordinate(nodeV.Lat, nodeV.Lon))
 			bPath = append(bPath, pointsInBetween...)
+			bPath = append(bPath, datastructure.NewCoordinate(nodeV.Lat, nodeV.Lon))
 
 		}
 		_, ok = cameFromb[v]
@@ -322,7 +327,7 @@ func (rt *RouteAlgorithm) unpackBackward(edge datastructure.Edge, path *[]datast
 
 	if !isShortcut {
 		if rt.ch.IsTrafficLight(edge.FromNodeID) {
-			*eta += 1.5
+			*eta += trafficLightAdditionalWeight
 		}
 		*eta += edge.Weight
 		*dist += edge.Dist
@@ -373,7 +378,7 @@ func (rt *RouteAlgorithm) unpackForward(edge datastructure.Edge, path *[]datastr
 
 	if !isShortcut {
 		if rt.ch.IsTrafficLight(edge.FromNodeID) {
-			*eta += 1.5
+			*eta += trafficLightAdditionalWeight
 		}
 		*eta += edge.Weight
 		*dist += edge.Dist
