@@ -21,7 +21,7 @@ import (
 )
 
 var (
-	listenAddr = flag.String("listenaddr", ":5000", "server listen address")
+	listenAddr = flag.String("listenaddr", ":5050", "server listen address")
 )
 
 func main() {

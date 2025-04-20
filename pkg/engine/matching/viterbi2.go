@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"strings"
 
 	"github.com/lintang-b-s/navigatorx/pkg/util"
 )
@@ -150,32 +149,6 @@ func (v *ViterbiAlgorithm) IsBroken() bool {
 	return v.isBroken
 }
 
-// MessageHistory returns the sequence of intermediate forward messages
-func (v *ViterbiAlgorithm) MessageHistory() []map[int]float64 {
-	return v.messageHistory
-}
-
-func (v *ViterbiAlgorithm) MessageHistoryString() (string, error) {
-	if !v.keepMessageHistory {
-		return "", fmt.Errorf("message history was not recorded")
-	}
-
-	var sb strings.Builder
-	sb.WriteString("Message history with log probabilities\n\n")
-
-	for i, message := range v.messageHistory {
-		fmt.Fprintf(&sb, "Time step %d\n", i)
-
-		for state, value := range message {
-			fmt.Fprintf(&sb, "%v: %f\n", state, value)
-		}
-
-		sb.WriteString("\n")
-	}
-
-	return sb.String(), nil
-}
-
 // hmmBreak returns whether the specified message is either empty or only contains
 // state candidates with zero probability (-inf in log-based) and thus causes the HMM to break
 func (v *ViterbiAlgorithm) hmmBreak(message map[int]float64) bool {
@@ -231,7 +204,6 @@ func (v *ViterbiAlgorithm) initializeStateProbabilities(
 
 	return nil
 }
-
 
 func (v *ViterbiAlgorithm) forwardStep(
 	observation int,

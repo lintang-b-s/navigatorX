@@ -15,54 +15,9 @@ import (
 	"github.com/lintang-b-s/navigatorx/pkg/geo"
 )
 
-type ContractedGraph interface {
-	GetOutEdges() []datastructure.Edge
-	GetInEdges() []datastructure.Edge
-
-	GetNodes() []datastructure.CHNode
-	GetFirstInEdges() [][]int32
-	GetFirstOutEdges() [][]int32
-	AddEdge(newEdge datastructure.Edge)
-	SetEdgeInfo(edgeInfo datastructure.EdgeExtraInfo)
-	RemoveEdge(edgeID int32, fromNodeID int32, toNodeID int32)
-	AddNode(node datastructure.CHNode)
-
-	SnapLocationToRoadSegmentNodeH3(ways []datastructure.KVEdge, wantToSnap []float64) int32
-
-	GetNodeFirstOutEdges(nodeID int32) []int32
-	GetNodeFirstInEdges(nodeID int32) []int32
-
-	GetNode(nodeID int32) datastructure.CHNode
-	GetOutEdge(edgeID int32) datastructure.Edge
-	GetInEdge(edgeID int32) datastructure.Edge
-	IsRoundabout(edgeID int32) bool
-
-	GetOutEdgesLen() int
-
-	GetEdgeInfo(edgeID int32) datastructure.EdgeExtraInfo
-
-	IsShortcut(edgeID int32) bool
-	GetEdgePointsInBetween(edgeID int32) []datastructure.Coordinate
-	IsTrafficLight(nodeID int32) bool
-
-	SaveToFile() error
-	LoadGraph() error
-	GetStreetDirection(streetName int) [2]bool
-
-	GetStreetNameFromID(streetName int) string
-	GetRoadClassFromID(roadClass uint8) string
-	GetRoadClassLinkFromID(roadClassLink uint8) string
-	SetPointsInBetween(edgeID int32, points []datastructure.Coordinate) (int, int)
-}
-
-type RouteAlgorithm interface {
-	ShortestPathBiDijkstraCH(from, to int32) ([]datastructure.Coordinate, []datastructure.Edge, float64, float64)
-	ShortestPathBiDijkstra(from, to int32, fromEdgeFilter, toEdgeFilter func(edge datastructure.Edge) bool) ([]datastructure.Coordinate, []datastructure.Edge,
-		float64, float64)
-}
-type kvdb interface {
-	GetNearestRoadSegmentsFromPointCoord(lat, lon float64) ([]datastructure.KVEdge, error)
-}
+const (
+	routeNotFoundEta = -1000
+)
 
 type HMMMapMatching struct {
 	ch ContractedGraph
@@ -107,13 +62,13 @@ func newTransitionWithProb(prevState, currState int, transitionProb float64,
 
 func (hmm *HMMMapMatching) calculateTransitionProb(param concurrent.CalculateTransitionProbParam) transitionWithProb {
 
-	i, j, k, linearDistance := param.I, param.J, param.K, param.LinearDistance
+	linearDistance := param.LinearDistance
 	routeAlgo, maxTransitionDist := param.RouteAlgo, param.MaxTransitionDist
 
 	// for every state between 2 adjacent gps observation, calculate the route length
 
-	prevState := param.PrevObservation.State[j]
-	currentState := param.Gps[i].State[k]
+	prevState := param.PrevState
+	currentState := param.CurrentState
 
 	// if state is virtual node, then only consider the virtual edge
 	// if not, consider all edges of the state graph node
@@ -146,7 +101,7 @@ func (hmm *HMMMapMatching) calculateTransitionProb(param concurrent.CalculateTra
 
 	routeDist *= 1000
 
-	if routeDist != -1000 && math.Abs(routeDist-linearDistance) < maxTransitionDist {
+	if routeDist != routeNotFoundEta && math.Abs(routeDist-linearDistance) < maxTransitionDist {
 
 		transitionProb := computeTransitionLogProb(routeDist,
 			linearDistance)
@@ -156,7 +111,7 @@ func (hmm *HMMMapMatching) calculateTransitionProb(param concurrent.CalculateTra
 	} else if prevState.EdgeID == currentState.EdgeID {
 
 		projectionDist := geo.CalculateHaversineDistance(prevState.ProjectionLoc[0], prevState.ProjectionLoc[1],
-			currentState.ProjectionLoc[0], currentState.ProjectionLoc[1]) * 1000 * 0.5
+			currentState.ProjectionLoc[0], currentState.ProjectionLoc[1]) * 1000
 
 		transitionProb := computeTransitionLogProb(projectionDist,
 			linearDistance)
@@ -165,7 +120,7 @@ func (hmm *HMMMapMatching) calculateTransitionProb(param concurrent.CalculateTra
 			[]datastructure.Coordinate{datastructure.NewCoordinate(prevState.ProjectionLoc[0], prevState.ProjectionLoc[1])})
 	} else if prevState.EdgeToNodeID == currentState.EdgeFromNodeID {
 		projectionDist := geo.CalculateHaversineDistance(prevState.ProjectionLoc[0], prevState.ProjectionLoc[1],
-			currentState.ProjectionLoc[0], currentState.ProjectionLoc[1]) * 1000 * 100
+			currentState.ProjectionLoc[0], currentState.ProjectionLoc[1]) * 1000
 
 		transitionProb := computeTransitionLogProb(projectionDist,
 			linearDistance)
@@ -178,7 +133,7 @@ func (hmm *HMMMapMatching) calculateTransitionProb(param concurrent.CalculateTra
 	return newTransitionWithProb(prevState.StateID, currentState.StateID, math.Inf(-1), nil)
 }
 
-func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, nextStateID int) ([]datastructure.Coordinate, []datastructure.Edge, []datastructure.Coordinate) {
+func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, nextStateID *int) ([]datastructure.Coordinate, []datastructure.Edge, []datastructure.Coordinate) {
 
 	stateDataMap := make(map[int]*datastructure.State)
 	viterbi := NewViterbiAlgorithm(true)
@@ -272,7 +227,9 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 						continue
 					}
 
-					workers.AddJob(concurrent.NewCalculateTransitionProbParam(prevObservation, gps, i, j, k, len(gps[i].State)*len(prevObservation.State),
+					prevState := prevObservation.State[j]
+					currentState := gps[i].State[k]
+					workers.AddJob(concurrent.NewCalculateTransitionProbParam(prevObservation, prevState, currentState, len(gps[i].State)*len(prevObservation.State),
 						linearDistance, maxTransitionDist, routeAlgo))
 				}
 			}
@@ -341,6 +298,7 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 		obs := gps[p.Observation]
 		observationPath = append(observationPath, datastructure.NewCoordinate(obs.Observation.Lat, obs.Observation.Lon))
 	}
+
 	solutions := make([]datastructure.Coordinate, 0)
 	solutionEdges := make([]datastructure.Edge, 0)
 	obsCoords := make([]datastructure.Coordinate, 0, len(gps))
@@ -404,9 +362,6 @@ func (hmm *HMMMapMatching) splitEdges(gps []datastructure.StateObservationPair, 
 	// split all edges in edgesSnapMap
 	count := 0
 	for edgeID, edgeSnaps := range edgeSnapMap {
-		if (count+1)%100 == 0 {
-			log.Printf("splitting edge %d of %d edges in querygraph", count+1, len(edgeSnapMap))
-		}
 
 		// for all <edgeID, []snap> create virtual edge & virtual node between edge.
 		count++
@@ -424,12 +379,6 @@ func (hmm *HMMMapMatching) splitEdges(gps []datastructure.StateObservationPair, 
 		removeUnsuedEdgesInOsmWay(queryGraph, edge)
 
 		// sort snaps based on their projection place in line points.
-
-		snapDists := make([]float64, len(edgeSnaps))
-		for i := 0; i < len(edgeSnaps); i++ {
-			snapDists[i] = geo.CalculateHaversineDistance(fromNode.Lat, fromNode.Lon,
-				edgeSnaps[i].ProjectionLoc[0], edgeSnaps[i].ProjectionLoc[1])
-		}
 
 		sort.Slice(edgeSnaps, func(i, j int) bool {
 			a := edgeSnaps[i]
@@ -493,6 +442,7 @@ func (hmm *HMMMapMatching) splitEdges(gps []datastructure.StateObservationPair, 
 					prevIndexI = bestIndexI
 				}
 			}
+
 			// add virtual edge
 			hmm.addVirtualEdge(queryGraph, edge, prevNodeID, newNodeID,
 				prevPoint, currSnapProjection, prevPositionInLinePoints,
@@ -510,7 +460,6 @@ func (hmm *HMMMapMatching) splitEdges(gps []datastructure.StateObservationPair, 
 			len(edgePointsInBetween))
 
 	}
-
 }
 
 func (hmm *HMMMapMatching) projectPointToEdgeGeometry(
@@ -581,7 +530,7 @@ func (hmm *HMMMapMatching) addVirtualEdge(queryGraph ContractedGraph,
 }
 
 // updateAllHMMStates.
-func (hmm *HMMMapMatching) updateAllHMMStates(gps []datastructure.StateObservationPair, queryGraph ContractedGraph, nextStateID int) {
+func (hmm *HMMMapMatching) updateAllHMMStates(gps []datastructure.StateObservationPair, queryGraph ContractedGraph, nextStateID *int) {
 
 	for i := 0; i < len(gps); i++ {
 		initialGpsStatesLen := len(gps[i].State)
@@ -598,12 +547,12 @@ func (hmm *HMMMapMatching) updateAllHMMStates(gps []datastructure.StateObservati
 				newState := *state
 				newState.SetIncomingVirtualEdge(virtualOutgouingEdge)
 				newState.SetOutgoingVirtualEdge(virtualIncomingEdge)
-				newState.StateID = nextStateID
+				newState.StateID = *nextStateID
 
 				temp := newState.EdgeFromNodeID
 				newState.EdgeFromNodeID = newState.EdgeToNodeID
 				newState.EdgeToNodeID = temp
-				nextStateID++
+				*nextStateID++
 
 				gps[i].State = append(gps[i].State, &newState)
 			}
@@ -687,17 +636,6 @@ func (hmm *HMMMapMatching) handleHMMBreak(gps []datastructure.StateObservationPa
 	_, err = f.WriteString(sb.String())
 	if err != nil {
 		log.Println(err)
-	}
-
-	*viterbiResetCount++
-	path := viterbi.ComputeMostLikelySequence()
-	if len(path) > 1 {
-		for j := 0; j < len(path)-1; j++ {
-			p := path[j]
-			*statesPath = append(*statesPath, p.State)
-			obs := gps[p.Observation]
-			*observationPath = append(*observationPath, datastructure.NewCoordinate(obs.Observation.Lat, obs.Observation.Lon))
-		}
 	}
 
 }

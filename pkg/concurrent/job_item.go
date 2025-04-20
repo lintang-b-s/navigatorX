@@ -2,6 +2,7 @@ package concurrent
 
 import (
 	"context"
+	"sync"
 
 	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
 )
@@ -26,28 +27,41 @@ type RouteAlgorithm interface {
 
 type CalculateTransitionProbParam struct {
 	PrevObservation   datastructure.StateObservationPair
-	Gps               []datastructure.StateObservationPair
-	I                 int
-	J                 int
-	K                 int
+	PrevState         *datastructure.State
+	CurrentState      *datastructure.State
 	LinearDistance    float64
 	MaxTransitionDist float64
 	RouteAlgo         RouteAlgorithm
 	StatePairCount    int
 }
 
-func NewCalculateTransitionProbParam(prevObservation datastructure.StateObservationPair, gps []datastructure.StateObservationPair, i, j, k, statePairCount int, linearDistance, maxTransitionDist float64, routeAlgo RouteAlgorithm) CalculateTransitionProbParam {
+func NewCalculateTransitionProbParam(prevObservation datastructure.StateObservationPair, prevState, currState *datastructure.State,
+	statePairCount int, linearDistance, maxTransitionDist float64, routeAlgo RouteAlgorithm) CalculateTransitionProbParam {
 	return CalculateTransitionProbParam{
-		PrevObservation: prevObservation,
-		Gps:             gps,
-
-		I:                 i,
-		J:                 j,
-		K:                 k,
+		PrevObservation:   prevObservation,
+		PrevState:         prevState,
+		CurrentState:      currState,
 		LinearDistance:    linearDistance,
 		MaxTransitionDist: maxTransitionDist,
 		RouteAlgo:         routeAlgo,
 		StatePairCount:    statePairCount,
+	}
+}
+
+type SnapGpsToRoadSegmentsParam struct {
+	GpsPoint datastructure.Coordinate
+	ObsID    int
+	StateID  *int
+	Mu       *sync.Mutex
+}
+
+func NewSnapGpsToRoadSegmentsParam(gpsPoint datastructure.Coordinate, obsID int, stateID *int,
+	mu *sync.Mutex) SnapGpsToRoadSegmentsParam {
+	return SnapGpsToRoadSegmentsParam{
+		GpsPoint: gpsPoint,
+		ObsID:    obsID,
+		StateID:  stateID,
+		Mu:       mu,
 	}
 }
 
@@ -78,7 +92,7 @@ func NewAlternativeRouteParam(fromNodeID, toNodeID, vNodeID int32, optNodes []da
 }
 
 type JobI interface {
-	[]int32 | SaveWayJobItem | []KVEdge | CalculateTransitionProbParam | AlternativeRouteParam
+	[]int32 | SaveWayJobItem | []KVEdge | CalculateTransitionProbParam | AlternativeRouteParam | SnapGpsToRoadSegmentsParam
 }
 
 type Job[T JobI] struct {

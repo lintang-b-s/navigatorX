@@ -54,4 +54,13 @@ func TestShortestPathBidirectionalDijkstraWithoutCH(t *testing.T) {
 	assert.Equal(t, int32(4), edgePath[1].ToNodeID)
 	assert.Equal(t, int32(3), edgePath[2].ToNodeID)
 	assert.Equal(t, int32(5), edgePath[3].ToNodeID)
+
+	path, edgePath, eta, dist = rt.ShortestPathBiDijkstra(from, int32(1), dummyEdgeFilter, dummyEdgeFilter)
+	assert.Equal(t, float64(10), eta)
+
+	path, edgePath, eta, dist = rt.ShortestPathBiDijkstra(int32(1), int32(2), dummyEdgeFilter, dummyEdgeFilter)
+	assert.Equal(t, float64(6), eta)
+
+	path, edgePath, eta, dist = rt.ShortestPathBiDijkstra(int32(1), int32(3), dummyEdgeFilter, dummyEdgeFilter)
+	assert.Equal(t, float64(8), eta)
 }

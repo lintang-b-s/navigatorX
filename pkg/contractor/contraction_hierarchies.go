@@ -148,11 +148,11 @@ func (ch *ContractedGraph) InitCHGraph(processedNodes []datastructure.CHNode,
 
 func (ch *ContractedGraph) Contraction() (err error) {
 	st := time.Now()
-	nq := NewMinHeap[int32]()
+	nq := datastructure.NewFibonacciHeap[int32]()
 
 	ch.nextEdgeID = int32(len(ch.GraphStorage.EdgeStorage))
 
-	ch.UpdatePrioritiesOfRemainingNodes(nq) // bikin node ordering
+	ch.updatePrioritiesOfRemainingNodes(nq) // bikin node ordering
 
 	log.Printf("total nodes: %d", len(ch.ContractedNodes))
 	log.Printf("total edges: %d", len(ch.GraphStorage.EdgeStorage))
@@ -162,33 +162,33 @@ func (ch *ContractedGraph) Contraction() (err error) {
 	contracted := make([]bool, ch.Metadata.NodeCount)
 	orderNum := int32(0)
 
-	var polledItem, smallestItem PriorityQueueNode[int32]
+	var polledItem, smallestItem *datastructure.Entry[int32]
 	for nq.Size() != 0 {
-		smallestItem, err = nq.GetMin()
+		smallestItem = nq.GetMin()
 		if err != nil {
 			err = server.WrapErrorf(err, server.ErrInternalServerError, "internal server error")
 			return
 		}
 
-		polledItem, err = nq.ExtractMin()
+		polledItem = nq.ExtractMin()
 		if err != nil {
 			err = server.WrapErrorf(err, server.ErrInternalServerError, "internal server error")
 			return
 		}
 
 		// lazy update
-		priority := ch.calculatePriority(polledItem.Item, contracted)
+		priority := ch.calculatePriority(polledItem.GetElem(), contracted)
 
-		if nq.Size() > 0 && priority > smallestItem.Rank {
+		if nq.Size() > 0 && priority > smallestItem.GetPriority() {
 			// current node importantnya lebih tinggi dari next pq item
-			nq.Insert(PriorityQueueNode[int32]{Item: polledItem.Item, Rank: priority})
+			nq.Insert(polledItem.GetElem(), priority)
 			continue
 		}
 
-		ch.ContractedNodes[polledItem.Item].OrderPos = orderNum
+		ch.ContractedNodes[polledItem.GetElem()].OrderPos = orderNum
 
-		ch.contractNode(polledItem.Item, contracted[polledItem.Item], contracted)
-		contracted[polledItem.Item] = true
+		ch.contractNode(polledItem.GetElem(), contracted[polledItem.GetElem()], contracted)
+		contracted[polledItem.GetElem()] = true
 		level++
 		orderNum++
 
@@ -428,14 +428,15 @@ func (ch *ContractedGraph) calculatePriority(nodeID int32, contracted []bool) fl
 	return float64(10*edgeDifference + 1*originalEdgesCount)
 }
 
-func (ch *ContractedGraph) UpdatePrioritiesOfRemainingNodes(nq *MinHeap[int32]) {
+func (ch *ContractedGraph) updatePrioritiesOfRemainingNodes(nq *datastructure.FibonaccyHeap[int32]) {
 
 	contracted := make([]bool, ch.Metadata.NodeCount)
 
-	for nodeID, _ := range ch.ContractedNodes {
+	for _, node := range ch.ContractedNodes {
+		nodeID := node.ID
 
 		priority := ch.calculatePriority(int32(nodeID), contracted)
-		nq.Insert(PriorityQueueNode[int32]{Item: int32(nodeID), Rank: priority})
+		nq.Insert(int32(nodeID), priority)
 
 		if (nodeID+1)%10000 == 0 {
 			log.Printf("update node priority : %d...", nodeID+1)
@@ -500,6 +501,10 @@ func (ch *ContractedGraph) RemoveEdge(edgeID int32, fromNodeID int32, toNodeID i
 			break
 		}
 	}
+}
+
+func (ch *ContractedGraph) GetNodesLen() int32 {
+	return int32(len(ch.ContractedNodes))
 }
 
 func (ch *ContractedGraph) GetNodeFirstOutEdges(nodeID int32) []int32 {

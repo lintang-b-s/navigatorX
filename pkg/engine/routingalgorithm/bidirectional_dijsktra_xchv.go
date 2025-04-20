@@ -3,7 +3,6 @@ package routingalgorithm
 import (
 	"math"
 
-	"github.com/lintang-b-s/navigatorx/pkg/contractor"
 	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
 	"github.com/lintang-b-s/navigatorx/pkg/util"
 )
@@ -25,8 +24,11 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraXCHV(from, to int32, k int, prun
 	if from == to {
 		return []datastructure.CHNode{}, []datastructure.Coordinate{}, []datastructure.Edge{}, 0, 0, nil, nil, -1
 	}
-	forwQ := contractor.NewMinHeap[int32]()
-	backQ := contractor.NewMinHeap[int32]()
+	forwQ := datastructure.NewFibonacciHeap[int32]()
+	backQ := datastructure.NewFibonacciHeap[int32]()
+
+	forEntryMap := make(map[int32]*datastructure.Entry[int32], initialEntryMapSize)
+	backEntryMap := make(map[int32]*datastructure.Entry[int32], initialEntryMapSize)
 
 	df := make(map[int32]float64)
 	db := make(map[int32]float64)
@@ -38,11 +40,8 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraXCHV(from, to int32, k int, prun
 	distf[from] = 0.0
 	distb[to] = 0.0
 
-	fromNode := contractor.PriorityQueueNode[int32]{Rank: 0, Item: from}
-	toNode := contractor.PriorityQueueNode[int32]{Rank: 0, Item: to}
-
-	forwQ.Insert(fromNode)
-	backQ.Insert(toNode)
+	forEntryMap[from] = forwQ.Insert(from, 0)
+	backEntryMap[to] = backQ.Insert(to, 0)
 
 	estimate := math.MaxFloat64
 
@@ -69,23 +68,23 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraXCHV(from, to int32, k int, prun
 			if backQ.Size() != 0 {
 				isForward = false
 			}
-		} else if !stopSearchForward  {
+		} else if !stopSearchForward {
 			if forwQ.Size() != 0 {
 				isForward = true
 			}
 		}
 
+		if isForward {
 
+			stopSearchForward = rt.searchXCHV(forwQ, df, db, cameFromf, isForward,
+				forwardProcessed, backwardProcessed, &estimate, &bestCommonVertex, distf, distb, k, lOpt, pruneRadius,
+				forEntryMap)
 
-		if isForward  {
+		} else {
 
-			stopSearchForward = rt.searchXCHV(forwQ, df, db, cameFromf, cameFromb, isForward,
-				forwardProcessed, backwardProcessed, &estimate, &bestCommonVertex, distf, distb, k, lOpt, pruneRadius)
-
-		} else   {
-
-			stopSearchBackward = rt.searchXCHV(backQ, df, db, cameFromf, cameFromb, isForward,
-				forwardProcessed, backwardProcessed, &estimate, &bestCommonVertex, distf, distb, k, lOpt, pruneRadius)
+			stopSearchBackward = rt.searchXCHV(backQ, df, db, cameFromb, isForward,
+				forwardProcessed, backwardProcessed, &estimate, &bestCommonVertex, distf, distb, k, lOpt, pruneRadius,
+				backEntryMap)
 		}
 	}
 
@@ -106,22 +105,23 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraXCHV(from, to int32, k int, prun
 	return path, coordPath, edgePath, eta, dist, cameFromf, cameFromb, bestCommonVertex
 }
 
-func (rt *RouteAlgorithm) searchXCHV(frontier *contractor.MinHeap[int32], df, db map[int32]float64,
-	cameFromf, cameFromb map[int32]cameFromPairXCHV, turnF bool, forwardProcessed, backwardProcessed map[int32]struct{},
-	estimate *float64, bestCommonVertex *int32, distf, distb map[int32]float64, k int, lOpt float64, pruneRadius bool) bool {
-	node, _ := frontier.ExtractMin()
+func (rt *RouteAlgorithm) searchXCHV(frontier *datastructure.FibonaccyHeap[int32], df, db map[int32]float64,
+	cameFrom map[int32]cameFromPairXCHV, turnF bool, forwardProcessed, backwardProcessed map[int32]struct{},
+	estimate *float64, bestCommonVertex *int32, distf, distb map[int32]float64, k int, lOpt float64, pruneRadius bool,
+	entryMap map[int32]*datastructure.Entry[int32]) bool {
+	node := frontier.ExtractMin()
 
-	if pruneRadius && node.Rank > (1+epsilon)*lOpt {
+	if pruneRadius && node.GetPriority() > (1+epsilon)*lOpt {
 		return true
 	}
 
-	if rt.pruneBD(node.Rank, lOpt, pruneRadius, db, node.Item) {
+	if rt.pruneBD(node.GetPriority(), lOpt, pruneRadius, db, node.GetElem()) {
 		return false
 	}
 
 	if turnF {
 
-		for _, arc := range rt.ch.GetNodeFirstOutEdges(node.Item) {
+		for _, arc := range rt.ch.GetNodeFirstOutEdges(node.GetElem()) {
 
 			edge := rt.ch.GetOutEdge(arc)
 
@@ -129,10 +129,10 @@ func (rt *RouteAlgorithm) searchXCHV(frontier *contractor.MinHeap[int32], df, db
 			cost := edge.Weight
 
 			// upward graph
-			newCost := cost + df[node.Item]
-			newDist := edge.Dist + distf[node.Item]
+			newCost := cost + df[node.GetElem()]
+			newDist := edge.Dist + distf[node.GetElem()]
 
-			if !rt.pruneRelaxedCH(cameFromf, node.Item, toNID, k) {
+			if !rt.pruneRelaxedCH(cameFrom, node.GetElem(), toNID, k) {
 
 				_, ok := df[toNID]
 
@@ -141,37 +141,35 @@ func (rt *RouteAlgorithm) searchXCHV(frontier *contractor.MinHeap[int32], df, db
 
 					distf[toNID] = newDist
 
-					neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
-					frontier.Insert(neighborNode)
-					cameFromf[toNID] = cameFromPairXCHV{edge, node.Item, newDist, newCost}
+					entryMap[toNID] = frontier.Insert(toNID, newCost)
+					cameFrom[toNID] = cameFromPairXCHV{edge, node.GetElem(), newDist, newCost}
 				} else if newCost < df[toNID] {
 					df[toNID] = newCost
 
 					distf[toNID] = newDist
 
-					neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
-					frontier.DecreaseKey(neighborNode)
+					frontier.DecreaseKey(entryMap[toNID], newCost)
 
-					cameFromf[toNID] = cameFromPairXCHV{edge, node.Item, newDist, newCost}
+					cameFrom[toNID] = cameFromPairXCHV{edge, node.GetElem(), newDist, newCost}
 				}
 
 			}
 		}
 
-		forwardProcessed[node.Item] = struct{}{}
+		forwardProcessed[node.GetElem()] = struct{}{}
 
-		_, ok := backwardProcessed[node.Item]
+		_, ok := backwardProcessed[node.GetElem()]
 		if ok {
-			pathDistance := df[node.Item] + db[node.Item]
+			pathDistance := df[node.GetElem()] + db[node.GetElem()]
 			if pathDistance < *estimate {
 				*estimate = pathDistance
-				*bestCommonVertex = node.Item
+				*bestCommonVertex = node.GetElem()
 			}
 		}
 
 	} else {
 
-		for _, arc := range rt.ch.GetNodeFirstInEdges(node.Item) {
+		for _, arc := range rt.ch.GetNodeFirstInEdges(node.GetElem()) {
 
 			edge := rt.ch.GetInEdge(arc)
 
@@ -179,10 +177,10 @@ func (rt *RouteAlgorithm) searchXCHV(frontier *contractor.MinHeap[int32], df, db
 			cost := edge.Weight
 
 			// downward graph
-			newCost := cost + db[node.Item]
-			newDist := edge.Dist + distb[node.Item]
+			newCost := cost + db[node.GetElem()]
+			newDist := edge.Dist + distb[node.GetElem()]
 
-			if !rt.pruneRelaxedCH(cameFromb, node.Item, toNID, k) {
+			if !rt.pruneRelaxedCH(cameFrom, node.GetElem(), toNID, k) {
 
 				_, ok := db[toNID]
 				if !ok {
@@ -190,31 +188,29 @@ func (rt *RouteAlgorithm) searchXCHV(frontier *contractor.MinHeap[int32], df, db
 
 					distb[toNID] = newDist
 
-					neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
-					frontier.Insert(neighborNode)
-					cameFromb[toNID] = cameFromPairXCHV{edge, node.Item, newDist, newCost}
+					entryMap[toNID] = frontier.Insert(toNID, newCost)
+					cameFrom[toNID] = cameFromPairXCHV{edge, node.GetElem(), newDist, newCost}
 				}
 				if newCost < db[toNID] {
 					db[toNID] = newCost
 
 					distb[toNID] = newDist
 
-					neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
-					frontier.DecreaseKey(neighborNode)
+					frontier.DecreaseKey(entryMap[toNID], newCost)
 
-					cameFromb[toNID] = cameFromPairXCHV{edge, node.Item, newDist, newCost}
+					cameFrom[toNID] = cameFromPairXCHV{edge, node.GetElem(), newDist, newCost}
 				}
 
 			}
 		}
 
-		backwardProcessed[node.Item] = struct{}{}
-		_, ok := forwardProcessed[node.Item]
+		backwardProcessed[node.GetElem()] = struct{}{}
+		_, ok := forwardProcessed[node.GetElem()]
 		if ok {
-			pathDistance := df[node.Item] + db[node.Item]
+			pathDistance := df[node.GetElem()] + db[node.GetElem()]
 			if pathDistance < *estimate {
 				*estimate = pathDistance
-				*bestCommonVertex = node.Item
+				*bestCommonVertex = node.GetElem()
 			}
 		}
 	}

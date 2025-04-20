@@ -37,6 +37,7 @@ func TestPriorityQueue(t *testing.T) {
 		if prevItem.Rank > item.Rank {
 			t.Errorf("PriorityQueue is not sorted")
 		}
+		prevItem = item
 	}
 
 }

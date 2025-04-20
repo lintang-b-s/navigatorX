@@ -3,40 +3,13 @@ package routingalgorithm
 import (
 	"math"
 
-	"github.com/lintang-b-s/navigatorx/pkg/contractor"
 	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
 	"github.com/lintang-b-s/navigatorx/pkg/util"
-)
-
-const (
-	trafficLightAdditionalWeight = 1.2
 )
 
 type cameFromPair struct {
 	Edge   datastructure.Edge
 	NodeID int32
-}
-
-type ContractedGraph interface {
-	GetNodeFirstOutEdges(nodeID int32) []int32
-	GetNodeFirstInEdges(nodeID int32) []int32
-
-	GetNode(nodeID int32) datastructure.CHNode
-	GetOutEdge(edgeID int32) datastructure.Edge
-	GetInEdge(edgeID int32) datastructure.Edge
-
-	IsShortcut(edgeID int32) bool
-	GetEdgePointsInBetween(edgeID int32) []datastructure.Coordinate
-	IsTrafficLight(nodeID int32) bool
-
-	GetStreetDirection(streetName int) [2]bool
-	GetStreetNameFromID(streetName int) string
-	GetRoadClassFromID(roadClass uint8) string
-	GetRoadClassLinkFromID(roadClassLink uint8) string
-
-	IsRoundabout(edgeID int32) bool
-
-	GetEdgeInfo(edgeID int32) datastructure.EdgeExtraInfo
 }
 
 type RouteAlgorithm struct {
@@ -51,19 +24,20 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraCH(from, to int32) ([]datastruct
 	if from == to {
 		return []datastructure.Coordinate{}, []datastructure.Edge{}, 0, 0
 	}
-	forwQ := contractor.NewMinHeap[int32]()
-	backQ := contractor.NewMinHeap[int32]()
+
+	forwQ := datastructure.NewFibonacciHeap[int32]()
+	backQ := datastructure.NewFibonacciHeap[int32]()
+
+	forEntryMap := make(map[int32]*datastructure.Entry[int32], initialEntryMapSize)
+	backEntryMap := make(map[int32]*datastructure.Entry[int32], initialEntryMapSize)
 
 	df := make(map[int32]float64)
 	db := make(map[int32]float64)
 	df[from] = 0.0
 	db[to] = 0.0
 
-	fromNode := contractor.PriorityQueueNode[int32]{Rank: 0, Item: from}
-	toNode := contractor.PriorityQueueNode[int32]{Rank: 0, Item: to}
-
-	forwQ.Insert(fromNode)
-	backQ.Insert(toNode)
+	forEntryMap[from] = forwQ.Insert(from, 0)
+	backEntryMap[to] = backQ.Insert(to, 0)
 
 	estimate := math.MaxFloat64
 
@@ -95,12 +69,12 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraCH(from, to int32) ([]datastruct
 
 		if isForward {
 
-			rt.search(forwQ, df, db, cameFromf, cameFromb, isForward,
-				forwardProcessed, backwardProcessed, &estimate, &bestCommonVertex)
+			rt.search(forwQ, df, db, cameFromf, isForward,
+				forwardProcessed, backwardProcessed, &estimate, &bestCommonVertex, forEntryMap)
 		} else {
 
-			rt.search(backQ, df, db, cameFromf, cameFromb, isForward,
-				forwardProcessed, backwardProcessed, &estimate, &bestCommonVertex)
+			rt.search(backQ, df, db, cameFromb, isForward,
+				forwardProcessed, backwardProcessed, &estimate, &bestCommonVertex, backEntryMap)
 		}
 	}
 
@@ -112,92 +86,88 @@ func (rt *RouteAlgorithm) ShortestPathBiDijkstraCH(from, to int32) ([]datastruct
 	return path, edgePath, eta, dist
 }
 
-func (rt *RouteAlgorithm) search(frontier *contractor.MinHeap[int32], df, db map[int32]float64,
-	cameFromf, cameFromb map[int32]cameFromPair, turnF bool, forwardProcessed, backwardProcessed map[int32]struct{},
-	estimate *float64, bestCommonVertex *int32) {
-	node, _ := frontier.ExtractMin()
+func (rt *RouteAlgorithm) search(frontier *datastructure.FibonaccyHeap[int32], df, db map[int32]float64,
+	cameFrom map[int32]cameFromPair, turnF bool, forwardProcessed, backwardProcessed map[int32]struct{},
+	estimate *float64, bestCommonVertex *int32, entryMap map[int32]*datastructure.Entry[int32]) {
+	node := frontier.ExtractMin()
 	if turnF {
 
-		for _, arc := range rt.ch.GetNodeFirstOutEdges(node.Item) {
+		for _, arc := range rt.ch.GetNodeFirstOutEdges(node.GetElem()) {
 
 			edge := rt.ch.GetOutEdge(arc)
 
 			toNID := edge.ToNodeID
 			cost := edge.Weight
 
-			if rt.ch.GetNode(node.Item).OrderPos < rt.ch.GetNode(toNID).OrderPos {
+			if rt.ch.GetNode(node.GetElem()).OrderPos < rt.ch.GetNode(toNID).OrderPos {
 				// upward graph
-				newCost := cost + df[node.Item]
+				newCost := cost + df[node.GetElem()]
 				_, ok := df[toNID]
 				// relax edge
 				if !ok {
 					df[toNID] = newCost
 
-					neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
-					frontier.Insert(neighborNode)
-					cameFromf[toNID] = cameFromPair{edge, node.Item}
+					entryMap[toNID] = frontier.Insert(toNID, newCost)
+					cameFrom[toNID] = cameFromPair{edge, node.GetElem()}
 				} else if newCost < df[toNID] {
 					df[toNID] = newCost
 
-					neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
-					frontier.DecreaseKey(neighborNode)
+					frontier.DecreaseKey(entryMap[toNID], newCost)
 
-					cameFromf[toNID] = cameFromPair{edge, node.Item}
+					cameFrom[toNID] = cameFromPair{edge, node.GetElem()}
 				}
 
 			}
 		}
 
-		forwardProcessed[node.Item] = struct{}{}
+		forwardProcessed[node.GetElem()] = struct{}{}
 
-		_, ok := backwardProcessed[node.Item]
+		_, ok := backwardProcessed[node.GetElem()]
 		if ok {
-			pathDistance := df[node.Item] + db[node.Item]
+			pathDistance := df[node.GetElem()] + db[node.GetElem()]
 			if pathDistance < *estimate {
 				*estimate = pathDistance
-				*bestCommonVertex = node.Item
+				*bestCommonVertex = node.GetElem()
 			}
 		}
 
 	} else {
 
-		for _, arc := range rt.ch.GetNodeFirstInEdges(node.Item) {
+		for _, arc := range rt.ch.GetNodeFirstInEdges(node.GetElem()) {
 
 			edge := rt.ch.GetInEdge(arc)
 
 			toNID := edge.ToNodeID
 			cost := edge.Weight
 
-			if rt.ch.GetNode(node.Item).OrderPos < rt.ch.GetNode(toNID).OrderPos {
+			if rt.ch.GetNode(node.GetElem()).OrderPos < rt.ch.GetNode(toNID).OrderPos {
 				// downward graph
-				newCost := cost + db[node.Item]
+				newCost := cost + db[node.GetElem()]
 				_, ok := db[toNID]
 				if !ok {
 					db[toNID] = newCost
 
-					neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
-					frontier.Insert(neighborNode)
-					cameFromb[toNID] = cameFromPair{edge, node.Item}
+					entryMap[toNID] = frontier.Insert(toNID, newCost)
+					cameFrom[toNID] = cameFromPair{edge, node.GetElem()}
 				}
 				if newCost < db[toNID] {
 					db[toNID] = newCost
 
-					neighborNode := contractor.PriorityQueueNode[int32]{Rank: newCost, Item: toNID}
-					frontier.DecreaseKey(neighborNode)
+					frontier.DecreaseKey(entryMap[toNID], newCost)
 
-					cameFromb[toNID] = cameFromPair{edge, node.Item}
+					cameFrom[toNID] = cameFromPair{edge, node.GetElem()}
 				}
 
 			}
 		}
 
-		backwardProcessed[node.Item] = struct{}{}
-		_, ok := forwardProcessed[node.Item]
+		backwardProcessed[node.GetElem()] = struct{}{}
+		_, ok := forwardProcessed[node.GetElem()]
 		if ok {
-			pathDistance := df[node.Item] + db[node.Item]
+			pathDistance := df[node.GetElem()] + db[node.GetElem()]
 			if pathDistance < *estimate {
 				*estimate = pathDistance
-				*bestCommonVertex = node.Item
+				*bestCommonVertex = node.GetElem()
 			}
 		}
 	}

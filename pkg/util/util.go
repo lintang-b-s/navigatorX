@@ -147,3 +147,9 @@ func StopConcurrentOperation(ctx context.Context) bool {
 		return false
 	}
 }
+
+func AssertPanic(cond bool, msg string) {
+	if !cond {
+		panic(msg)
+	}
+}

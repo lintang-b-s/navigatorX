@@ -72,7 +72,7 @@ https://cdn.jsdelivr.net/npm/@mapbox/polyline@1.2.1/src/polyline.min.js
             return;
           }
 
-          fetch('http://localhost:5000/api/map-match/map-matching', {
+          fetch('http://localhost:5050/api/map-match/map-matching', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestData)

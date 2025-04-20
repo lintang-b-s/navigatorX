@@ -2,50 +2,13 @@ package service
 
 import (
 	"context"
-	"log"
 	"sort"
+	"sync"
 
+	"github.com/lintang-b-s/navigatorx/pkg/concurrent"
 	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
 	"github.com/lintang-b-s/navigatorx/pkg/geo"
 )
-
-type RouteAlgorithm interface {
-	ShortestPathBiDijkstraCH(from, to int32) ([]datastructure.Coordinate, []datastructure.Edge, float64, float64)
-}
-
-type KVDB interface {
-	GetNearestRoadSegmentsFromPointCoord(lat, lon float64) ([]datastructure.KVEdge, error)
-}
-
-type Matching interface {
-	MapMatch(gps []datastructure.StateObservationPair, nextStateID int) ([]datastructure.Coordinate, []datastructure.Edge, []datastructure.Coordinate)
-}
-
-type RoadSnapper interface {
-	SnapToRoads(p datastructure.Point) []datastructure.OSMObject
-	SnapToRoadsWithinRadius(p datastructure.Point, radius float64, k int) []datastructure.OSMObject
-}
-type ContractedGraph interface {
-	SnapLocationToRoadSegmentNodeH3(ways []datastructure.KVEdge, wantToSnap []float64) int32
-
-	GetNodeFirstOutEdges(nodeID int32) []int32
-	GetNodeFirstInEdges(nodeID int32) []int32
-	GetNode(nodeID int32) datastructure.CHNode
-	GetOutEdge(edgeID int32) datastructure.Edge
-	GetInEdge(edgeID int32) datastructure.Edge
-	GetOutEdges() []datastructure.Edge
-	GetInEdges() []datastructure.Edge
-	GetNumNodes() int
-	Contraction() (err error)
-
-	SaveToFile() error
-	LoadGraph() error
-	GetStreetDirection(streetName int) [2]bool
-	GetStreetNameFromID(streetName int) string
-	GetRoadClassFromID(roadClass uint8) string
-	GetRoadClassLinkFromID(roadClassLink uint8) string
-	GetEdgePointsInBetween(edgeID int32) []datastructure.Coordinate
-}
 
 type MapMatchingService struct {
 	mapMatching Matching
@@ -59,7 +22,7 @@ func NewMapMatchingService(mapMatching Matching, rs RoadSnapper, kv KVDB, ch Con
 }
 
 const (
-	distThresold = 5.0
+	distThresold = 4.07
 )
 
 func (uc *MapMatchingService) MapMatch(ctx context.Context, gps []datastructure.Coordinate) (string, []datastructure.Coordinate, []datastructure.Edge, []datastructure.Coordinate, error) {
@@ -68,9 +31,69 @@ func (uc *MapMatchingService) MapMatch(ctx context.Context, gps []datastructure.
 	stateID := 0
 	obsID := 0
 
-	obsWithLotNearbyEdges := 0
-	obsWithEmptyNearbyEdges := 0
+	filteredGps := uc.filterGPS(gps)
 
+	workers := concurrent.NewWorkerPool[concurrent.SnapGpsToRoadSegmentsParam, snapResult](10,
+		len(filteredGps))
+
+	var mu sync.Mutex
+
+	for i := 0; i < len(filteredGps); i++ {
+		gpsPoint := filteredGps[i]
+		workers.AddJob(concurrent.NewSnapGpsToRoadSegmentsParam(gpsPoint, obsID, &stateID, &mu))
+		obsID++
+	}
+
+	workers.Close()
+	workers.Start(uc.snapGpsToRoadSegment)
+
+	workers.Wait()
+	for snapItem := range workers.CollectResults() {
+		hmmPair = append(hmmPair, datastructure.StateObservationPair{
+			Observation: snapItem.gpsNode,
+			State:       snapItem.nearbyEdges,
+		})
+	}
+
+	sort.Slice(hmmPair, func(i, j int) bool {
+		return hmmPair[i].Observation.ID < hmmPair[j].Observation.ID
+	})
+
+	path, edges, obsPath := uc.mapMatching.MapMatch(hmmPair, &stateID)
+
+	return datastructure.CreatePolyline(path), path, edges, obsPath, nil
+}
+
+type snapResult struct {
+	nearbyEdges []*datastructure.State
+	gpsNode     datastructure.CHNode
+}
+
+func NewSnapResult(nearbyEdges []*datastructure.State, gpsNode datastructure.CHNode) snapResult {
+	return snapResult{
+		nearbyEdges: nearbyEdges,
+		gpsNode:     gpsNode,
+	}
+}
+
+func (uc *MapMatchingService) snapGpsToRoadSegment(param concurrent.SnapGpsToRoadSegmentsParam) snapResult {
+	gpsPoint, obsID, stateID, mu := param.GpsPoint, param.ObsID, param.StateID, param.Mu
+	nearestEdges := uc.NearestRoadSegmentsForMapMatching(gpsPoint.Lat, gpsPoint.Lon, obsID)
+
+	mu.Lock()
+	defer mu.Unlock()
+	for j := range nearestEdges {
+		nearestEdges[j].StateID = *stateID
+
+		*stateID++
+	}
+
+	chNodeGPS := datastructure.NewCHNode(gpsPoint.Lat, gpsPoint.Lon, 0, int32(obsID))
+	return NewSnapResult(nearestEdges, chNodeGPS)
+}
+
+func (uc *MapMatchingService) filterGPS(gps []datastructure.Coordinate) []datastructure.Coordinate {
+	filteredGps := make([]datastructure.Coordinate, 0, len(gps))
 	prevGpsPoint := gps[0]
 	for i := 0; i < len(gps); i++ {
 		gpsPoint := gps[i]
@@ -79,40 +102,12 @@ func (uc *MapMatchingService) MapMatch(ctx context.Context, gps []datastructure.
 
 		if i == 0 || i == len(gps)-1 || geo.CalculateHaversineDistance(prevGpsPoint.Lat, prevGpsPoint.Lon,
 			gpsPoint.Lat, gpsPoint.Lon)*1000 > 2*distThresold {
-
-			nearestEdges := uc.NearestRoadSegmentsForMapMatching(gpsPoint.Lat, gpsPoint.Lon, obsID)
-
-			if len(nearestEdges) == 0 {
-				obsWithEmptyNearbyEdges++
-				continue
-			}
-
-			if len(nearestEdges) > 20 {
-				obsWithLotNearbyEdges++
-			}
-
-			for j := range nearestEdges {
-				nearestEdges[j].StateID = stateID
-
-				stateID++
-			}
-
-			chNodeGPS := datastructure.NewCHNode(gpsPoint.Lat, gpsPoint.Lon, 0, int32(obsID))
-			obsID++
-			hmmPair = append(hmmPair, datastructure.StateObservationPair{
-				Observation: chNodeGPS,
-				State:       nearestEdges,
-			})
+			filteredGps = append(filteredGps, gpsPoint)
 			prevGpsPoint = gpsPoint
 		}
 	}
 
-	log.Printf("obs with lot nearby edges: %d\n", obsWithLotNearbyEdges)
-	log.Printf("obs with empty nearby edges: %d\n", obsWithEmptyNearbyEdges)
-
-	path, edges, obsPath := uc.mapMatching.MapMatch(hmmPair, stateID)
-
-	return datastructure.CreatePolyline(path), path, edges, obsPath, nil
+	return filteredGps
 }
 
 func (uc *MapMatchingService) NearestRoadSegmentsForMapMatching(lat, lon float64, obsID int) []*datastructure.State {
@@ -123,8 +118,8 @@ func (uc *MapMatchingService) NearestRoadSegmentsForMapMatching(lat, lon float64
 }
 
 const (
-	radius = 300.0
-	k      = 32
+	radius = 150.0
+	k      = 30
 )
 
 func (uc *MapMatchingService) FilterEdges(edges []datastructure.OSMObject, pLat, pLon float64,
@@ -191,18 +186,10 @@ func min(a, b int) int {
 func (uc *MapMatchingService) NearestRoadSegments(ctx context.Context, lat, lon float64, radius float64, k int) ([]datastructure.Edge, []float64, error) {
 	nearestEdges := uc.roadSnapper.SnapToRoadsWithinRadius(datastructure.Point{Lat: lat, Lon: lon}, radius, k)
 
-	selected := make(map[int32]struct{})
-
 	dists := make([]float64, 0, len(nearestEdges))
 
 	edges := make([]datastructure.Edge, 0)
 	for _, roadSegment := range nearestEdges {
-		if _, ok := selected[int32(roadSegment.ID)]; ok {
-			// can be duplicate . because i insert two same edges into r-tree but with different bounding boxes (depending on the baseNode/targetNode of the edge).
-			continue
-		}
-
-		selected[int32(roadSegment.ID)] = struct{}{}
 
 		edgeID := int32(roadSegment.ID)
 

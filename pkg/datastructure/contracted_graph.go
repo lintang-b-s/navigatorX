@@ -71,6 +71,11 @@ func NewEdge(edgeID, toNodeID, fromNodeID, viaNodeID int32, weight, dist float64
 	}
 }
 
+func (e *Edge) GetEdgeSpeed() float64 {
+
+	return e.Dist / e.Weight
+}
+
 func NewEdgePlain(edgeID int32, weight, dist float64, toNodeID, fromNodeID int32) Edge {
 	return Edge{
 		EdgeID:     edgeID,
