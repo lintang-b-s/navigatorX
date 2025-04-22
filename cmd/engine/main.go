@@ -115,6 +115,7 @@ func main() {
 
 	fmt.Printf("\n Contraction Hieararchies + Bidirectional Dijkstra Ready!!")
 	fmt.Printf("\nserver started at %s\n", *listenAddr)
+
 	log.Fatal(http.ListenAndServe(*listenAddr, r))
 }
 

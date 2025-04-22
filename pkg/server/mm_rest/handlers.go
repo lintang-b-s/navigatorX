@@ -67,28 +67,28 @@ type MapMatchingResponse struct {
 	Path         string  `json:"path"`
 	Coord        []Coord `json:"projection_coordinates"`
 	observations []struct {
-		Observation Coord              `json:"observation"`
-		Edge        datastructure.Edge `json:"edge"`
+		Observation Coord `json:"observation"`
+		Edge        int32 `json:"edge"`
 	}
 }
 
 func RenderMapMatchingResponse(path string, coords []datastructure.Coordinate, edges []datastructure.Edge, obsPath []datastructure.Coordinate) *MapMatchingResponse {
 	snapsResp := []Coord{}
 	obervationResp := []struct {
-		Observation Coord              `json:"observation"`
-		Edge        datastructure.Edge `json:"edge"`
+		Observation Coord `json:"observation"`
+		Edge        int32 `json:"edge"`
 	}{}
 	for i, c := range obsPath {
 		obervationResp = append(obervationResp, struct {
-			Observation Coord              `json:"observation"`
-			Edge        datastructure.Edge `json:"edge"`
+			Observation Coord `json:"observation"`
+			Edge        int32 `json:"edge"`
 		}{
 			Observation: Coord{
 				Lat: c.Lat,
 
 				Lon: c.Lon,
 			},
-			Edge: edges[i],
+			Edge: edges[i].EdgeID,
 		})
 	}
 	for _, c := range coords {

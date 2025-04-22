@@ -29,59 +29,77 @@ const (
 )
 
 type Instruction struct {
-	Point        Coordinate
-	RawName      bool
-	Sign         int
-	Name         string
-	Distance     float64
-	Time         float64
-	ExtraInfo    map[string]interface{}
-	IsRoundabout bool
-	Roundabout   RoundaboutInstruction
+	Point              Coordinate
+	RawName            bool
+	Sign               int
+	Name               string
+	CumulativeDistance float64
+	CumulativeEta      float64
+	ExtraInfo          map[string]interface{}
+	IsRoundabout       bool
+	Roundabout         RoundaboutInstruction
+	EdgeIDs            []int32 // biar pas di fe, bisa tau driver lagi di edge mana & bisa kasih lihat driving direction (edgeID dari driver bisa tau dari hasil realtime map matching dari current gps point driver)
+	EdgeSpeed          float64 // biar pas di fe, bisa nentuin berapa eta ke titik belok dari current position driver
+	Points             []Coordinate
+	TurnBearing        float64 // final bearing dari prevEdge sebelum turn point. final bearing = bearing dari point prevEdge.from -> point prevEdge.to dengan meridian line crossing point prevEdge.to
+	TurnType           string
 }
 
-func NewInstruction(sign int, name string, p Coordinate, isRoundAbout bool) Instruction {
+func NewInstruction(sign int, name string, p Coordinate, isRoundAbout bool, edgeIDs []int32,
+	cumulativeDist, cumulativeEta float64, points []Coordinate, turnBearing float64) Instruction {
 	var roundabout RoundaboutInstruction
 	var ins Instruction
 	if isRoundAbout {
 		roundabout = NewRoundaboutInstruction()
 		ins = Instruction{
-			Sign:         sign,
-			Name:         name,
-			Point:        p,
-			ExtraInfo:    make(map[string]interface{}, 3),
-			Roundabout:   roundabout,
-			Time:         0,
-			IsRoundabout: true,
-			Distance:     0,
+			Sign:               sign,
+			Name:               name,
+			Point:              p,
+			ExtraInfo:          make(map[string]interface{}, 3),
+			Roundabout:         roundabout,
+			IsRoundabout:       true,
+			CumulativeEta:      cumulativeEta,
+			CumulativeDistance: cumulativeDist,
+			EdgeIDs:            edgeIDs,
+			Points:             points,
+			TurnBearing:        turnBearing,
 		}
+
 	} else {
 		ins = Instruction{
-			Sign:         sign,
-			Name:         name,
-			Point:        p,
-			ExtraInfo:    make(map[string]interface{}, 3),
-			IsRoundabout: false,
-			Time:         0,
-			Distance:     0,
+			Sign:               sign,
+			Name:               name,
+			Point:              p,
+			ExtraInfo:          make(map[string]interface{}, 3),
+			IsRoundabout:       false,
+			CumulativeEta:      cumulativeEta,
+			CumulativeDistance: cumulativeDist,
+			EdgeIDs:            edgeIDs,
+			Points:             points,
+			TurnBearing:        turnBearing,
 		}
-		return ins
 	}
+
+	_, ins.TurnType = getDirectionDescription(sign, ins)
 
 	return ins
 }
 
-func NewInstructionWithRoundabout(sign int, name string, p Coordinate, isRoundAbout bool, roundabout RoundaboutInstruction) Instruction {
+func NewInstructionWithRoundabout(sign int, name string, p Coordinate, isRoundAbout bool, roundabout RoundaboutInstruction,
+	cumulativeDistance, cumulativeEta float64, edgeIDs []int32, turnBearing float64) Instruction {
 	ins := Instruction{
-		Sign:         sign,
-		Name:         name,
-		Point:        p,
-		ExtraInfo:    make(map[string]interface{}, 3),
-		Roundabout:   roundabout,
-		IsRoundabout: isRoundAbout,
-		Time:         0,
-		Distance:     0,
+		Sign:               sign,
+		Name:               name,
+		Point:              p,
+		ExtraInfo:          make(map[string]interface{}, 3),
+		Roundabout:         roundabout,
+		IsRoundabout:       isRoundAbout,
+		CumulativeDistance: cumulativeDistance,
+		CumulativeEta:      cumulativeEta,
+		EdgeIDs:            edgeIDs,
+		TurnBearing:        turnBearing,
 	}
+	ins.TurnType = "ROUNDABOUT"
 	return ins
 }
 
@@ -125,7 +143,7 @@ func (instr *Instruction) GetTurnDescription() string {
 	case FINISH:
 		description = fmt.Sprint("you have arrived at your destination")
 	default:
-		dir := getDirectionDescription(sign, *instr)
+		dir, _ := getDirectionDescription(sign, *instr)
 		if dir == "" {
 			description = fmt.Sprintf("unknown  %d", sign)
 		} else {
@@ -181,40 +199,40 @@ func bearingToCompass(bearing float64) string {
 		return "North"
 	}
 }
-func getDirectionDescription(sign int, instruction Instruction) string {
+func getDirectionDescription(sign int, instruction Instruction) (string, string) {
 	switch sign {
 	case U_TURN_UNKNOWN:
-		return "Make U-turn"
+		return "Make U-turn", "U_TURN_RIGHT"
 	case U_TURN_RIGHT:
-		return "Make U-turn right"
+		return "Make U-turn right", "U_TURN_RIGHT"
 	case U_TURN_LEFT:
-		return "Make U-turn left"
+		return "Make U-turn left", "U_TURN_LEFT"
 	case KEEP_LEFT:
-		return "Keep left"
+		return "Keep left", "KEEP_LEFT"
 	case TURN_SHARP_LEFT:
-		return "Turn sharp left"
+		return "Turn sharp left", "TURN_SHARP_LEFT"
 	case TURN_LEFT:
-		return "Turn left"
+		return "Turn left", "TURN_LEFT"
 	case TURN_SLIGHT_LEFT:
-		return "Turn slight left"
+		return "Turn slight left", "TURN_SLIGHT_LEFT"
 	case TURN_SLIGHT_RIGHT:
-		return "Turn slight right"
+		return "Turn slight right", "TURN_SLIGHT_RIGHT"
 	case TURN_RIGHT:
-		return "Turn right"
+		return "Turn right", "TURN_RIGHT"
 	case TURN_SHARP_RIGHT:
-		return "Turn sharp right"
+		return "Turn sharp right", "TURN_SHARP_RIGHT"
 	case KEEP_RIGHT:
-		return "Keep right"
+		return "Keep right", "KEEP_RIGHT"
 	case USE_ROUNDABOUT:
 		if !instruction.Roundabout.Exited {
-			return "Enter the roundabout"
+			return "Enter the roundabout", "USE_ROUNDABOUT"
 		}
 		roundaboutDir := "clockwise" // bundaran  di indo selalu clockwise
 
-		return fmt.Sprintf("At Roundabout, take the exit point %d %s", instruction.Roundabout.ExitNumber, roundaboutDir)
+		return fmt.Sprintf("At Roundabout, take the exit point %d %s", instruction.Roundabout.ExitNumber, roundaboutDir), ""
 
 	default:
-		return ""
+		return "", ""
 	}
 }
 
@@ -241,19 +259,28 @@ func NewRoundaboutInstruction(options ...Option) RoundaboutInstruction {
 }
 
 type DrivingDirection struct {
-	Instruction string
-	Point       Coordinate
-	StreetName  string
-	ETA         float64
-	Distance    float64
+	Instruction string     `json:"instruction"`
+	Point       Coordinate `json:"turn_point"`
+	StreetName  string     `json:"street_name"`
+	ETA         float64    `json:"eta"`
+	Distance    float64    `json:"distance"`
+	EdgeIDs     []int32    `json:"edge_ids"`
+	Polyline    string     `json:"polyline"`
+	TurnBearing float64    `json:"turn_bearing"` // buat rotate turn direction icon di front-end.
+	TurnType    string     `json:"turn_type"`
 }
 
-func NewDrivingDirection(ins Instruction, description string, prevETA, prevDist float64) DrivingDirection {
+func NewDrivingDirection(ins Instruction, description string, prevETA, prevDist float64,
+	edgeIDs []int32, polyline string, turnBearing float64) DrivingDirection {
 	return DrivingDirection{
 		Instruction: description,
 		Point:       ins.Point,
 		StreetName:  ins.Name,
 		ETA:         util.RoundFloat(prevETA, 2),
 		Distance:    util.RoundFloat(prevDist, 2),
+		EdgeIDs:     edgeIDs,
+		Polyline:    polyline,
+		TurnBearing: util.RoundFloat(turnBearing, 2),
+		TurnType:    ins.TurnType,
 	}
 }

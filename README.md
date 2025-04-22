@@ -11,7 +11,7 @@ Openstreetmap routing engine in go. This project uses Contraction Hierarchies to
 Note: or you can also use another openstreetmap file with osm.pbf format (https://download.geofabrik.de/)
 2.  put the download results into the root directory of this project
 3.  go mod tidy &&  mkdir bin
-4. CGO_ENABLED=1  go build -o ./bin/navigatorx-preprocessing ./cmd/preprocessing
+4. go build -o ./bin/navigatorx-preprocessing ./cmd/preprocessing
 5. ./bin/navigatorx-preprocessing
 Note: to replace the openstreetmap file, see the instructions below
 (Minimum RAM 2.0 GB for the  openstreetmap data above)
@@ -24,7 +24,7 @@ Note: if error "resource temporary unavailable" -> just delete navigatorXDB dire
 Make sure you have done the preprocessing stage above!
 
 ```
-1. CGO_ENABLED=1  go build -o ./bin/navigatorx-engine ./cmd/engine
+1. go build -o ./bin/navigatorx-engine ./cmd/engine
 2. ./bin/navigatorx-engine
 ```
 
@@ -62,7 +62,7 @@ curl --location 'http://localhost:5000/api/navigations/shortest-path-alternative
 0. download example map: https://drive.google.com/file/d/1AVY-o3fVDiWFvfr56T2pKmtKzr5t_rpX/view?usp=sharing
 1. ./bin/navigatorx-preprocessing  -f washington.osm.pbf -mapmatch=true
 NOTES: If you want to use the shortest path feature, you have to re-do the preprocessing with the mapmatch=false flag.
-2. CGO_ENABLED=1  go build -o ./bin/navigatorx-mapmatch ./cmd/mapmatch
+2. go build -o ./bin/navigatorx-mapmatch ./cmd/mapmatch
 3. ./bin/navigatorx-mapmatch
 4. open simple-web/mapmatch.html & upload data/msft-mapmatching.json
 5. wait for map matching complete

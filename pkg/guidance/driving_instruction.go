@@ -7,24 +7,6 @@ import (
 	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
 )
 
-type ContractedGraph interface {
-	GetNodeFirstOutEdges(nodeID int32) []int32
-	GetNodeFirstInEdges(nodeID int32) []int32
-
-	GetNode(nodeID int32) datastructure.CHNode
-	GetOutEdge(edgeID int32) datastructure.Edge
-	GetInEdge(edgeID int32) datastructure.Edge
-	GetStreetDirection(streetName int) [2]bool
-	GetStreetNameFromID(streetName int) string
-	GetRoadClassFromID(roadClass uint8) string
-	GetRoadClassLinkFromID(roadClassLink uint8) string
-
-	IsRoundabout(edgeID int32) bool
-	IsShortcut(edgeID int32) bool
-
-	GetEdgeInfo(edgeID int32) datastructure.EdgeExtraInfo
-}
-
 type InstructionsFromEdges struct {
 	contractedGraph       ContractedGraph
 	ways                  []*datastructure.Instruction
@@ -38,6 +20,10 @@ type InstructionsFromEdges struct {
 	prevInRoundabout      bool   // apakah sebelumnya di roundabout (bundaran)
 	doublePrevStreetName  string // streetname prevPrevEdge
 	doublePrevNode        int32
+	cumulativeDistance    float64
+	cumulativeEta         float64
+	EdgeIDs               []int32
+	Points                []datastructure.Coordinate
 }
 
 func NewInstructionsFromEdges(contractedGraph ContractedGraph) *InstructionsFromEdges {
@@ -81,12 +67,19 @@ func (ife *InstructionsFromEdges) GetDrivingDirections(path []datastructure.Edge
 		return nil, err
 	}
 
-	prevETA := 0.0
-	prevDist := 0.0
 	for i, _ := range ife.ways {
-		drivingInstructions = append(drivingInstructions, datastructure.NewDrivingDirection(*ife.ways[i], drivingInstructionsDesc[i], prevETA, prevDist))
-		prevETA = ife.ways[i].Time
-		prevDist = ife.ways[i].Distance
+
+		var (
+			currStepEta, currStepDistance float64
+		)
+		if i > 0 {
+			currStepEta = ife.ways[i].CumulativeEta - ife.ways[i-1].CumulativeEta
+			currStepDistance = ife.ways[i].CumulativeDistance - ife.ways[i-1].CumulativeDistance
+		}
+		way := *ife.ways[i]
+		currPolyline := datastructure.CreatePolyline(way.Points)
+		drivingInstructions = append(drivingInstructions, datastructure.NewDrivingDirection(way, drivingInstructionsDesc[i],
+			currStepEta, currStepDistance, way.EdgeIDs, currPolyline, way.TurnBearing))
 	}
 	return drivingInstructions, nil
 }
@@ -121,8 +114,15 @@ func (ife *InstructionsFromEdges) AddInstructionFromEdge(edge datastructure.Edge
 		// start point dari shortetest path & bukan bundaran (roundabout)
 		sign := datastructure.START
 		point := datastructure.NewCoordinate(baseNodeData.Lat, baseNodeData.Lon)
-		newIns := datastructure.NewInstruction(sign, name, point, false)
+
+		turnBearing := calcOrientation(baseNodeData.Lat, baseNodeData.Lon, latitude, longitude)
+		newIns := datastructure.NewInstruction(sign, name, point, false, []int32{edge.EdgeID}, ife.cumulativeDistance, ife.cumulativeEta,
+			ife.Points, turnBearing)
 		ife.prevInstruction = &newIns
+
+		// reset edgeIDs and points
+		ife.EdgeIDs = []int32{}
+		ife.Points = []datastructure.Coordinate{}
 
 		baseEdgeNode := ife.contractedGraph.GetNode(baseNode)
 		startLat := baseEdgeNode.Lat
@@ -147,8 +147,14 @@ func (ife *InstructionsFromEdges) AddInstructionFromEdge(edge datastructure.Edge
 				ife.prevOrientation = calcOrientation(baseNodeData.Lat, baseNodeData.Lon, latitude, longitude)
 			}
 
-			prevIns := datastructure.NewInstructionWithRoundabout(sign, name, point, true, roundaboutInstruction)
+			turnBearing := calcFinalOrientation(prevNodeData.Lat, prevNodeData.Lon, baseNodeData.Lat, baseNodeData.Lon)
+			prevIns := datastructure.NewInstructionWithRoundabout(sign, name, point, true, roundaboutInstruction, ife.cumulativeDistance,
+				ife.cumulativeEta, ife.EdgeIDs, turnBearing)
 			ife.prevInstruction = &prevIns
+
+			// reset edgeIDs and points
+			ife.EdgeIDs = []int32{}
+			ife.Points = []datastructure.Coordinate{}
 
 			ife.ways = append(ife.ways, ife.prevInstruction)
 		}
@@ -192,20 +198,19 @@ func (ife *InstructionsFromEdges) AddInstructionFromEdge(edge datastructure.Edge
 			} else {
 				// bukan U-turn -> continue/right/left
 				point := datastructure.NewCoordinate(baseNodeData.Lat, baseNodeData.Lon)
-				prevIns := datastructure.NewInstruction(sign, name, point, false)
+
+				turnBearing := calcFinalOrientation(prevNodeData.Lat, prevNodeData.Lon, baseNodeData.Lat, baseNodeData.Lon)
+				prevIns := datastructure.NewInstruction(sign, name, point, false, ife.EdgeIDs, ife.cumulativeDistance, ife.cumulativeEta,
+					ife.Points, turnBearing)
 				ife.prevInstruction = &prevIns
+
+				// reset edgeIDs and points
+				ife.EdgeIDs = []int32{}
+				ife.Points = []datastructure.Coordinate{}
+
 				ife.doublePrevOrientation = ife.prevOrientation
 				ife.doublePrevStreetName = ife.contractedGraph.GetStreetNameFromID(prevEdgeExtraInfo.StreetName)
 				ife.ways = append(ife.ways, ife.prevInstruction)
-			}
-		} else {
-
-			ife.prevInstruction.Distance += edge.Dist
-			if edge.Weight == 0 {
-				ife.prevInstruction.Time += 0
-			} else {
-				currEdgeSpeed := (edge.Dist / edge.Weight)
-				ife.prevInstruction.Time += edge.Dist / currEdgeSpeed
 			}
 		}
 	}
@@ -214,6 +219,17 @@ func (ife *InstructionsFromEdges) AddInstructionFromEdge(edge datastructure.Edge
 	ife.prevInRoundabout = isRoundabout
 	ife.prevNode = baseNode
 	ife.prevEdge = edge
+	ife.cumulativeDistance += edge.Dist
+	ife.cumulativeEta += edge.Weight
+	ife.EdgeIDs = append(ife.EdgeIDs, edge.EdgeID)
+	ife.Points = append(ife.Points, datastructure.NewCoordinate(baseNodeData.Lat, baseNodeData.Lon))
+	ife.Points = append(ife.Points, datastructure.NewCoordinate(adjLat, adjLon))
+
+	// check if adjNode is traffic light
+	isAdjTrafficLight := ife.contractedGraph.IsTrafficLight(adjNode)
+	if isAdjTrafficLight {
+		ife.cumulativeEta += trafficLightAdditionalWeight
+	}
 
 	return nil
 }
@@ -276,9 +292,15 @@ func (ife *InstructionsFromEdges) Finish() error {
 
 	node := ife.contractedGraph.GetNode(ife.prevEdge.ToNodeID)
 	point := datastructure.NewCoordinate(node.Lat, node.Lon)
-	finishInstruction := datastructure.NewInstruction(datastructure.FINISH, ife.contractedGraph.GetStreetNameFromID(prevEdgeExtraInfo.StreetName), point, false)
+
+	prevNodeData := ife.contractedGraph.GetNode(ife.prevNode)
+	turnBearing := calcFinalOrientation(prevNodeData.Lat, prevNodeData.Lon, baseNodeData.Lat, baseNodeData.Lon)
+
+	finishInstruction := datastructure.NewInstruction(datastructure.FINISH, ife.contractedGraph.GetStreetNameFromID(prevEdgeExtraInfo.StreetName), point, false,
+		ife.EdgeIDs, ife.cumulativeDistance, ife.cumulativeEta, ife.Points, turnBearing)
 	finishInstruction.ExtraInfo["heading"] = BearingTo(doublePrevNode.Lat, doublePrevNode.Lon, baseNodeData.Lat, baseNodeData.Lon)
-	newIns := datastructure.NewInstruction(finishInstruction.Sign, finishInstruction.Name, finishInstruction.Point, false)
+	newIns := datastructure.NewInstruction(finishInstruction.Sign, finishInstruction.Name, finishInstruction.Point, false,
+		finishInstruction.EdgeIDs, finishInstruction.CumulativeDistance, finishInstruction.CumulativeEta, finishInstruction.Points, turnBearing)
 	ife.ways = append(ife.ways, &newIns)
 
 	return nil

@@ -31,7 +31,7 @@ func radToDeg(r float64) float64 {
 }
 
 /*
-BearingTo. menghitung sudut bearing untuk edge (p1,p2).
+BearingTo. menghitung sudut initial bearing untuk edge (p1,p2).
 https://www.movable-type.co.uk/scripts/latlong.html
 */
 func BearingTo(p1Lat, p1Lon, p2Lat, p2Lon float64) float64 {

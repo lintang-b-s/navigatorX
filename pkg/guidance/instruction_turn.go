@@ -191,7 +191,6 @@ func (ife *InstructionsFromEdges) isStreetSplit(currentEdge, prevEdge datastruct
 	var otherEdge *datastructure.Edge = nil // inEdge dari BaseNode selain PrevEdge yang mengarah ke BaseNode
 	var (
 		outEdges []datastructure.Edge = make([]datastructure.Edge, 0)
-		err      error
 	)
 
 	edgeIDs := ife.contractedGraph.GetNodeFirstInEdges(baseNode)
@@ -203,9 +202,6 @@ func (ife *InstructionsFromEdges) isStreetSplit(currentEdge, prevEdge datastruct
 
 		outEdges = append(outEdges, edge)
 
-	}
-	if err != nil {
-		return false, err
 	}
 
 	for _, edge := range outEdges {
@@ -264,27 +260,11 @@ func abs(a int) int {
 }
 
 const (
-	DEGREE_TO_RADIANS = 0.017453292519943295
+	DEGREE_TO_RADIANS = math.Pi / 180
 )
 
 func toRadians(degrees float64) float64 {
 	return degrees * DEGREE_TO_RADIANS
-}
-
-func alignOrientation(baseOrientation, orientation float64) float64 {
-	var resultOrientation float64
-	if baseOrientation >= 0 {
-		if orientation < -math.Pi+baseOrientation {
-			resultOrientation = orientation + 2*math.Pi
-		} else {
-			resultOrientation = orientation
-		}
-	} else if orientation > math.Pi+baseOrientation {
-		resultOrientation = orientation - 2*math.Pi
-	} else {
-		resultOrientation = orientation
-	}
-	return resultOrientation
 }
 
 func isSameName(name1, name2 string) bool {
@@ -295,15 +275,63 @@ func isSameName(name1, name2 string) bool {
 	return name1 == name2
 }
 
+/*
+alignOrientation. handle case ketika orientation-prevOrientation > 180° atau  orientation-prevOrientation < -180°.
+
+misal:
+
+	          \
+			   \ orientation (350°)
+				\
+				/
+			   /		prevOrientation (20°)
+			  /
+
+harusnya belok kiri, tapi karena > 180° jadi belok kanan.
+how to fix: prevOrientation + 360°.
+
+misal:
+
+		 /	orientation (10°)
+		/
+	   /
+	   \
+		\
+		 \		prevOrientation (340°)
+		  \
+
+dif = orientation - prevOrientation = 10° - 340° = -330°.
+harusnya belok kanan, tapi karena < -180° jadi belok kiri.
+how to fix: orientation + 360°.
+*/
+func alignOrientation(prevOrientation, orientation float64) (float64, float64) {
+	dif := orientation*180/math.Pi - prevOrientation*180/math.Pi
+	if dif > 180 {
+		prevOrientation += 2 * math.Pi
+	} else if dif < -180 {
+		orientation += 2 * math.Pi
+	}
+	return prevOrientation, orientation
+}
+
 func calcOrientation(lat1, lon1, lat2, lon2 float64) float64 {
 	prevBearing := BearingTo(lat1, lon1, lat2, lon2)
 	prevBearing = toRadians(prevBearing)
 	return prevBearing
 }
 
+// final bearing (bearing from a to b with meridian line crossing b)
+func calcFinalOrientation(lat1, lon1, lat2, lon2 float64) float64 {
+	// https://www.movable-type.co.uk/scripts/latlong.html
+	prevBearing := BearingTo(lat2, lon2, lat1, lon1)
+	prevBearing = math.Mod(prevBearing+180, 360)
+	prevBearing = toRadians(prevBearing)
+	return prevBearing
+}
+
 func calculateOrientationDelta(prevLatitude, prevLongitude, latitude, longitude, prevOrientation float64) float64 {
 	orientation := calcOrientation(prevLatitude, prevLongitude, latitude, longitude)
-	orientation = alignOrientation(prevOrientation, orientation)
+	prevOrientation, orientation = alignOrientation(prevOrientation, orientation)
 	return orientation - prevOrientation
 }
 
