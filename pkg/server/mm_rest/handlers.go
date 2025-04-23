@@ -62,13 +62,13 @@ func (s *MapMatchingRequest) Bind(r *http.Request) error {
 
 // MapMatchingResponse model info
 //
-//	@Description	response body untuk map matching pakai hidden markov model
+//	@Description	response body untuk map matching
 type MapMatchingResponse struct {
 	Path         string  `json:"path"`
 	Coord        []Coord `json:"projection_coordinates"`
 	observations []struct {
 		Observation Coord `json:"observation"`
-		Edge        int32 `json:"edge"`
+		Edge        int32 `json:"snapped_edge_id"`
 	}
 }
 
@@ -76,12 +76,12 @@ func RenderMapMatchingResponse(path string, coords []datastructure.Coordinate, e
 	snapsResp := []Coord{}
 	obervationResp := []struct {
 		Observation Coord `json:"observation"`
-		Edge        int32 `json:"edge"`
+		Edge        int32 `json:"snapped_edge_id"`
 	}{}
 	for i, c := range obsPath {
 		obervationResp = append(obervationResp, struct {
 			Observation Coord `json:"observation"`
-			Edge        int32 `json:"edge"`
+			Edge        int32 `json:"snapped_edge_id"`
 		}{
 			Observation: Coord{
 				Lat: c.Lat,
@@ -107,8 +107,8 @@ func RenderMapMatchingResponse(path string, coords []datastructure.Coordinate, e
 
 // MapMatch
 //
-//	@Summary		map matching pakai hidden markov model. Snapping noisy GPS coordinates ke road network lokasi asal gps seharusnya
-//	@Description	map matching pakai hidden markov model. Snapping noisy GPS coordinates ke road network lokasi asal gps seharusnya
+//	@Summary		map matching pakai hidden markov model. Snapping GPS coordinates ke road network.
+//	@Description	map matching pakai hidden markov model. Snapping GPS coordinates ke road network.
 //	@Tags			navigations
 //	@Param			body	body	MapMatchingRequest	true	"request body hidden markov model map matching"
 //	@Accept			application/json

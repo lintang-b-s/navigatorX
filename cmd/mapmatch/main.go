@@ -18,10 +18,12 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	mymiddleware "github.com/lintang-b-s/navigatorx/pkg/server/middleware"
 )
 
 var (
-	listenAddr = flag.String("listenaddr", ":5050", "server listen address")
+	listenAddr   = flag.String("listenaddr", ":5050", "server listen address")
+	useRateLimit = flag.Bool("ratelimit", false, "use rate limit")
 )
 
 func main() {
@@ -47,7 +49,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	
+
 	kvDB := kv.NewKVDB(db)
 	defer kvDB.Close()
 
@@ -74,6 +76,9 @@ func main() {
 		AllowCredentials: false,
 		MaxAge:           300,
 	}))
+	if *useRateLimit {
+		r.Use(mymiddleware.Limit)
+	}
 	r.Mount("/debug", middleware.Profiler())
 
 	mmrest.MapMatchingRouter(r, mmSvc)

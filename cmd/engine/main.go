@@ -28,13 +28,15 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
+	mymiddleware "github.com/lintang-b-s/navigatorx/pkg/server/middleware"
 )
 
 var (
-	listenAddr = flag.String("listenaddr", ":5000", "server listen address")
-	mapFile    = flag.String("f", "solo_jogja.osm.pbf", "openstreeetmap file buat road network graphnya")
-	cpuprofile = flag.String("cpuprofile", "", "write cpu profile to file")
-	memprofile = flag.String("memprofile", "", "write memory profile to this file")
+	listenAddr   = flag.String("listenaddr", ":5000", "server listen address")
+	mapFile      = flag.String("f", "solo_jogja.osm.pbf", "openstreeetmap file buat road network graphnya")
+	cpuprofile   = flag.String("cpuprofile", "", "write cpu profile to file")
+	memprofile   = flag.String("memprofile", "", "write memory profile to this file")
+	useRateLimit = flag.Bool("ratelimit", false, "use rate limit")
 )
 
 //	@title			navigatorx lintangbs API
@@ -94,6 +96,11 @@ func main() {
 		AllowCredentials: false,
 		MaxAge:           300,
 	}))
+
+	if *useRateLimit {
+		r.Use(mymiddleware.Limit)
+	}
+
 	r.Mount("/debug", middleware.Profiler())
 
 	r.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
