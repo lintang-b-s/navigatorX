@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/jinzhu/copier"
+
 	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
 	"github.com/lintang-b-s/navigatorx/pkg/geo"
 	"github.com/lintang-b-s/navigatorx/pkg/server"
@@ -59,27 +61,36 @@ func NewContractedGraphFromOtherGraph(otherGraph *ContractedGraph) *ContractedGr
 
 	graphNodes := otherGraph.GetNodes()
 	qNodes := make([]datastructure.CHNode, len(graphNodes))
-	copy(qNodes, graphNodes)
 
 	nodeOutEdges := otherGraph.GetFirstOutEdges()
 	qFirstOutEdges := make([][]int32, len(nodeOutEdges))
-	copy(qFirstOutEdges, nodeOutEdges)
-
-	for i := range nodeOutEdges {
-		qFirstOutEdges[i] = make([]int32, len(nodeOutEdges[i]))
-		copy(qFirstOutEdges[i], nodeOutEdges[i])
-	}
 
 	nodeInEdges := otherGraph.GetFirstInEdges()
 	qFirstInEdges := make([][]int32, len(nodeInEdges))
-	copy(qFirstInEdges, nodeInEdges)
 
-	for i := range nodeInEdges {
-		qFirstInEdges[i] = make([]int32, len(nodeInEdges[i]))
-		copy(qFirstInEdges[i], nodeInEdges[i]) // Deep copy
+	go func() {
+		copy(qNodes, graphNodes)
+	}()
+
+	go func() {
+		for i := range nodeOutEdges {
+			qFirstOutEdges[i] = make([]int32, len(nodeOutEdges[i]))
+			copy(qFirstOutEdges[i], nodeOutEdges[i])
+		}
+	}()
+
+	go func() {
+		for i := range nodeInEdges {
+			qFirstInEdges[i] = make([]int32, len(nodeInEdges[i]))
+			copy(qFirstInEdges[i], nodeInEdges[i]) // Deep copy
+		}
+	}()
+
+	graphStorage := datastructure.GraphStorage{}
+	err := copier.Copy(&graphStorage, otherGraph.GraphStorage)
+	if err != nil {
+		panic(err)
 	}
-
-	graphStorage := *otherGraph.GraphStorage
 	return &ContractedGraph{
 
 		ContractedNodes:        qNodes,
@@ -87,6 +98,7 @@ func NewContractedGraphFromOtherGraph(otherGraph *ContractedGraph) *ContractedGr
 		ContractedFirstInEdge:  qFirstInEdges,
 		GraphStorage:           &graphStorage,
 	}
+
 }
 
 func (ch *ContractedGraph) InitCHGraph(processedNodes []datastructure.CHNode,
@@ -626,16 +638,24 @@ func (ch *ContractedGraph) IsInBigComponent(nodeID int32) bool {
 	return ch.SCCNodesCount[ch.SCC[nodeID]] >= 1000
 }
 
-func (ch *ContractedGraph) SaveToFile() error {
+func (ch *ContractedGraph) SaveToFile(mapmatch bool) error {
 	buf := new(bytes.Buffer)
 	enc := gob.NewEncoder(buf)
 	err := enc.Encode(ch)
+
+	var filename string
+
+	if mapmatch {
+		filename = graphMapmatchFileName
+	} else {
+		filename = graphFileName
+	}
 
 	if err != nil {
 		return err
 	}
 
-	f, err := os.Create("./ch_graph.graph")
+	f, err := os.Create(filename)
 
 	if err != nil {
 		return err
@@ -645,16 +665,28 @@ func (ch *ContractedGraph) SaveToFile() error {
 	return err
 }
 
-func (ch *ContractedGraph) LoadGraph() error {
+func (ch *ContractedGraph) LoadGraph(mapmatch bool) error {
 	defer func() {
 		runtime.GC() // reduce heap size after loading graph
 		runtime.GC() // reduce heap size after loading graph
 	}()
-	f, err := os.Open("./ch_graph.graph")
-	if err != nil {
-		return err
+	var (
+		f   *os.File
+		err error
+	)
+	if mapmatch {
+		f, err = os.Open(graphMapmatchFileName)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+	} else {
+		f, err = os.Open(graphFileName)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
 	}
-	defer f.Close()
 
 	fileInfo, err := f.Stat()
 	if err != nil {

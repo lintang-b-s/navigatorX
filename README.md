@@ -2,6 +2,8 @@
 
 Openstreetmap routing engine in go. This project uses Contraction Hierarchies to speed up shortest path queries by preprocessing the road network graph (adding many shortcut edges) and Bidirectional Dijsktra for shortest path queries. H3 is used as a nearest neighbor query. 
 
+## Demo
+https://navigatorx-fe.vercel.app/ (This demo only supports maps of Yogyakarta, Surakarta, Klaten, Boyolali)
 ## Quick Start
 
 #### Only Preprocessing

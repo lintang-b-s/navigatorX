@@ -66,10 +66,10 @@ func (s *MapMatchingRequest) Bind(r *http.Request) error {
 type MapMatchingResponse struct {
 	Path         string  `json:"path"`
 	Coord        []Coord `json:"projection_coordinates"`
-	observations []struct {
+	Observations []struct {
 		Observation Coord `json:"observation"`
 		Edge        int32 `json:"snapped_edge_id"`
-	}
+	} `json:"observations"`
 }
 
 func RenderMapMatchingResponse(path string, coords []datastructure.Coordinate, edges []datastructure.Edge, obsPath []datastructure.Coordinate) *MapMatchingResponse {
@@ -101,7 +101,7 @@ func RenderMapMatchingResponse(path string, coords []datastructure.Coordinate, e
 	return &MapMatchingResponse{
 		Path:         path,
 		Coord:        snapsResp,
-		observations: obervationResp,
+		Observations: obervationResp,
 	}
 }
 
@@ -143,8 +143,7 @@ func (h *MapMatchingHandler) MapMatch(w http.ResponseWriter, r *http.Request) {
 	}
 	p, pNode, edges, obsPath, err := h.svc.MapMatch(r.Context(), coords)
 	if err != nil {
-		render.Render(w, r, ErrInternalServerErrorRend(errors.New("internal server error")))
-
+		render.Render(w, r, ErrInvalidRequest(errors.New("hmm break")))
 		return
 	}
 

@@ -30,7 +30,7 @@ func main() {
 	flag.Parse()
 
 	ch := contractor.NewContractedGraph()
-	err := ch.LoadGraph()
+	err := ch.LoadGraph(true)
 
 	if err != nil {
 		log.Fatal(err)

@@ -30,7 +30,7 @@ func (rs *RoadSnapper) SnapToRoad(p datastructure.Point) datastructure.OSMObject
 }
 
 const (
-	minRadius = 0.2 // 200 meter
+	minRadius = 0.3 // 300 meter
 )
 
 func (rs *RoadSnapper) SnapToRoads(p datastructure.Point) []datastructure.OSMObject {

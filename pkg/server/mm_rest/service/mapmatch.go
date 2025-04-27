@@ -59,9 +59,9 @@ func (uc *MapMatchingService) MapMatch(ctx context.Context, gps []datastructure.
 		return hmmPair[i].Observation.ID < hmmPair[j].Observation.ID
 	})
 
-	path, edges, obsPath := uc.mapMatching.MapMatch(hmmPair, &stateID)
+	path, edges, obsPath,err := uc.mapMatching.MapMatch(hmmPair, &stateID)
 
-	return datastructure.CreatePolyline(path), path, edges, obsPath, nil
+	return datastructure.CreatePolyline(path), path, edges, obsPath, err
 }
 
 type snapResult struct {
@@ -118,7 +118,7 @@ func (uc *MapMatchingService) NearestRoadSegmentsForMapMatching(lat, lon float64
 }
 
 const (
-	radius = 150.0
+	radius = 200.0
 	k      = 30
 )
 

@@ -11,7 +11,7 @@ type KVDB interface {
 }
 
 type Matching interface {
-	MapMatch(gps []datastructure.StateObservationPair, nextStateID *int) ([]datastructure.Coordinate, []datastructure.Edge, []datastructure.Coordinate)
+	MapMatch(gps []datastructure.StateObservationPair, nextStateID *int) ([]datastructure.Coordinate, []datastructure.Edge, []datastructure.Coordinate, error)
 }
 
 type RoadSnapper interface {
@@ -31,8 +31,8 @@ type ContractedGraph interface {
 	GetNumNodes() int
 	Contraction() (err error)
 
-	SaveToFile() error
-	LoadGraph() error
+	SaveToFile(mapmatch bool) error
+	LoadGraph(mapmatch bool) error
 	GetStreetDirection(streetName int) [2]bool
 	GetStreetNameFromID(streetName int) string
 	GetRoadClassFromID(roadClass uint8) string

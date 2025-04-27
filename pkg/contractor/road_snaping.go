@@ -44,7 +44,8 @@ const (
 )
 
 func (ch *ContractedGraph) SnapLocationToRoadSegmentNodeH3WithSccAnalysis(edgesFrom, edgesTo []datastructure.KVEdge,
-	wantToSnapFrom, wantToSnapTo []float64) (int32, int32, datastructure.Coordinate, datastructure.Coordinate, error) {
+	wantToSnapFrom, wantToSnapTo []float64) (int32, int32, datastructure.Coordinate, datastructure.Coordinate,
+	datastructure.Edge, error) {
 
 	// sort the edgeSlice by the perpendicular distance to the line
 
@@ -103,12 +104,23 @@ func (ch *ContractedGraph) SnapLocationToRoadSegmentNodeH3WithSccAnalysis(edgesF
 				bestProjectionFrom := projectionFrom[i]
 				bestProjectionTo := projectionTo[j]
 
-				return bestEdgeFrom.ToNodeID, bestEdgeTo.FromNodeID, bestProjectionFrom, bestProjectionTo, nil
+				snappedEdge := datastructure.Edge{}
+
+				for _, edgeID := range ch.GetNodeFirstOutEdges(bestEdgeFrom.FromNodeID) {
+					edge := ch.GetOutEdge(edgeID)
+					if edge.ToNodeID == bestEdgeFrom.ToNodeID {
+						snappedEdge = edge
+					}
+				}
+
+				return bestEdgeFrom.ToNodeID, bestEdgeTo.FromNodeID, bestProjectionFrom, bestProjectionTo, snappedEdge, nil
 			}
 		}
 	}
 
-	return -1, -1, datastructure.Coordinate{}, datastructure.Coordinate{}, fmt.Errorf("no path found from %v,%v to %v,%v", wantToSnapFrom[0], wantToSnapFrom[1], wantToSnapTo[0], wantToSnapTo[1])
+	return -1, -1, datastructure.Coordinate{}, datastructure.Coordinate{}, datastructure.Edge{},
+		fmt.Errorf("no path found from %v,%v to %v,%v", wantToSnapFrom[0], wantToSnapFrom[1],
+			wantToSnapTo[0], wantToSnapTo[1])
 }
 
 func min(a, b int) int {

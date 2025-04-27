@@ -32,8 +32,8 @@ type ContractedGraph interface {
 	GetEdgePointsInBetween(edgeID int32) []datastructure.Coordinate
 	IsTrafficLight(nodeID int32) bool
 
-	SaveToFile() error
-	LoadGraph() error
+	SaveToFile(mapmatch bool) error
+	LoadGraph(mapmatch bool) error
 	GetStreetDirection(streetName int) [2]bool
 
 	GetStreetNameFromID(streetName int) string

@@ -74,11 +74,12 @@ type AlternativeRouteParam struct {
 	OptDist           float64
 	Ctx               context.Context
 	AlternativeRoutes *[]datastructure.AlternativeRouteInfo
+	BestEdgeFrom      datastructure.Edge
 }
 
 func NewAlternativeRouteParam(fromNodeID, toNodeID, vNodeID int32, optNodes []datastructure.CHNode,
 	altRoute datastructure.AlternativeRouteInfo, optDist float64, ctx context.Context,
-	alts *[]datastructure.AlternativeRouteInfo) AlternativeRouteParam {
+	alts *[]datastructure.AlternativeRouteInfo, bestEdgeFrom datastructure.Edge) AlternativeRouteParam {
 	return AlternativeRouteParam{
 		FromNodeID:        fromNodeID,
 		ToNodeID:          toNodeID,
@@ -88,6 +89,7 @@ func NewAlternativeRouteParam(fromNodeID, toNodeID, vNodeID int32, optNodes []da
 		OptDist:           optDist,
 		Ctx:               ctx,
 		AlternativeRoutes: alts,
+		BestEdgeFrom:      bestEdgeFrom,
 	}
 }
 

@@ -101,7 +101,7 @@ func main() {
 	}
 
 	log.Printf("Saving Contracted Graph to a file...")
-	err = ch.SaveToFile()
+	err = ch.SaveToFile(*mapmatch)
 	if err != nil {
 		panic(err)
 	}

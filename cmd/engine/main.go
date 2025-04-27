@@ -56,7 +56,7 @@ func main() {
 	flag.Parse()
 
 	ch := contractor.NewContractedGraph()
-	err := ch.LoadGraph()
+	err := ch.LoadGraph(false)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -133,7 +133,7 @@ func (hmm *HMMMapMatching) calculateTransitionProb(param concurrent.CalculateTra
 	return newTransitionWithProb(prevState.StateID, currentState.StateID, math.Inf(-1), nil)
 }
 
-func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, nextStateID *int) ([]datastructure.Coordinate, []datastructure.Edge, []datastructure.Coordinate) {
+func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, nextStateID *int) ([]datastructure.Coordinate, []datastructure.Edge, []datastructure.Coordinate, error) {
 
 	stateDataMap := make(map[int]*datastructure.State)
 	viterbi := NewViterbiAlgorithm(true)
@@ -183,6 +183,8 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 
 	routeAlgo := routingalgorithm.NewRouteAlgorithm(queryGraph)
 	observationPath := make([]datastructure.Coordinate, 0)
+
+	isBreak := false
 
 	for i := 0; i < len(gps); i++ {
 
@@ -250,34 +252,8 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 			if err != nil {
 				hmm.handleHMMBreak(gps, i, viterbi, stateDataMap, transitionProbMatrix, prevObservation, routeAlgo,
 					&statesPath, &observationPath, &viterbiResetCount)
-				path := viterbi.ComputeMostLikelySequence()
-
-				for _, p := range path {
-					statesPath = append(statesPath, p.State)
-					obs := gps[p.Observation]
-					observationPath = append(observationPath, datastructure.NewCoordinate(obs.Observation.Lat, obs.Observation.Lon))
-				}
-
-				viterbi = NewViterbiAlgorithm(true)
-				viterbiResetCount++
-
-				states = make([]int, 0)
-				emissionProbMatrix := make(map[int]float64)
-
-				for j := 0; j < len(prevObservation.State); j++ {
-					states = append(states, prevObservation.State[j].StateID)
-
-					projectionLoc := prevObservation.State[j].ProjectionLoc
-
-					distance := geo.CalculateHaversineDistance(projectionLoc[0], projectionLoc[1],
-						prevObservation.Observation.Lat, prevObservation.Observation.Lon) * 1000
-					emissionProb := computeEmissionLogProb(distance)
-
-					emissionProbMatrix[prevObservation.State[j].StateID] = emissionProb
-				}
-				viterbi.StartWithInitialStateProbabilities(int(prevObservation.Observation.ID), states, emissionProbMatrix)
-
-				continue
+				isBreak = true
+				break
 			} else {
 				processedObsCount++
 			}
@@ -286,9 +262,6 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 
 		prevObservation = gps[i]
 
-		if (processedObsCount+1)%(int(0.05*float64(len(gps)))) == 0 {
-			log.Printf("Processed %v out of %v observations", processedObsCount+1, len(gps))
-		}
 
 	}
 
@@ -319,7 +292,11 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 	log.Printf("Viterbi reset count %v", viterbiResetCount)
 	log.Printf("Processed %v out of %v observations", processedObsCount, len(gps))
 
-	return solutions, solutionEdges, observationPath
+	if isBreak {
+		return solutions, solutionEdges, observationPath, hmmbreakErr
+	}
+	return solutions, solutionEdges, observationPath, nil
+
 }
 
 func (hmm *HMMMapMatching) buildQueryGraph(gps []datastructure.StateObservationPair) *contractor.ContractedGraph {

@@ -19,9 +19,12 @@ import (
 // X-CHV
 
 const (
-	workersNum                  = 4
-	alternativeRouteCalcTimeout = 100
-	npath                       = 5000
+	workersNum = 4
+	npath      = 5000
+)
+
+var (
+	alternativeRouteCalcTimeout time.Duration = 100
 )
 
 type RouteAlgorithmI interface {
@@ -53,7 +56,7 @@ func NewAlternativeRouteXCHV(k int, rt RouteAlgorithmI) *AlternativeRouteXCHV {
 	}
 }
 
-func (ar *AlternativeRouteXCHV) RunAlternativeRouteXCHV(from, to int32) ([]datastructure.AlternativeRouteInfo, error) {
+func (ar *AlternativeRouteXCHV) RunAlternativeRouteXCHV(from, to int32, bestEdgeFrom datastructure.Edge) ([]datastructure.AlternativeRouteInfo, error) {
 	fromNode := ar.rt.GetGraph().GetNode(from)
 	toNode := ar.rt.GetGraph().GetNode(to)
 	fromToDist := geo.CalculateHaversineDistance(fromNode.Lat, fromNode.Lon, toNode.Lat, toNode.Lon)
@@ -61,6 +64,7 @@ func (ar *AlternativeRouteXCHV) RunAlternativeRouteXCHV(from, to int32) ([]datas
 	if fromToDist >= 20 {
 		// for better alternative routes quality (longer routes tends to have many good vianodes)
 		relaxedCHK = 1
+		alternativeRouteCalcTimeout = 180
 	}
 	// first run the shortest path (s,t) to get l(Opt)
 	optNodes, path, edges, bestEta, bestDist, _, _, _ := ar.rt.ShortestPathBiDijkstraXCHV(from, to, relaxedCHK, false, 0)
@@ -95,7 +99,7 @@ func (ar *AlternativeRouteXCHV) RunAlternativeRouteXCHV(from, to int32) ([]datas
 		sharedDistanceWithOpt := ar.calculateDistanceShare(appNodes, vEdges)
 
 		objectiveValue := ar.calculateObjectiveFunctionValue(camefromf[vnode].Dist+camefromb[vnode].Dist,
-			sharedDistanceWithOpt)
+			sharedDistanceWithOpt, ar.calculatePlateauContainingV(camefromf, camefromb, vnode))
 
 		alternativeRoute := datastructure.NewAlternativeRouteInfo(objectiveValue, vnode)
 		alternativeRoute.Dist = camefromf[vnode].Dist + camefromb[vnode].Dist
@@ -129,7 +133,7 @@ func (ar *AlternativeRouteXCHV) RunAlternativeRouteXCHV(from, to int32) ([]datas
 		vnode := alternativeRoute.ViaNode
 
 		workers.AddJob(concurrent.NewAlternativeRouteParam(
-			from, to, vnode, optNodes, alternativeRoute, bestDist, ctx, &alternativeRoutes))
+			from, to, vnode, optNodes, alternativeRoute, bestDist, ctx, &alternativeRoutes, bestEdgeFrom))
 	}
 
 	workers.Close()
@@ -179,6 +183,7 @@ func (ar *AlternativeRouteXCHV) RunAdmisibleTestXCHV(param concurrent.Alternativ
 	optDist := param.OptDist
 	alternativeRoute := param.AlternativeRoute
 	ctx := param.Ctx
+	bestEdgeFrom := param.BestEdgeFrom
 
 	if util.StopConcurrentOperation(ctx) {
 		return newAdmisibleTestResult(false, datastructure.AlternativeRouteInfo{})
@@ -256,6 +261,8 @@ func (ar *AlternativeRouteXCHV) RunAdmisibleTestXCHV(param concurrent.Alternativ
 	alternativeRoute.Dist = pvDist
 	alternativeRoute.Nodes = pvNodes
 	alternativeRoute.Edges = pvEdges
+
+	alternativeRoute.Edges = append([]datastructure.Edge{bestEdgeFrom}, alternativeRoute.Edges...)
 
 	drivingInstruction := guidance.NewInstructionsFromEdges(ar.rt.GetGraph())
 	alternativeRoute.DrivingDirection, _ = drivingInstruction.GetDrivingDirections(alternativeRoute.Edges)
@@ -361,9 +368,9 @@ func (ar *AlternativeRouteXCHV) calculatePlateauContainingV(vCameFromf, vCameFro
 	return plateau
 }
 
-func (ar *AlternativeRouteXCHV) calculateObjectiveFunctionValue(pvLength, sharedEdgesDist float64) float64 {
+func (ar *AlternativeRouteXCHV) calculateObjectiveFunctionValue(pvLength, sharedEdgesDist, plateau float64) float64 {
 	// without plateau giving better result
-	return 2*(pvLength) + sharedEdgesDist
+	return 2*(pvLength) + sharedEdgesDist - plateau
 }
 func (ar *AlternativeRouteXCHV) tTest(lengthPvExcludeOpt float64, edgeIDContainV int,
 	pvEdges []datastructure.Edge, vNode int32) bool {
