@@ -115,6 +115,11 @@ func (ife *InstructionsFromEdges) AddInstructionFromEdge(edge datastructure.Edge
 		sign := datastructure.START
 		point := datastructure.NewCoordinate(baseNodeData.Lat, baseNodeData.Lon)
 
+		// initial segment edgeIDs & segment points
+		ife.EdgeIDs = []int32{edge.EdgeID}
+		ife.Points = append(ife.Points, datastructure.NewCoordinate(baseNodeData.Lat, baseNodeData.Lon))
+		ife.Points = append(ife.Points, datastructure.NewCoordinate(adjLat, adjLon))
+
 		turnBearing := calcOrientation(baseNodeData.Lat, baseNodeData.Lon, latitude, longitude)
 		newIns := datastructure.NewInstruction(sign, name, point, false, []int32{edge.EdgeID}, ife.cumulativeDistance, ife.cumulativeEta,
 			ife.Points, turnBearing)
@@ -146,6 +151,11 @@ func (ife *InstructionsFromEdges) AddInstructionFromEdge(edge datastructure.Edge
 				//start point dari shortetest path & dan bundaran (roundabout)
 				ife.prevOrientation = calcOrientation(baseNodeData.Lat, baseNodeData.Lon, latitude, longitude)
 			}
+
+			// initial segment edgeIDs & segment points
+			ife.EdgeIDs = []int32{edge.EdgeID}
+			ife.Points = append(ife.Points, datastructure.NewCoordinate(baseNodeData.Lat, baseNodeData.Lon))
+			ife.Points = append(ife.Points, datastructure.NewCoordinate(adjLat, adjLon))
 
 			turnBearing := calcFinalOrientation(prevNodeData.Lat, prevNodeData.Lon, baseNodeData.Lat, baseNodeData.Lon)
 			prevIns := datastructure.NewInstructionWithRoundabout(sign, name, point, true, roundaboutInstruction, ife.cumulativeDistance,

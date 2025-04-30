@@ -250,8 +250,8 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 
 			err := viterbi.NextStep(int(gps[i].Observation.ID), states, emissionProbMatrix, transitionProbMatrix, nil)
 			if err != nil {
-				hmm.handleHMMBreak(gps, i, viterbi, stateDataMap, transitionProbMatrix, prevObservation, routeAlgo,
-					&statesPath, &observationPath, &viterbiResetCount)
+				viterbiResetCount++
+				hmm.handleHMMBreak(gps, i, viterbi, stateDataMap, transitionProbMatrix, prevObservation, routeAlgo)
 				isBreak = true
 				break
 			} else {
@@ -261,7 +261,6 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 		}
 
 		prevObservation = gps[i]
-
 
 	}
 
@@ -549,7 +548,7 @@ func getProjectionPlaceInLinePoints(linePoints []datastructure.Coordinate, edgeS
 func (hmm *HMMMapMatching) handleHMMBreak(gps []datastructure.StateObservationPair, i int, viterbi *ViterbiAlgorithm,
 	stateDataMap map[int]*datastructure.State, transitionProbMatrix map[Transition]float64,
 	prevObservation datastructure.StateObservationPair, routeAlgo RouteAlgorithm,
-	statesPath *[]int, observationPath *[]datastructure.Coordinate, viterbiResetCount *int) {
+) {
 	log.Printf("broken viterbi at observation: %v", i)
 
 	hist := viterbi.messageHistory

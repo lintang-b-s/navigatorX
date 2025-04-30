@@ -9,8 +9,6 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/jinzhu/copier"
-
 	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
 	"github.com/lintang-b-s/navigatorx/pkg/geo"
 	"github.com/lintang-b-s/navigatorx/pkg/server"
@@ -86,17 +84,27 @@ func NewContractedGraphFromOtherGraph(otherGraph *ContractedGraph) *ContractedGr
 		}
 	}()
 
-	graphStorage := datastructure.GraphStorage{}
-	err := copier.Copy(&graphStorage, otherGraph.GraphStorage)
-	if err != nil {
-		panic(err)
+	graphStorage := &datastructure.GraphStorage{
+		GlobalPoints:     make([]datastructure.Coordinate, len(otherGraph.GraphStorage.GlobalPoints)),
+		EdgeStorage:      make([]datastructure.Edge, len(otherGraph.GraphStorage.EdgeStorage)),
+		RoundaboutFlag:   make([]int32, len(otherGraph.GraphStorage.RoundaboutFlag)),
+		NodeTrafficLight: make([]int32, len(otherGraph.GraphStorage.NodeTrafficLight)),
+		MapEdgeInfo:      make([]datastructure.EdgeExtraInfo, len(otherGraph.GraphStorage.MapEdgeInfo)),
 	}
+
+	copy(graphStorage.GlobalPoints, otherGraph.GraphStorage.GlobalPoints)
+	copy(graphStorage.EdgeStorage, otherGraph.GraphStorage.EdgeStorage)
+	copy(graphStorage.RoundaboutFlag, otherGraph.GraphStorage.RoundaboutFlag)
+	copy(graphStorage.NodeTrafficLight, otherGraph.GraphStorage.NodeTrafficLight)
+	graphStorage.StartShortcutID = otherGraph.GraphStorage.StartShortcutID
+	copy(graphStorage.MapEdgeInfo, otherGraph.GraphStorage.MapEdgeInfo)
+
 	return &ContractedGraph{
 
 		ContractedNodes:        qNodes,
 		ContractedFirstOutEdge: qFirstOutEdges,
 		ContractedFirstInEdge:  qFirstInEdges,
-		GraphStorage:           &graphStorage,
+		GraphStorage:           graphStorage,
 	}
 
 }

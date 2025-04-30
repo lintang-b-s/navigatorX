@@ -59,7 +59,7 @@ func (uc *MapMatchingService) MapMatch(ctx context.Context, gps []datastructure.
 		return hmmPair[i].Observation.ID < hmmPair[j].Observation.ID
 	})
 
-	path, edges, obsPath,err := uc.mapMatching.MapMatch(hmmPair, &stateID)
+	path, edges, obsPath, err := uc.mapMatching.MapMatch(hmmPair, &stateID)
 
 	return datastructure.CreatePolyline(path), path, edges, obsPath, err
 }
