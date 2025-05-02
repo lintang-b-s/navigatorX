@@ -13,6 +13,7 @@ import (
 	"github.com/lintang-b-s/navigatorx/pkg/datastructure"
 	"github.com/lintang-b-s/navigatorx/pkg/engine/routingalgorithm"
 	"github.com/lintang-b-s/navigatorx/pkg/geo"
+	"github.com/lintang-b-s/navigatorx/pkg/guidance"
 )
 
 const (
@@ -62,7 +63,7 @@ func newTransitionWithProb(prevState, currState int, transitionProb float64,
 
 func (hmm *HMMMapMatching) calculateTransitionProb(param concurrent.CalculateTransitionProbParam) transitionWithProb {
 
-	linearDistance := param.LinearDistance
+	linearDistance := param.LinearDistance // in meter
 	routeAlgo, maxTransitionDist := param.RouteAlgo, param.MaxTransitionDist
 
 	// for every state between 2 adjacent gps observation, calculate the route length
@@ -80,26 +81,12 @@ func (hmm *HMMMapMatching) calculateTransitionProb(param concurrent.CalculateTra
 		return true
 	}
 
-	if prevState.GetType() == datastructure.VirtualNode {
-		prevStatef := prevState
-		sourceEdgeFilter = func(edge datastructure.Edge) bool {
-			return edge.EdgeID == prevStatef.OutgoingVirtualEdgeID
-		}
-	}
-
-	if currentState.GetType() == datastructure.VirtualNode {
-		currentStatef := currentState
-		targetEdgeFilter = func(edge datastructure.Edge) bool {
-			return edge.EdgeID == currentStatef.IncomingVirtualEdgeID
-		}
-	}
-
-	// calculate route shortest path distance between prev state and current state
+	// calculate route shortest path distance between prev state and current state. routeDist in km
 	path, _, _, routeDist := routeAlgo.ShortestPathBiDijkstra(prevState.ProjectionID, currentState.ProjectionID, sourceEdgeFilter,
 		targetEdgeFilter)
 	// shortest path harus dari antara 2 projectionPoint.
 
-	routeDist *= 1000
+	routeDist *= 1000 // now routeDist in meter
 
 	if routeDist != routeNotFoundEta && math.Abs(routeDist-linearDistance) < maxTransitionDist {
 
@@ -108,28 +95,7 @@ func (hmm *HMMMapMatching) calculateTransitionProb(param concurrent.CalculateTra
 
 		return newTransitionWithProb(prevState.StateID, currentState.StateID, transitionProb, path)
 
-	} else if prevState.EdgeID == currentState.EdgeID {
-
-		projectionDist := geo.CalculateHaversineDistance(prevState.ProjectionLoc[0], prevState.ProjectionLoc[1],
-			currentState.ProjectionLoc[0], currentState.ProjectionLoc[1]) * 1000
-
-		transitionProb := computeTransitionLogProb(projectionDist,
-			linearDistance)
-
-		return newTransitionWithProb(prevState.StateID, currentState.StateID, transitionProb,
-			[]datastructure.Coordinate{datastructure.NewCoordinate(prevState.ProjectionLoc[0], prevState.ProjectionLoc[1])})
-	} else if prevState.EdgeToNodeID == currentState.EdgeFromNodeID {
-		projectionDist := geo.CalculateHaversineDistance(prevState.ProjectionLoc[0], prevState.ProjectionLoc[1],
-			currentState.ProjectionLoc[0], currentState.ProjectionLoc[1]) * 1000
-
-		transitionProb := computeTransitionLogProb(projectionDist,
-			linearDistance)
-
-		return newTransitionWithProb(prevState.StateID, currentState.StateID, transitionProb,
-			[]datastructure.Coordinate{datastructure.NewCoordinate(prevState.ProjectionLoc[0], prevState.ProjectionLoc[1])})
-
 	}
-
 	return newTransitionWithProb(prevState.StateID, currentState.StateID, math.Inf(-1), nil)
 }
 
@@ -179,7 +145,7 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 
 	queryGraph := hmm.buildQueryGraph(gps)
 
-	hmm.updateAllHMMStates(gps, queryGraph, nextStateID)
+	// hmm.updateAllHMMStates(gps, queryGraph, nextStateID)
 
 	routeAlgo := routingalgorithm.NewRouteAlgorithm(queryGraph)
 	observationPath := make([]datastructure.Coordinate, 0)
@@ -216,18 +182,13 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 		} else {
 			// calculate linear distance between prev observation and current observation
 			linearDistance := geo.CalculateHaversineDistance(prevObservation.Observation.Lat, prevObservation.Observation.Lon,
-				gps[i].Observation.Lat, gps[i].Observation.Lon) * 1000
+				gps[i].Observation.Lat, gps[i].Observation.Lon) * 1000 // in meter
 
 			workers := concurrent.NewWorkerPool[concurrent.CalculateTransitionProbParam, transitionWithProb](30,
 				len(gps[i].State)*len(prevObservation.State))
 
 			for j := 0; j < len(prevObservation.State); j++ {
 				for k := 0; k < len(gps[i].State); k++ {
-					if prevObservation.State[j].EdgeFromNodeID == gps[i].State[k].EdgeToNodeID &&
-						prevObservation.State[j].EdgeToNodeID == gps[i].State[k].EdgeFromNodeID {
-						// if u-turn is detected, then skip this state pair
-						continue
-					}
 
 					prevState := prevObservation.State[j]
 					currentState := gps[i].State[k]
@@ -251,7 +212,7 @@ func (hmm *HMMMapMatching) MapMatch(gps []datastructure.StateObservationPair, ne
 			err := viterbi.NextStep(int(gps[i].Observation.ID), states, emissionProbMatrix, transitionProbMatrix, nil)
 			if err != nil {
 				viterbiResetCount++
-				hmm.handleHMMBreak(gps, i, viterbi, stateDataMap, transitionProbMatrix, prevObservation, routeAlgo)
+				hmm.handleHMMBreak(gps, i, viterbi, stateDataMap, transitionProbMatrix, prevObservation)
 				isBreak = true
 				break
 			} else {
@@ -348,38 +309,42 @@ func (hmm *HMMMapMatching) splitEdges(gps []datastructure.StateObservationPair, 
 		fromNode := queryGraph.GetNode(edge.FromNodeID)
 		toNode := queryGraph.GetNode(edge.ToNodeID)
 
-		snapIndexInPoints := make(map[int]int)
-
-		getProjectionPlaceInLinePoints(edgePointsInBetween, edgeSnaps, snapIndexInPoints)
-
 		removeUnsuedEdgesInOsmWay(queryGraph, edge)
 
 		// sort snaps based on their projection place in line points.
 
-		sort.Slice(edgeSnaps, func(i, j int) bool {
-			a := edgeSnaps[i]
-			b := edgeSnaps[j]
-			distA := geo.CalculateHaversineDistance(fromNode.Lat, fromNode.Lon,
-				a.ProjectionLoc[0], a.ProjectionLoc[1])
-			distB := geo.CalculateHaversineDistance(fromNode.Lat, fromNode.Lon,
-				b.ProjectionLoc[0], b.ProjectionLoc[1])
+		if isEdgeRoundabout(edgePointsInBetween) {
+			// is edge is a roundabout , then sort based on observationID
+			sort.Slice(edgeSnaps, func(i, j int) bool {
+				a := edgeSnaps[i]
+				b := edgeSnaps[j]
 
-			if distA < distB {
-				return true
-			} else if distA > distB {
-				return false
-			} else {
 				return a.ObservationID < b.ObservationID
-			}
-		})
+			})
+		} else {
+			// is edge is not roundabout , then sort based on distance to fromNode
+			sort.Slice(edgeSnaps, func(i, j int) bool {
+				a := edgeSnaps[i]
+				b := edgeSnaps[j]
+				distA := geo.CalculateHaversineDistance(fromNode.Lat, fromNode.Lon,
+					a.ProjectionLoc[0], a.ProjectionLoc[1])
+				distB := geo.CalculateHaversineDistance(fromNode.Lat, fromNode.Lon,
+					b.ProjectionLoc[0], b.ProjectionLoc[1])
+
+				if distA < distB {
+					return true
+				} else if distA > distB {
+					return false
+				} else {
+					return a.ObservationID < b.ObservationID
+				}
+			})
+		}
 
 		// add virtual edges to the graph
 
 		prevPoint := edgePointsInBetween[0]
 		prevNodeID := fromNode.ID
-		prevPositionInLinePoints := 0
-
-		prevIndexI := 0
 
 		// for every snap projection point, add virtual edge <prevNodeID, newProjectionNodeID>
 		for i := 0; i < len(edgeSnaps); i++ {
@@ -410,19 +375,9 @@ func (hmm *HMMMapMatching) splitEdges(gps []datastructure.StateObservationPair, 
 				queryGraph.AddNode(newProjectionNode)
 			}
 
-			if i > 0 {
-				_, bestIndexI := hmm.projectPointToEdgeGeometry(edge, currSnapProjection)
-
-				if bestIndexI > prevIndexI {
-					edgeSnaps[i].PointsInBetween = edgePointsInBetween[prevIndexI:bestIndexI]
-					prevIndexI = bestIndexI
-				}
-			}
-
 			// add virtual edge
 			hmm.addVirtualEdge(queryGraph, edge, prevNodeID, newNodeID,
-				prevPoint, currSnapProjection, prevPositionInLinePoints,
-				snapIndexInPoints[edgeSnaps[i].StateID])
+				prevPoint, currSnapProjection)
 
 			prevNodeID = newNodeID
 			prevPoint = currSnapProjection
@@ -432,8 +387,8 @@ func (hmm *HMMMapMatching) splitEdges(gps []datastructure.StateObservationPair, 
 		// add <finalProjection, toNode> virtual edge
 		toNodeCoordinate := datastructure.NewCoordinate(toNode.Lat, toNode.Lon)
 		hmm.addVirtualEdge(queryGraph, edge, prevNodeID, toNode.ID,
-			prevPoint, toNodeCoordinate, snapIndexInPoints[edgeSnaps[len(edgeSnaps)-1].StateID],
-			len(edgePointsInBetween))
+			prevPoint, toNodeCoordinate,
+		)
 
 	}
 }
@@ -472,7 +427,7 @@ func removeUnsuedEdgesInOsmWay(queryGraph ContractedGraph, matchedEdge datastruc
 
 func (hmm *HMMMapMatching) addVirtualEdge(queryGraph ContractedGraph,
 	matchedEdge datastructure.Edge, prevNodeID, nodeID int32, prevProjection, currProjection datastructure.Coordinate,
-	prevPositionInLinePoints, currPositionInLinePoints int) int32 {
+) int32 {
 
 	// calculate edge distance
 	dist := 0.0
@@ -505,49 +460,28 @@ func (hmm *HMMMapMatching) addVirtualEdge(queryGraph ContractedGraph,
 	return newEdgeID
 }
 
-// updateAllHMMStates.
-func (hmm *HMMMapMatching) updateAllHMMStates(gps []datastructure.StateObservationPair, queryGraph ContractedGraph, nextStateID *int) {
+func isEdgeRoundabout(linePoints []datastructure.Coordinate) bool {
+	sumDeltaBearing := 0.0
+	for i := 0; i < len(linePoints)-2; i++ {
+		p1 := linePoints[i]
+		p2 := linePoints[i+1]
+		p3 := linePoints[i+2]
 
-	for i := 0; i < len(gps); i++ {
-		initialGpsStatesLen := len(gps[i].State)
-		for j := 0; j < initialGpsStatesLen; j++ {
-			state := gps[i].State[j]
-			if state.GetType() == datastructure.VirtualNode {
-				virtualOutgouingEdge := queryGraph.GetNodeFirstOutEdges(state.ProjectionID)[0]
-				virtualIncomingEdge := queryGraph.GetNodeFirstInEdges(state.ProjectionID)[0]
+		bearing1 := guidance.BearingTo(p1.Lat, p1.Lon, p2.Lat, p2.Lon)
+		bearing2 := guidance.BearingTo(p2.Lat, p2.Lon, p3.Lat, p3.Lon)
 
-				state.SetIncomingVirtualEdge(virtualIncomingEdge)
-				state.SetOutgoingVirtualEdge(virtualOutgouingEdge)
-
-				// add new hidden state for this gps observation same as this state but with reversed incoming & outgoing virtual edge
-				newState := *state
-				newState.SetIncomingVirtualEdge(virtualOutgouingEdge)
-				newState.SetOutgoingVirtualEdge(virtualIncomingEdge)
-				newState.StateID = *nextStateID
-
-				temp := newState.EdgeFromNodeID
-				newState.EdgeFromNodeID = newState.EdgeToNodeID
-				newState.EdgeToNodeID = temp
-				*nextStateID++
-
-				gps[i].State = append(gps[i].State, &newState)
-			}
-		}
+		sumDeltaBearing += bearing2 - bearing1
 	}
-}
-
-// getProjectionPlaceInLinePoints get the projection place of each snap point in line points
-func getProjectionPlaceInLinePoints(linePoints []datastructure.Coordinate, edgeSnaps []*datastructure.State, snappedIndexInPoints map[int]int) {
-	for i := 0; i < len(edgeSnaps); i++ {
-		position := geo.PointPositionBetweenLinePoints(edgeSnaps[i].ProjectionLoc[0], edgeSnaps[i].ProjectionLoc[1], linePoints)
-		snappedIndexInPoints[edgeSnaps[i].StateID] = position
+	if sumDeltaBearing >= 270 {
+		return true
 	}
+	return false
 }
 
 // for debugging purpose, In this case It's too difficult to debug using only vscode/IDE debugger considering the number of transitions.
 func (hmm *HMMMapMatching) handleHMMBreak(gps []datastructure.StateObservationPair, i int, viterbi *ViterbiAlgorithm,
 	stateDataMap map[int]*datastructure.State, transitionProbMatrix map[Transition]float64,
-	prevObservation datastructure.StateObservationPair, routeAlgo RouteAlgorithm,
+	prevObservation datastructure.StateObservationPair,
 ) {
 	log.Printf("broken viterbi at observation: %v", i)
 

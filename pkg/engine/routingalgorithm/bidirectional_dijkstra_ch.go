@@ -10,6 +10,7 @@ import (
 type cameFromPair struct {
 	Edge   datastructure.Edge
 	NodeID int32
+	
 }
 
 type RouteAlgorithm struct {

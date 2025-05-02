@@ -118,7 +118,7 @@ func (uc *MapMatchingService) NearestRoadSegmentsForMapMatching(lat, lon float64
 }
 
 const (
-	radius = 200.0
+	radius = 150.0
 	k      = 30
 )
 

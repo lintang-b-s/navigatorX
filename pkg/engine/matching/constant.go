@@ -4,7 +4,7 @@ import "errors"
 
 const (
 	minDistToGraphNode = 2      // 2 meter
-	maxTransitionDist  = 2000.0 // 2km
+	maxTransitionDist  = 1000.0 // 1km
 )
 
 var (
